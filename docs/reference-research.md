@@ -13,6 +13,8 @@
 
 重点核对入口：[实际任务与报告存储](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/modules/resume/resume.service.ts#L203)、[实际匹配与5岗位限制](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/modules/resume/session-tools.ts#L117)、[Java评分](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/mcp-servers/jd-store-java/src/main/java/com/elpis/jdstore/ScoringEngine.java#L26)、[重算契约](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/modules/resume/match-recompute.ts#L151)、[Elpis图编译](https://github.com/fsiaonma/elpis/blob/6bc8fe447ce8b05403c31fafed9ef1539f0b6160/app/ai/runtime/langgraph/agent.graph.ts)。
 
+补充关键证据：[会话历史持久化入口](https://github.com/fsiaonma/elpis/blob/6bc8fe447ce8b05403c31fafed9ef1539f0b6160/app/ai/runtime/langgraph/langgraph-orchestrator.service.ts)、[会话存储适配](https://github.com/fsiaonma/elpis/blob/6bc8fe447ce8b05403c31fafed9ef1539f0b6160/app/ai/memory/checkpoint.service.ts)、[进程内session与latestResumeId](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/modules/resume/analysis-session.ts)、[Go关键词召回](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/mcp-servers/recall-go/main.go)、[画像等级映射](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/skills/profile-assemble.skill.ts)、[排名与证据回退](https://github.com/fsiaonma/elpis-demo/blob/ebc9f034974f8e72031cbbc4b2fa25c8ddfccfdd/app/skills/match-rank.skill.ts)。这些链接固定到本次研究提交，支持静态结论，不构成运行验证。
+
 | 证据 | 文件/关键位置 | 核实内容 |
 |---|---|---|
 | E1 | `README.md`、`package.json`、`app/ai/` | 框架为 Nest Module 扩展；含 Agent、Tool、MCP、RAG、Store、Trace |
@@ -74,7 +76,7 @@ flowchart TD
 
 ## 4. Agent、Tool、Skill 与 RAG
 
-| 角色 | 实际允许能力 | 本项目处置 |
+| 角色 | 参考项目实际允许能力 | 本项目设计取舍（尚未实现） |
 |---|---|---|
 | studio-supervisor | 仅 invoke_agent，安排解析→画像/匹配 | 用显式 LangGraph 边替代，无需额外模型决策 |
 | resume-analyst | 仅 parse_resume | 文件抽取为普通服务；语义结构化才调用模型 |
@@ -82,7 +84,7 @@ flowchart TD
 | match-scorer | normalize_skills、list_jobs、get_job_requirements、recall_jobs、score_match、match-rank | 召回/算分/排序用普通代码；真正语义匹配单独建受限 LLM 节点 |
 | profile-assemble / match-rank | 普通 TS Skill | 保留纯函数思想，改为领域服务，无需 Skill 运行框架 |
 
-参考 RAG 实际用于 rubric：六个 Markdown 文档，按 overview 与 L1–L5 切片，框架 embedding 后写入 Qdrant，retrieve 供画像分析。配置为 Qdrant，与 Demo README 中“默认文件向量存储”的描述有漂移。画像 prompt 期待每维 L1–L5 全部出现，而配置 topK=3，框架有最低 topK 处理；仅相似度检索也不能保证五个等级齐全。本项目按维度和 rubricVersion 精确加载完整等级，再可选检索例子。[E4, D3, D12]
+参考 RAG 实际用于 rubric：六个 Markdown 文档，按 overview 与 L1–L5 切片，框架 embedding 后写入 Qdrant，retrieve 供画像分析。配置为 Qdrant，与 Demo README 中“默认文件向量存储”的描述有漂移。画像 prompt 期待每维 L1–L5 全部出现，而配置 topK=3，框架有最低 topK 处理；仅相似度检索也不能保证五个等级齐全。本项目规划按维度和rubricVersion精确加载完整等级，再可选检索例子，尚未实现。[E4, D3, D12]
 
 Go 召回不是 RAG：它没有连 Qdrant，不读 MySQL，而是对 Node 传入的岗位要求做技能字典规范化与匹配。不能将“框架有 Qdrant”推断为“岗位召回已向量化”。[D7]
 
@@ -116,6 +118,8 @@ TS 排序先按是否淘汰，再按总分降序、jobId 排序，最后 slice(0
 
 ## 6. 实现程度矩阵
 
+下表只评价上述固定提交的参考项目源码，不代表Resume Studio自身的交付状态，也不表示这些代码已经运行验收。
+
 | 功能 | 状态 | 根据与边界 |
 |---|---|---|
 | 上传/简历列表/删除/解析字段持久化 | 已有实现代码 | D2、Controller；未实跑 |
@@ -135,8 +139,10 @@ TS 排序先按是否淘汰，再按总分降序、jobId 排序，最后 slice(0
 
 ## 7. 保留与替换
 
+以下为业务设计取舍与目标迁移方向，简历分析工作流尚未实现。
+
 保留：六维画像、分级 rubric、原文证据、结构化逐项判断、确定性评分、可解释差距、候选召回后精判、最多 Top 10、分阶段进度、trace 与评测思想。
 
-替换：Elpis 依赖与扫描运行层 → NestJS 模块 + LangGraph；Python/Java/Go MCP → TS 服务；MySQL/Knex → PostgreSQL/Prisma；进程内 Map → 任务与产物表；模型安排固定流程 → 图边；文件会话 checkpoint → 官方 PostgresSaver；JSON 默认权重 → 版本化规则；关键词“判定器” → 有引用的 LLM 判断与确定性阈值规则；内存后台任务 → RabbitMQ + Outbox。
+替换：Elpis 依赖与扫描运行层 → NestJS 模块 + LangGraph；Python/Java/Go MCP → TS 服务；MySQL/Knex → PostgreSQL/Prisma；进程内 Map → 任务与产物表；模型安排固定流程 → 图边；会话历史持久化/进程内状态 → Task、NodeArtifact 与官方 PostgresSaver 节点级 Checkpoint；JSON 默认权重 → 版本化规则；关键词“判定器” → 有引用的 LLM 判断与确定性阈值规则；内存后台任务 → RabbitMQ + Outbox。Task是业务任务概念，首版设计分别为AnalysisTask与JobIndexTask，具体归属见[架构设计](architecture.md#6-数据库checkpoint与恢复)。
 
 不直接复用 rubric 全文或实现代码；此次静态审查研究的是设计与行为，后续如需复制资产必须先核对许可文件与归属。两仓 package.json 声明 ISC，但此次静态审查未将声明等同于已完成所有资产的许可审查。

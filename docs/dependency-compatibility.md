@@ -8,7 +8,7 @@
 
 | 组件 | 精确版本 | 验证/限制 |
 |---|---|---|
-| Node.js / pnpm | 24.22.3 / 12.23.0 | engines、packageManager与.node-version固定；本地运行和冻结安装通过 |
+| Node.js / pnpm | Node24.22.3；pnpm12.x，实测12.23.0 | Node由engines/.node-version固定；pnpm采用兼容范围并移除精确packageManager声明，见[当前策略](deployment.md#包管理器版本策略)。2026-11-24在仓库外独立目录验证新元数据的冻结安装通过，原锁文件与副本均未改变；其他12.x及Corepack自动选择仍未验证 |
 | Nest common/core/platform-express/testing | 12.6.0 | ESM与实际DI/HTTP测试通过；CLI/schematics未安装 |
 | TypeScript / @types/node | 6.0.3 / 24.10.0 | NodeNext、严格类型检查及装饰器元数据通过 |
 | ESLint / typescript-eslint / @eslint/js | 10.15.0 / 8.73.0 / 10.0.1 | flat config；当前TS落在parser支持区间 |

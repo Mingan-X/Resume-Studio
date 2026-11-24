@@ -2,7 +2,7 @@
 
 面向求职者的简历分析与岗位匹配项目。目标是从简历中提取可定位的证据，生成六维能力画像，并结合岗位要求给出可解释的匹配结果与推荐。
 
-**当前可运行范围是后端工程基础和基础设施诊断。** 简历上传、画像、岗位管理、召回、匹配和报告功能尚未实现；当前没有可使用的产品前端。
+**当前已实现范围包括后端工程基础与基础设施验证能力。** 简历上传、画像、岗位管理、召回、匹配和报告功能尚未实现；当前没有可使用的产品前端。
 
 ## 当前能力
 
@@ -11,7 +11,7 @@
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
 - RabbitMQ publisher confirm、mandatory return、手动 ACK、重投和重复消息集成测试。
 - Qdrant 合成向量 CRUD、维数校验与基础设施持久化验证工具。
-- 独立的 Docker Compose 项目、网络和数据卷；复用本地镜像，不连接其他项目实例。
+- Docker Compose 统一管理开发环境；容器、网络和数据卷归属独立的 `resume-studio` 项目，镜像缓存可复用，服务实例与其他项目隔离。
 
 ## 规划功能
 
@@ -26,7 +26,7 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 | 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7 | — |
 | 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2 | 事务 Outbox、业务任务消费者 |
 | AI 工作流与观测 | — | LangGraph.js、LangChain.js、PostgreSQL Checkpointer、Langfuse |
-| 工程工具 | pnpm 12.23.0、ESLint、Node test runner、Docker Compose | — |
+| 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
 具体依赖以 package.json 和 pnpm-lock.yaml 为准；未来候选组合及兼容性边界见[依赖说明](docs/dependency-compatibility.md)。
 
@@ -36,7 +36,7 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 
 ## 本地运行
 
-准备 Node.js 24.22.3 和 pnpm 12.23.0，在仓库根目录执行（PowerShell）：
+准备 Node.js 24.22.3 和能读取现有锁文件的 pnpm 12.x，不要求使用固定补丁版本。依赖解析以锁文件和 `--frozen-lockfile` 为准；12.23.0是已有验证记录所用版本，不代表其他12.x均已验证。元数据与工具选择细节见[包管理器策略](docs/deployment.md#包管理器版本策略)。在仓库根目录执行（PowerShell）：
 
 ```powershell
 pnpm install --frozen-lockfile

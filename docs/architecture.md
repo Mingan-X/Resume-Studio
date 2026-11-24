@@ -14,6 +14,8 @@
 
 **Checkpoint**：工作流状态快照及待完成节点，用于崩溃后继续；不替代任务记录、报告、授权或队列。Prisma 管业务表，官方 PostgresSaver 管自己的表，二者独立事务。
 
+以下任务实体、Outbox、NodeArtifact与Checkpoint均为目标设计；当前Schema只有诊断表。已确定的是组件方向、职责分工与一致性原则；候选并发数、超时、重试和租约参数须通过集成与负载测试确认，Rubric等级、评分映射和权重等业务政策须单独审查，不将这些提案写成已实现或生产级保证。
+
 ## 2. 整体架构
 
 ```mermaid
@@ -53,14 +55,14 @@ PostgreSQL 是业务真源；Qdrant 是可重建索引；RabbitMQ 负责交付�
 | StorageModule | 原文件存储、哈希、读取、删除 | FileAsset；不向模型暴露任意路径 |
 | ResumeModule | 上传、版本、解析记录 | Resume/ResumeVersion，不管理模型编排 |
 | DocumentParsingModule | PDF/DOCX文字与来源块提取 | ExtractedDocument、warnings |
-| JobModule | JD管理、结构化要求与发布版本 | JobVersion、Requirement集合 |
+| JobModule | JD管理、结构化要求、发布版本与索引任务业务状态 | JobVersion、Requirement、JobIndexTask |
 | RubricModule | 六维标准、版本、完整等级读取 | RubricSnapshot |
 | RetrievalModule | 技能归一化、岗位索引与融合召回 | CandidateSet与来源，不给最终分 |
 | ProfileModule | 六维判断校验、等级映射 | ProfileAssessment |
 | MatchingModule | 逐要求语义判断与确定性阈值判断 | RequirementJudgment集合 |
 | ScoringModule | 规则版本、归一化、贡献、排序 | ScoreBreakdown、RankedJobs；纯函数内核 |
 | ReportModule | 报告快照与查询、重算派生版本 | Report、RecomputedReport |
-| TaskModule | 状态迁移、幂等请求、租约、进度事件 | TaskSnapshot、TaskEvent |
+| TaskModule | 两类任务的身份/幂等、租约、尝试和进度基础设施；业务迁移分别校验 | 带taskType的TaskSnapshot、TaskEvent |
 | WorkflowModule | LangGraph节点/边、子图与输入快照 | run/resume(taskContext) |
 | MessagingModule | amqplib连接、拓扑、confirm、ACK、重连 | 版本化TaskMessage |
 | OutboxModule | 事务事件、发布租约、补发、延迟重试 | OutboxEvent |
@@ -95,13 +97,21 @@ flowchart TD
 
 这里画像与召回共享已验证简历，不存在互相循环依赖。如果未来要把六维结果作为召回条件，应改图让召回依赖画像，不能在并行执行时偷读尚未完成的结果。
 
-每个可重入节点先按 `operationKey = taskId + node + inputHash + componentVersion` 查询已保存产物，命中即复用。文件抽取、LLM判断、匹配结果都用不可变输入版本；节点提交产物后返回产物ID。业务产物先落库、Checkpoint后写入的崩溃窗口，由重入时读产物解决。
+每个可重入节点用规范化的结构化材料计算 `operationKey = hash(taskType, taskId, node, branchKey, inputHash, versionSnapshot)`，先查询已保存的NodeArtifact，命中且版本/Schema校验一致才复用。`inputHash`覆盖节点实际消费的不可变输入与配置；`versionSnapshot`包含componentVersion、schemaVersion及所有影响输出的版本。LLM节点还须包含promptVersion、modelConfigVersion，使用rubric/评分/embedding的节点相应包含这些版本。不得用无分隔的字符串拼接，也不能只按taskId缓存语义结果。
 
-并行岗位使用LangGraph原生Send/子图，初始并发上限3；按 `jobVersionId` 合并结果，不用数组盲append造成重放重复。Graph reducer按稳定ID合并，每个分支返回成功或显式失败对象；可恢复异常先有限重试，达到预算后进入任务重试或允许的部分结果策略。
+并行岗位分支的`branchKey`至少包含jobVersionId；逐要求或分批处理时再包含requirementId或稳定batchId及其要求集合哈希，避免不同岗位/批次写到相同产物。重试或恢复保持业务任务身份与冻结输入，不把attemptId、fenceToken或恢复thread代次放入语义幂等键；这些执行字段用于写入授权，不能改变同一产物的身份。改变输入、prompt或模型配置时创建新的分析/索引请求或明确的新版本，不悄悄复用旧结果。
+
+文件抽取、LLM判断、匹配结果都使用不可变输入版本；节点提交产物后返回产物ID。业务产物先落库、Checkpoint后写入的崩溃窗口，由重入时读取并校验产物解决。
+
+并行岗位使用LangGraph原生Send/子图，候选初始并发上限3、待实测；按 `jobVersionId` 及必要的requirementId/batchId合并结果，不用数组盲append造成重放重复。Graph reducer按与产物一致的稳定分支身份合并，每个分支返回成功或显式失败对象；可恢复异常先有限重试，达到预算后进入任务重试或允许的部分结果策略。六维画像只能提供辅助上下文，不能用画像等级直接替代岗位逐条要求的证据判断。
 
 ### 4.2 另一个工作流：JD入库/索引
 
-JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人工或业务规则确认硬门槛/权重 → 发布不可变JobVersion → 同事务Outbox写`job.index.requested` → Worker embedding → Qdrant幂等upsert → 标记READY。
+JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人工或业务规则确认硬门槛/权重 → 在同一PostgreSQL事务内发布不可变JobVersion、创建JobIndexTask并写OutboxEvent（`job.index.requested.v1`）→ Worker embedding → Qdrant幂等upsert → 提交索引任务终态与该版本的indexStatus=READY。
+
+首版采用独立的JobIndexTask，归属JobVersion及目标embeddingVersion/indexVersion；它与AnalysisTask共享Outbox发布器、消息交付、幂等收据、执行尝试、租约/fencing和对账机制，但不复用分析任务的报告、画像或PARTIAL业务含义。JobIndexTask只负责已确认版本的索引生命周期，JD草稿抽取不伪装成简历分析任务；是否异步化草稿抽取可在JobModule内部实现时明确。Task在下文表示两类任务的基础设施概念，不是要求新增统一业务表或Agent Runtime。
+
+JobIndexTask记录自己的status、error、输入/目标版本、generation、fenceToken与租约。Qdrant写入后提交数据库状态仍有跨系统窗口：重投采用确定性point ID执行幂等upsert，只有持有当前fence的执行能更新对应JobVersion的索引状态；旧版本任务不能把新版本标为READY。普通索引服务无需为复用基础设施强行使用LangGraph或创建Checkpoint。
 
 发布权重不能由模型随意决定。草稿/索引失败岗位不声称已参与向量召回。重复索引的point ID由jobVersionId、chunkId、embeddingVersion确定；先Qdrant成功再标READY，崩溃后重复upsert无害。
 
@@ -124,6 +134,7 @@ JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人�
 | 对象 | 必需信息 |
 |---|---|
 | TaskInputSnapshot | ownerId、resumeVersionId、asOfDate、jobCorpusVersionId、rubricVersion、scoringVersion、promptVersion、modelConfigVersion、embeddingVersion、预算 |
+| JobIndexInputSnapshot | ownerId/visibility、jobVersionId、JD内容/要求哈希、embeddingVersion、indexVersion、chunker/componentVersion、schemaVersion、预算；不携带分析报告状态 |
 | ExtractedDocument | schemaVersion、fileHash、parserVersion、blocks[{id,text,page?,paragraph?,offsets}]、warnings |
 | ParsedResume | schemaVersion、经历/项目/技能/教育、每项sourceRefs、unknown字段；PII与分析字段分开 |
 | EvidenceRef | sourceType、sourceVersionId、blockId、start、end、quote；页码/坐标仅在解析器确实提供时存在 |
@@ -149,7 +160,7 @@ sequenceDiagram
     participant MQ as RabbitMQ
     participant W as Worker
     UI->>API: POST /analyses + Idempotency-Key
-    API->>DB: 同事务创建Task + InputSnapshot + OutboxEvent
+    API->>DB: 同事务创建AnalysisTask + InputSnapshot + OutboxEvent
     DB-->>API: COMMIT
     API-->>UI: 202 taskId
     P->>DB: 租约领取到期Outbox（短事务）
@@ -168,11 +179,13 @@ sequenceDiagram
 
 业务交换机 `resume.tasks`（durable direct），队列 `resume.analysis.v1` 与 `resume.job-index.v1`（durable quorum）；路由键 `analysis.requested.v1` / `job.index.requested.v1`。死信交换机 `resume.dead`，终端队列 `resume.analysis.dead.v1`。名称是方案，尚未创建。
 
-消息只带schemaVersion、messageId、taskId、dispatchGeneration、occurredAt、traceparent/tracestate；业务数据从数据库读取，不把简历全文、凭证或任意文件路径放入队列。消费者验证消息并核对任务所有权/输入版本，不能信任消息提供任意数据库对象。
+任务调度消息只带schemaVersion、messageId、taskType（analysis/job-index）、taskId、dispatchGeneration、occurredAt、traceparent/tracestate；业务数据从数据库读取，不把简历全文、凭证或任意文件路径放入队列。消费者按taskType读取AnalysisTask或JobIndexTask，核对路由、所有权、输入版本与代次，不能信任消息提供任意数据库对象。上图展示分析任务；索引任务走自己的路由和业务状态，复用相同交付基础设施。
 
 ### 5.2 Outbox的准确保证
 
 先数据库提交、再直接publish会丢消息；先publish、再提交会产生不存在的任务。数据库事务中等待publish也不能让两者原子提交。因此**第一版采用Outbox**，不等出现故障再补。
+
+OutboxEvent是通用事务事件，不是AnalysisTask的专属子表。用aggregateType与aggregateId标识产生事件的业务聚合（例如AnalysisTask、JobIndexTask或JobVersion），用eventType/payloadVersion确定消息契约；事件内容必要时引用带taskType的任务身份。简历分析创建事务写分析调度事件，岗位发布事务写索引调度事件；没有任务身份的其他业务事件也可使用同一Outbox机制。事件持久化由相关业务事务完成，不通过分析任务服务中转。聚合类型/ID的合法关系由Schema和事务内查验保障，不能把多态aggregateId误画成只指向AnalysisTask的数据库外键。
 
 发布器按availableAt领取事件，使用短事务与`FOR UPDATE SKIP LOCKED`/租约；释放事务后发送网络消息。所有发布使用confirm channel和persistent消息，`mandatory=true`并监听return；publish返回boolean只代表客户端缓冲区背压，不代表broker接受。return、nack、超时、断连都不能标成功。发布失败有限退避，任务保留可见待投递状态。
 
@@ -188,6 +201,8 @@ confirm成功但published标记前崩溃：事件会再次发布，这是允许�
 - 心跳建议每10秒、租约60秒；对账器修复过期RUNNING、未发布任务和无终态Checkpoint。需测试网络分区、旧连接迟到写入和advisory lock释放；应用fence不会自动约束官方Checkpointer的内部SQL，所以“同thread不并发运行”是必须验证的条件。
 
 **不确定旧Worker是否停止时的保守恢复**：只有确认旧graph及其写入已停止（例如进程监督确认旧进程退出）才复用同thread续跑。如果锁连接已断，但无法确认旧执行停止，则事务递增graphGeneration并分配新activeGraphThreadId，在新thread用冻结输入和已提交NodeArtifact重入；旧执行的checkpoint只能写旧thread，业务写入被fence拒绝。不要把旧checkpoint内部表复制到新thread，也不要假设TTL/心跳能拦住迟到写入。该例外会损失尚未提交的图内进度，可能重复模型调用，但保证旧工作流不会污染新恢复状态；仍使用官方StateGraph/PostgresSaver，不实现自有运行时。
+
+上述隔离是待实现并验证的要求，不是现有能力。**官方Checkpointer内部SQL不会自动受到业务Fencing Token约束**：业务条件更新只能保护经过该检查的业务表写入，不能阻止旧saver向原thread写入。必须有真实PostgreSQL/Worker集成测试：暂停旧执行并使租约/锁连接失效，启动新执行后恢复旧执行，验证旧token不能提交NodeArtifact/报告/任务终态；无法确认旧执行停止时新执行使用新thread，旧Checkpoint迟到写入不能改变新activeGraphThreadId及其恢复结果；确认旧执行已结束时才用原thread续跑。另测JobIndexTask旧执行不得更新新版本的indexStatus。仅测试TTL、mock token或正常重启不能替代这些故障场景。
 
 ### 5.4 重试、死信与长任务
 
@@ -231,10 +246,15 @@ erDiagram
     RESUME_VERSION ||--o{ ANALYSIS_TASK : analyzes
     ANALYSIS_TASK ||--|{ TASK_ATTEMPT : attempts
     ANALYSIS_TASK ||--o{ TASK_EVENT : progress
-    ANALYSIS_TASK ||--o{ OUTBOX_EVENT : dispatches
+    ANALYSIS_TASK ||..o{ OUTBOX_EVENT : emits
     ANALYSIS_TASK ||--o{ NODE_ARTIFACT : produces
     ANALYSIS_TASK ||--o{ CANDIDATE_SET : recalls
     JOB ||--|{ JOB_VERSION : versions
+    JOB_VERSION ||--o{ JOB_INDEX_TASK : indexed_by
+    JOB_VERSION ||..o{ OUTBOX_EVENT : emits
+    JOB_INDEX_TASK ||..o{ OUTBOX_EVENT : emits
+    JOB_INDEX_TASK ||--o{ TASK_ATTEMPT : attempts
+    JOB_INDEX_TASK ||--o{ TASK_EVENT : progress
     JOB_VERSION ||--|{ JOB_REQUIREMENT : requires
     CANDIDATE_SET ||--o{ CANDIDATE : includes
     JOB_VERSION ||--o{ CANDIDATE : selected
@@ -244,6 +264,8 @@ erDiagram
     CANDIDATE ||--o{ SCORE_RESULT : scored
     ANALYSIS_TASK ||--o{ ANALYSIS_REPORT : reports
 ```
+
+图中Outbox的emits及两类任务到通用attempt/event的关系为逻辑归属，不表示一条记录同时外键依赖两个任务。Outbox用aggregateType/aggregateId标识来源；任务基础记录使用taskType/taskId并在事务中核对对应任务。实现时可用各类型可空外键加互斥约束等方式加强数据库完整性，具体映射需在迁移设计时确认，不新增空的公共聚合表。
 
 | 实体 | 核心字段/约束 |
 |---|---|
@@ -257,23 +279,26 @@ erDiagram
 | RubricVersion | 六维、等级、feature ID、score映射、文本/内容哈希；发布后不可变 |
 | ScoringPolicy | version、dimensionWeights、requirementWeightPolicy、verdictCoefficients、unknownPolicy、hardGatePolicy、rounding |
 | AnalysisTask | ownerId、resumeVersionId、inputSnapshot、status、stage、generation、activeGraphThreadId、graphGeneration、fenceToken、lease字段、errorCode、reportId、budgetUsage；unique(ownerId,idempotencyKey)并存requestHash |
-| TaskAttempt | attemptId、taskId、generation、startedAt/endedAt、traceId、errorClass、token/cost；任务重试不覆盖历史 |
-| TaskEvent | taskId、单调seq、stage、counts、safeMessage、createdAt；unique(taskId,seq)，进度可补读 |
-| ConsumerReceipt | consumerName+messageId唯一、taskId、generation、状态、processedAt；清理周期长于可能重放窗口 |
-| OutboxEvent | eventId、aggregateId、type、payloadVersion、payload、availableAt、lease、publishAttempts、publishedAt；到期未发布索引 |
-| NodeArtifact | operationKey唯一、taskId、node、inputHash、componentVersion、validatedOutput、createdAt；JSONB含schemaVersion |
+| JobIndexTask | ownerId、jobVersionId、embeddingVersion、indexVersion、inputSnapshot、status、generation、fenceToken、lease字段、errorCode、budgetUsage；幂等请求键和requestHash；独立索引业务状态 |
+| TaskAttempt | attemptId、taskType、taskId、generation、startedAt/endedAt、traceId、errorClass、token/cost；任务重试不覆盖历史 |
+| TaskEvent | taskType、taskId、单调seq、stage、counts、safeMessage、createdAt；unique(taskType,taskId,seq)，进度可补读 |
+| ConsumerReceipt | consumerName+messageId唯一、taskType、taskId、generation、状态、processedAt；清理周期长于可能重放窗口 |
+| OutboxEvent | eventId、aggregateType、aggregateId、eventType、payloadVersion、payload、availableAt、lease、publishAttempts、publishedAt；通用事务事件、无需AnalysisTask外键；到期未发布索引 |
+| NodeArtifact | operationKey唯一、taskType、taskId、node、branchKey、inputHash、componentVersion、schemaVersion、适用的promptVersion/modelConfigVersion等版本快照、validatedOutput、createdAt；写入校验当前fence，见§4.1 |
 | CandidateSet / Candidate | taskId、corpusVersion、recallConfig、候选顺序、来源rank、jobVersionId；unique(setId,jobVersionId) |
 | ProfileAssessment | taskId、rubricVersion、六维判断与计算结果，引用与缺失状态 |
 | RequirementJudgment | taskId、jobVersionId、requirementId、model/promptVersion、verdict、evidenceRefs；业务键唯一 |
 | ScoreResult | judgmentSetHash、policyVersion、weightsSnapshot、contributions、coverage、total、eligibility；相同输入唯一 |
-| AnalysisReport | taskId、revision、sourceReportId、profile/score引用、快照JSON、candidateCoverage、warnings；finalize唯一操作键 |
+| AnalysisReport | taskId、revision、sourceReportId、输入版本/TaskInputSnapshot、CandidateSet、ProfileAssessment、全部计划要求及执行状态（已完成项关联RequirementJudgment，未完成项保留状态与原因）、rubricVersion、scoringPolicyVersion、ScoreResult及权重快照、candidateCoverage、warnings；finalize唯一操作键；这些是快照内容要求，不限定判断与执行状态的物理表结构 |
 | Quarantine | messageId、消息哈希、错误码、脱敏元数据；非法消息不直接当作正常Task |
 
 普通可检索字段建列，灵活模型产物放JSONB并附schemaVersion；禁止把所有对象只放无Schema的JSON。状态迁移和唯一约束同时由代码/数据库约束保护。人民币/美元费用使用Decimal或最小货币单位，不能用浮点误差当精确账单。
 
 ### 6.2 分工与状态机
 
-Task状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`；暂时失败走`RUNNING → RETRY_WAIT → RUNNING`。cancelRequested为独立标志，运行中的取消在安全边界处理；终态不可被迟到Worker改回RUNNING。重新分析建新taskId；普通故障重试保持taskId/thread_id和输入快照，不确定旧执行是否停止时遵循§5.3隔离thread的例外。
+AnalysisTask状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`；暂时失败走`RUNNING → RETRY_WAIT → RUNNING`。JobIndexTask具有独立的`QUEUED/RUNNING/RETRY_WAIT/SUCCEEDED/FAILED/CANCELLED`生命周期，不套用画像/报告的PARTIAL语义；JobVersion.indexStatus仅反映对应目标版本是否可供索引查询。两类任务共享租约、交付和重试原语，状态迁移由各自业务校验。
+
+cancelRequested为独立标志，运行中的取消在安全边界处理；终态不可被迟到Worker改回RUNNING。恢复/重试保持原taskType/taskId及输入快照；仅确认旧执行及其写入停止后复用原thread，无法确认时按§5.3新建恢复thread并使用fence。新的简历分析/重新召回创建新taskId，不覆盖历史任务或报告；索引的新输入/目标版本创建新JobIndexTask，原版本失败重试仍保留原索引任务身份。
 
 `SUCCEEDED`要求所有必需步骤已完成并保存报告：六维都有合法判断状态，召回完成，所有选入精判的要求都有合法结果。unknown是合法业务判断，不等于系统失败；成功召回零岗位可以生成空推荐成功报告。`PARTIAL`表示解析成功且至少一个报告板块可用，但画像/匹配有执行失败、预算截断或显式降级；页面显示已评估/计划候选数量，不能把部分榜单说成全候选Top10。解析失败或两个结果板块都不可用为`FAILED`；部分产物留存供诊断但不伪装最终成功报告。
 
@@ -281,7 +306,7 @@ Task状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`�
 
 所引用的官方JS文档说明：`durability: sync`在run结束时等待待写入操作，并不意味着每个节点前都已强制同步提交；首次checkpoint之前崩溃仍可能看不到thread。采用sync作为候选，并通过Task输入快照和幂等产物提供额外保护，不承诺中间步骤绝不丢失。
 
-恢复规则：检查任务终态 → 获取执行锁/租约 → 读取官方Checkpointer；存在未完成checkpoint时用同thread_id、`invoke(null, config)`续跑，不重新传初始输入；没有checkpoint时从Task冻结输入启动，节点复用已有产物；graph已结束但Task未终态时按已验证产物执行幂等finalize。改变graph/schema版本的部署保留旧版本恢复能力或将任务明确迁移/重新分析，不能拿不兼容新图恢复旧状态。
+图恢复规则：检查任务终态 → 获取执行锁/租约并判断旧执行是否已停止。确认停止且有未完成Checkpoint时，使用原thread_id、`invoke(null, config)`续跑；确认停止但无Checkpoint时，从冻结输入启动并复用合法NodeArtifact。无法确认停止则分配新恢复thread，从冻结输入与已提交产物重入，不读取旧thread的迟到Checkpoint作为新状态。graph已结束但任务未终态时按已验证产物幂等finalize，仍校验当前fence。普通JobIndexTask恢复不依赖Checkpoint，以索引任务状态、输入快照及幂等upsert恢复。改变graph/schema版本的部署保留旧版本恢复能力或明确迁移/重新分析，不能拿不兼容新图恢复旧状态。
 
 ### 6.3 故障窗口与结果
 
@@ -311,7 +336,9 @@ Task状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`�
 
 向量路径对去除联系方式的项目职责、技能、目标岗位摘要生成embedding，查询Qdrant岗位要求/摘要chunk。按jobVersionId聚合chunk，关键词与向量各取50，再使用RRF融合、去重，最多20个岗位进入精判。RRF参数、并列jobId排序和召回query都版本化；相似度不能直接用作综合分。
 
-岗位发布产生Outbox索引事件；Qdrant记录jobVersionId、owner/visibility、corpus/indexVersion、embeddingVersion、内容hash。召回结果必须回查PostgreSQL有效版本，并冻结CandidateSet。分析指定的corpus快照对应索引尚未READY时，等待/报INDEX_NOT_READY或经策略显式关键词降级，不能悄悄混入新版本。历史报告复用冻结候选；新召回使用新任务。
+以上召回数量与并发是待实测的初始参数。单次AnalysisTask默认最多完成400条唯一的jobVersionId/requirementId判断，恢复/重试不重置这份预算；超过时保存截断原因、计划/已完成/未完成数量，报告PARTIAL且明确排名覆盖范围，不将未执行要求伪装成unknown判断或完整结果。模型重试另累计调用、token、费用和执行期限。具体业务范围与文件/OCR约束见[需求](requirements.md)。
+
+岗位发布事务创建JobIndexTask与通用OutboxEvent，索引状态由该任务管理；Qdrant记录jobVersionId、owner/visibility、corpus/indexVersion、embeddingVersion、内容hash。召回结果必须回查PostgreSQL有效版本，并冻结CandidateSet。分析指定的corpus快照对应索引尚未READY时，等待/报INDEX_NOT_READY或经策略显式关键词降级，不能悄悄混入新版本。历史报告复用冻结候选；新召回使用新AnalysisTask。
 
 embedding模型变化时不能在同collection混入不同维数：新建versioned collection，回填验证后切换alias；旧任务继续使用其版本。rubric和job向量分collection；rubric六维等级由版本化主存储精确取齐，检索用于补充例子，不能随机漏掉低/高等级标准。
 
@@ -327,15 +354,17 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 ### 8.2 岗位匹配
 
-对岗位j的有效要求集合R，要求i属于维度d(i)，维度权重W_d≥0，要求相对权重P_i>0；缺失/非法维度或权重在发布时拒绝。先在每维内部归一化，避免某一维写更多要求就隐式占更大权重：
+逐项匹配必须依据该岗位要求与简历原始证据独立给出met/partial/unmet/unknown；六维画像只是辅助上下文，不能仅凭画像等级推导某条要求是否满足。
 
-`a_i = (W_d / Σ有要求且权重大于0的维度W) × (P_i / Σ同维要求P)`。
+对岗位j的有效要求集合R，要求i属于维度d(i)。输入权重必须是有限非负数，拒绝缺失的必需项、重复维度/要求ID、负数、NaN、Infinity及不支持的维度。维度权重W_d≥0、要求相对权重P_i≥0，已启用维度的W总和必须大于0，参与计算的每维P总和也必须大于0；单项0表示不贡献分数，不免除该要求的判断或硬门槛校验。缺失/非法权重在岗位政策发布与调权重算时均拒绝，不静默回退。先在每维内部归一化，避免某一维写更多要求就隐式占更大权重：
+
+对已启用维度：`a_i = (W_d / Σ有要求且权重大于0的维度W) × (P_i / Σ同维要求P)`。维度W为0时该维的a_i直接取0，不求可能为0的维内分母；已启用维度的P总和为0则拒绝输入。
 
 `c(met)=1，c(partial)=0.5，c(unmet)=0，c(unknown)=0`；系数在ScoringPolicy中版本化。
 
 `score = 100 × Σ(a_i × c_i)`；`coverage = Σ已知判断a_i`；`upperBound = min(100, score + 100 × Σunknown a_i)`。
 
-每条contribution=a_i×c_i×100，最终显示四舍五入到两位；排序使用固定精度值与稳定jobVersionId，并明确精度策略。权重以受限整数基点/有理数计算，避免平台locale与任意浮点round顺序产生漂移。没有有效要求或总权重为0时score=null、不可推荐，不能除零或给100。
+每条contribution=a_i×c_i×100，最终显示四舍五入到两位；排序使用固定精度值与稳定jobVersionId，并明确精度策略。权重以受限整数基点/有理数计算，避免平台locale与任意浮点round顺序产生漂移。没有有效要求时score=null、不可推荐；零总权重属于非法输入，应拒绝评分并记录错误，不能除零、默认补权重或给100。
 
 例：同一维三条要求P=2/1/1，判断met/partial/unknown，则score=62.5，coverage=75%，upperBound=87.5；第三条仍显示“证据不足”，不是“不满足”。修改权重重算只读此判断集合；任何新模型分析是新评估版本。
 
@@ -348,8 +377,8 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 | 入口（拟定） | 调用链与返回 |
 |---|---|
 | POST /resumes | UploadController → 类型/大小校验 → Storage → ResumeService → 文件/版本记录；失败清理暂存，孤儿文件定期回收 |
-| POST /jobs | JobController → 保存JD草稿 → Task+Outbox → 结构化/确认/索引；返回jobVersionId与taskId |
-| POST /analyses | 校验owner/输入状态/幂等键 → 冻结配置 → Task+Outbox事务 → 202 + taskId/statusUrl |
+| POST /jobs | JobController → 保存JD草稿与版本 → 结构化/确认；发布事务创建JobIndexTask+OutboxEvent后再调度索引，届时返回对应jobVersionId与索引taskId；草稿创建不等于索引已开始 |
+| POST /analyses | 校验owner/输入状态/幂等键 → 冻结配置 → AnalysisTask+OutboxEvent事务 → 202 + taskId/statusUrl |
 | GET /tasks/:id | owner校验 → Task+TaskEvent查询 → 状态、stage、完成数/总数、重试时间、safeError、reportId |
 | GET /tasks/:id/events | 后续SSE，读持久事件seq；Last-Event-ID补读，断线不取消任务 |
 | GET /reports/:id | owner校验 → 不可变报告及引用；不实时重算LLM |
