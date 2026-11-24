@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker与基础设施诊断已实现；本文的正式任务、简历分析、工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#5-后续待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker与基础设施诊断已实现；本文的正式任务、简历分析、工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -20,7 +20,7 @@
 
 ```mermaid
 flowchart LR
-    B[Web UI / 开发客户端] --> API[NestJS API]
+    B[Vue前端 / 开发客户端] --> API[NestJS API]
     API --> F[文件存储适配器]
     API --> PG[(PostgreSQL 业务表)]
     PG --> OB[Outbox发布器 / Worker内]
@@ -39,6 +39,8 @@ flowchart LR
     W --> RC[租约与任务对账器]
     RC --> PG
 ```
+
+前端是独立仓库 [Resume-Studio-Frontend](https://github.com/Mingan-X/Resume-Studio-Frontend)，只通过[接口契约规范](api-contract.md)约定的HTTP与SSE接口访问后端，与API同源部署，不直接访问数据库、队列或模型服务。
 
 本地文件放在受控持久卷，API/Worker挂载同一目录；数据库只记录 storageKey 与哈希。接口用 StoragePort，未来换对象存储而不改工作流。多主机部署前必须切换共享对象存储，不能用各自机器的本地文件。
 
@@ -374,6 +376,8 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 ## 9. API调用链、进度与错误
 
+下表路径均位于 `/api/v1` 之下（例如 `POST /api/v1/analyses`）；地址、错误码、幂等、分页、轮询与SSE的通用约定见[接口契约规范](api-contract.md)。
+
 | 入口（拟定） | 调用链与返回 |
 |---|---|
 | POST /resumes | UploadController → 类型/大小校验 → Storage → ResumeService → 文件/版本记录；失败清理暂存，孤儿文件定期回收 |
@@ -389,7 +393,7 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 进度先轮询，显示QUEUED/RUNNING、stage和matchedJobs/totalCandidates等真实计数，不伪造等速百分比。若显示百分比，分配固定阶段权重，未知总量先显示阶段，报告提交前不显示100%。重试展示当前attempt和已复用产物，不让旧Worker事件覆盖新代次。SSE只是TaskEvent的传输方式，不靠内存EventEmitter跨API/Worker。
 
-统一错误结构 `{code,message,retryable,taskId?,requestId?,details?}`；同步接口按400/401/403/404/409/413/422/503等HTTP语义返回，任务执行错误通过Task状态返回。日志保留内部堆栈但脱敏，API不透传SQL、密钥、内部路径或第三方完整错误体。
+统一错误结构 `{code,message,retryable,requestId,taskId?,details?}`，错误码表见[接口契约规范](api-contract.md#6-错误响应)；同步接口按400/401/403/404/409/413/422/503等HTTP语义返回，任务执行错误通过Task状态返回。日志保留内部堆栈但脱敏，API不透传SQL、密钥、内部路径或第三方完整错误体。
 
 ## 10. 可观测性、隐私与部署门槛
 
@@ -408,18 +412,20 @@ API生成request trace，W3C traceparent经Outbox/Rabbit传播；每次attempt�
 ## 11. 目录规划
 
 ```text
-Resume-Studio/
+Resume-Studio-Backend/
   AGENTS.md
   README.md
   docs/
     deployment.md
     api.md
+    api-contract.md
     testing.md
     requirements.md
     architecture.md
     reference-research.md
     dependency-compatibility.md
     development-roadmap.md
+    progress.md
     decisions/0001-tech-stack.md
     research/dependency-metadata-2026-11-23.json
   CONTRIBUTING.md
@@ -439,4 +445,4 @@ Resume-Studio/
   data/                        # 后续运行数据；必须gitignore
 ```
 
-前端目录在框架决策后建立，workflows尚未创建。当前已建立prisma、infra、scripts与临时data目录，生成的凭证/客户端/测试manifest不入Git。官方机制依据统一列在[兼容性文档来源](dependency-compatibility.md#5-官方来源)，本架构中的业务数量、超时、表和协议名称仍是项目提案。
+前端不在本仓库，见 Resume-Studio-Frontend；workflows尚未创建。当前已建立prisma、infra、scripts与临时data目录，生成的凭证/客户端/测试manifest不入Git。官方机制依据统一列在[兼容性文档来源](dependency-compatibility.md#5-官方来源)，本架构中的业务数量、超时、表和协议名称仍是项目提案。

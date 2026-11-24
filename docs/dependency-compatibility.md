@@ -8,7 +8,7 @@
 
 | 组件 | 精确版本 | 验证/限制 |
 |---|---|---|
-| Node.js / pnpm | Node24.22.3；pnpm12.x，实测12.23.0 | Node由engines/.node-version固定；pnpm采用兼容范围并移除精确packageManager声明，见[当前策略](deployment.md#包管理器版本策略)。2026-11-24在仓库外独立目录验证新元数据的冻结安装通过，原锁文件与副本均未改变；其他12.x及Corepack自动选择仍未验证 |
+| Node.js / pnpm | Node24.22.3；pnpm12.x，实测12.23.0 | Node由engines/.node-version固定；pnpm采用兼容范围，见[当前策略](deployment.md#包管理器版本策略)；其他12.x及Corepack自动选择未验证 |
 | Nest common/core/platform-express/testing | 12.6.0 | ESM与实际DI/HTTP测试通过；CLI/schematics未安装 |
 | TypeScript / @types/node | 6.0.3 / 24.10.0 | NodeNext、严格类型检查及装饰器元数据通过 |
 | ESLint / typescript-eslint / @eslint/js | 10.15.0 / 8.73.0 / 10.0.1 | flat config；当前TS落在parser支持区间 |
@@ -58,6 +58,7 @@
 | 模型适配器 | @langchain/openai1.8.5 | Node>=22、core^1.5.0；包兼容不代表选择了提供商或验证了兼容端点行为 |
 | PDF解析 | pdfjs-dist6.5.438 | Node>=22.13；文本提取、双栏阅读顺序与容器原生依赖需样本验证 |
 | DOCX解析 | mammoth1.13.0 | 只取文字，不直接展示未经净化HTML；表格与证据定位需验证 |
+| OpenAPI生成（决策D8） | @asteasolutions/zod-to-openapi9.1.0 | 2026-11-24核对：peer `zod ^4.0.0`，与现有Zod契约同源；`@nestjs/swagger`12.1.2以class-validator DTO为主，与Zod边界不一致，暂不选。尚未安装或编译验证 |
 
 Rubric、LLM服务商/具体模型、Embedding模型与维数仍待确定。不能因候选包存在而生成凭证或声称模型API已可用。
 

@@ -6,7 +6,7 @@
 
 首次安装依赖后，先运行 `pnpm run infra:init` 和 `pnpm run db:generate`。生成步骤无需连接数据库；运行集成测试前按[部署文档](deployment.md)启动服务并应用迁移。
 
-依赖安装使用 `pnpm install --frozen-lockfile`，包管理器遵循[pnpm版本策略](deployment.md#包管理器版本策略)。下文保留实际使用的pnpm版本作为历史证据，不要求开发者固定使用该补丁版本。
+依赖安装使用 `pnpm install --frozen-lockfile`，包管理器遵循[pnpm版本策略](deployment.md#包管理器版本策略)。
 
 ```powershell
 pnpm run typecheck
@@ -27,27 +27,15 @@ pnpm run test:integration
 | test/infrastructure-config.test.ts | 拒绝外部地址、其他数据库/vhost、管理员账号及非项目端口 |
 | test/integration/infrastructure.test.ts | Prisma CRUD/唯一约束/回滚/池关闭；RabbitMQ确认/return/ACK/重投/重复投递；Qdrant CRUD与维数错误 |
 
-按2026-11-24的已记录运行结果，基础测试包含11项；真实服务集成包含一个父测试和三个子测试，共4项。数量随覆盖变化，以相应版本的实际测试输出为准。断言验证输出与故障行为，不以源码里是否有装饰器等实现细节代替运行验证。
+当前基础测试11项；真实服务集成测试为1个父测试与3个子测试，共4项。数量随覆盖变化，以实际测试输出为准。断言验证输出与故障行为，不以源码里是否有装饰器等实现细节代替运行验证。
 
 ### 集成测试辅助设施
 
 `test/integration/persistence.fixture.ts`是通过 `infra:persistence` 手动调用的辅助工具，不是 `*.test.ts` 用例，不计入上述11/4项统计。它创建专属记录、消息与向量，以manifest保留本轮资源ID，供容器重启后的verify和cleanup使用；具体步骤见下文。拥有辅助工具不代表每次测试都会运行重启验证。
 
-## 已有验证证据
+## 验证记录
 
-2026-11-24在Node24.22.3、pnpm12.23.0、Windows主机与linux/amd64容器环境完成：
-
-- 类型检查、零警告Lint、11项基础测试、4项真实服务集成测试通过。
-- Prisma generate/validate/deploy/status通过；第二次部署无pending migration，迁移记录一条。
-- pg池上限3，Nest上下文关闭后池连接数为0。
-- 无路由mandatory消息未被confirm误判为成功；未ACK的消息关闭channel后重投；相同messageId可被重复交付。
-- Qdrant错误维数返回400；集合与点CRUD通过。
-- 本项目三个容器重启后，数据库记录、持久消息和向量仍存在；验证后的专属测试资源已清理。
-- 离线冻结安装通过，但复用的是本机缓存，不等于新机器冷安装验证。
-
-这些是具体环境的验证结果，不能推广为业务功能、生产部署或所有平台都已可用。后续变更仍应重新运行适用检查。
-
-本次收尾未重新执行上述业务/集成测试或持久化实验；这些通过记录来自2026-11-24此前的实际执行。另在仓库外独立目录，以Node24.22.3、pnpm12.23.0对修改后的包管理器元数据执行冻结安装，退出码0，原仓库及副本锁文件均未改变；这是安装验证，不计入11/4项测试数量。隔离方式和命令见[包管理器版本策略](deployment.md#包管理器版本策略)，其他pnpm12.x及Corepack流程未验证。
+每次实际运行的检查、环境与结果记录在[开发进度](progress.md)，本文不重复保存。记录只代表当时的环境；后续变更应重新运行适用检查。
 
 ## 数据隔离与已知边界
 
@@ -78,6 +66,13 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 ## 尚未验证
 
-正式任务与Outbox、业务幂等、重试/DLQ、Checkpoint崩溃恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。相关目标保留在[开发计划](development-roadmap.md)。
+正式任务与Outbox、业务幂等、重试/DLQ、Checkpoint崩溃恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。对应阶段见[开发计划](development-roadmap.md)。
 
-尤其尚无AnalysisTask/JobIndexTask、NodeArtifact、业务fencing与官方PostgresSaver的真实恢复测试。旧Worker迟到写入、旧thread隔离和两类任务各自终态保护必须在实现后分别验收，不能由当前RabbitMQ重投测试推出它们已经可靠。
+当前RabbitMQ重投测试不能证明业务任务可靠。旧Worker迟到写入、旧thread隔离和两类任务各自的终态保护在S1.3-T3与S1.4-T7中单独验收。
+
+## 新增测试的约定
+
+- 单元测试放在 `test/*.test.ts`，不依赖外部服务；真实服务测试放在 `test/integration/*.test.ts`。
+- 测试名称描述被验证的行为，而不是被调用的函数。
+- 每个任务的验收条件至少对应一个测试；故障边界（超时、重复消息、旧执行、非法输入）与正常路径同样需要覆盖。
+- 只使用合成或经授权脱敏的数据；新增测试资源使用本轮UUID，并只清理本轮创建的资源。

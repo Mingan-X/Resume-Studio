@@ -4,19 +4,14 @@
 
 ## 环境与镜像
 
-Node.js **24.22.3**、兼容现有锁文件的 **pnpm 12.x**；Docker Desktop Linux 引擎或等效 Docker 环境，支持 Compose。当前验证平台为 Windows 主机与 linux/amd64 容器；其他平台尚未验证。pnpm 12.23.0仅是2026-11-24实际测试使用的版本。
+Node.js **24.22.3**、兼容现有锁文件的 **pnpm 12.x**；Docker Desktop Linux 引擎或等效 Docker 环境，支持 Compose。当前验证平台为 Windows 主机与 linux/amd64 容器；其他平台尚未验证。
 
 ### 包管理器版本策略
 
-`package.json` 的 `engines.pnpm` 为 `>=12 <13`，不强制固定补丁版本；移除原先精确指定12.23.0的 `packageManager` 字段，避免项目声明要求工具自动选用该精确版本。Node版本、依赖声明、脚本与严格peer校验策略不变。开发者自行准备范围内且支持当前锁文件格式及配置的pnpm；不声明所有12.x都已验证。
-
-依赖解析以提交的 `pnpm-lock.yaml` 为准，安装继续使用 `--frozen-lockfile`。现有锁文件是多段YAML：应用依赖段之外，还保留先前生成的 `packageManagerDependencies` 中pnpm12.23.0快照。该快照按原样保留，不作为强制补丁版本政策。
-
-2026-11-24已在仓库外空目录验证：复制当前package.json（无packageManager、engines.pnpm为`>=12 <13`）、锁文件、.npmrc和pnpm-workspace.yaml，使用Node24.22.3及现有pnpm12.23.0执行 `pnpm install --frozen-lockfile --store-dir <独立store目录> --state-dir <独立state目录> --reporter append-only`。使用独立node_modules/store/cache/state/config/temp及空的用户/全局npmrc，保留项目严格校验与Prisma脚本许可；未复制本地凭证，也未使用当前项目依赖目录。安装退出码0，342个包安装完成，19个直接依赖版本均匹配清单；安装后的清单、两份配置及锁文件与复制前逐字节一致。没有使用非冻结安装或跳过安装脚本。
-
-该结果仅确认上述pnpm12.23.0、Node与Windows环境的冻结安装。没有验证其他pnpm12.x、Corepack自动选择或业务运行；不能保证其他工具对包管理器快照的处理相同。若出现元数据不匹配或工具版本选择问题，记录实际版本及错误并提交维护审查，不用非冻结安装、忽略校验或改锁文件绕过。网络下载速度警告不影响本次安装成功，但不构成性能保证。
-
-依赖说明和元数据快照中的精确pnpm版本仅作为旧基线验证记录；本节与package.json定义当前策略。除明确批准的锁文件维护外，不修改依赖解析结果。
+- `package.json` 的 `engines.pnpm` 为 `>=12 <13`，不固定补丁版本，也不声明 `packageManager` 字段。已实际验证的版本是12.23.0（记录见[开发进度](progress.md)），其他12.x未验证。
+- 依赖解析以提交的 `pnpm-lock.yaml` 为准，安装一律使用 `--frozen-lockfile`。锁文件中 `packageManagerDependencies` 段的pnpm 12.23.0快照按原样保留，不代表强制版本。
+- 遇到元数据不匹配或工具版本选择问题时，记录实际版本和错误并提交维护审查；不用非冻结安装、忽略校验或手改锁文件绕过。
+- 除明确批准的锁文件维护外，不修改依赖解析结果。
 
 | 服务 | 镜像 | 主机端口 | 项目数据卷 |
 |---|---|---|---|
@@ -35,7 +30,7 @@ docker pull 'pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c30
 docker image inspect 'pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a' --format '{{json .RepoDigests}} {{.Os}}/{{.Architecture}}'
 ```
 
-RabbitMQ与Qdrant按Compose中各自的完整引用执行同样操作。确认RepoDigests包含声明的仓库digest，镜像平台匹配运行环境；已验证平台为linux/amd64。只有tag相同或下载了latest不足以证明身份一致。若digest不存在或平台不符，停止并核实，不自行改tag/digest、覆盖服务或删除卷。以上是首次部署操作说明，本次文档修订未执行拉取。
+RabbitMQ与Qdrant按Compose中各自的完整引用执行同样操作。确认RepoDigests包含声明的仓库digest，镜像平台匹配运行环境；已验证平台为linux/amd64。只有tag相同或下载了latest不足以证明身份一致。若digest不存在或平台不符，停止并核实，不自行改tag/digest、覆盖服务或删除卷。
 
 ## 初始化
 
@@ -80,6 +75,10 @@ pnpm run start:worker
 启动脚本用 Node 的 env-file 读取 `.env`；缺少必需配置或值非法时退出码为1，只输出字段名。`/health` 是 liveness；API与空Worker当前不自动连接诊断服务。Worker用可清理定时器保持存活，尚无业务消费者。
 
 Ctrl+C触发应用关闭；关闭超过5秒退出失败。脚本/容器停止不应被当成持久化数据删除。
+
+### 与前端联调
+
+前端仓库为 [Resume-Studio-Frontend](https://github.com/Mingan-X/Resume-Studio-Frontend)。API保持默认的 `127.0.0.1:3000`，前端开发服务器把 `/api` 与 `/health` 代理到该地址，因此后端不需要也不应为联调开启CORS。约定见[接口契约规范](api-contract.md#3-部署拓扑与跨域)。
 
 ## 诊断资源约定
 
