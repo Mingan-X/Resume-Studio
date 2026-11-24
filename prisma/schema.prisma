@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Synthetic infrastructure diagnostics only, not the future business Task table.
+model DiagnosticRecord {
+  id        String   @id @db.Uuid
+  runId     String   @map("run_id")
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([runId])
+  @@map("s12_diagnostic_record")
+}

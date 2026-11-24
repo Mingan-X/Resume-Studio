@@ -1,0 +1,1165 @@
+{
+  "observedDate": "2026-11-23",
+  "timezone": "Asia/Shanghai",
+  "scope": "Direct package metadata and selected peer ranges only; no installation, runtime, image, transitive security or model API validation.",
+  "node": "24.22.3",
+  "packages": [
+    {
+      "name": "@nestjs/core",
+      "version": "12.6.0",
+      "source": "https://registry.npmjs.org/@nestjs/core/12.6.0",
+      "nodeRange": ">= 20",
+      "peerDependencies": {
+        "rxjs": "^7.1.0",
+        "@nestjs/common": "^12.0.0",
+        "reflect-metadata": "^0.1.12 || ^0.2.0",
+        "@nestjs/websockets": "^12.0.0",
+        "@nestjs/microservices": "^12.0.0",
+        "@nestjs/platform-express": "^12.0.0"
+      },
+      "peerDependenciesMeta": {
+        "@nestjs/websockets": {
+          "optional": true
+        },
+        "@nestjs/microservices": {
+          "optional": true
+        },
+        "@nestjs/platform-express": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "uid": "2.0.2",
+        "tslib": "2.9.1",
+        "iterare": "1.2.1",
+        "path-to-regexp": "8.4.2",
+        "fast-safe-stringify": "2.1.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@nestjs/common",
+      "version": "12.6.0",
+      "source": "https://registry.npmjs.org/@nestjs/common/12.6.0",
+      "peerDependencies": {
+        "rxjs": "^7.1.0",
+        "class-validator": ">=0.13.2",
+        "reflect-metadata": "^0.1.12 || ^0.2.0",
+        "class-transformer": ">=0.4.1"
+      },
+      "peerDependenciesMeta": {
+        "class-validator": {
+          "optional": true
+        },
+        "class-transformer": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "uid": "2.0.2",
+        "tslib": "2.9.1",
+        "iterare": "1.2.1",
+        "load-esm": "1.0.3",
+        "file-type": "22.3.0",
+        "@standard-schema/spec": "1.1.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@nestjs/platform-express",
+      "version": "12.6.0",
+      "source": "https://registry.npmjs.org/@nestjs/platform-express/12.6.0",
+      "peerDependencies": {
+        "rxjs": "^7.1.0",
+        "@nestjs/core": "^12.0.0",
+        "@nestjs/common": "^12.0.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "cors": "2.8.6",
+        "tslib": "2.9.1",
+        "multer": "2.5.0",
+        "express": "5.3.0",
+        "path-to-regexp": "8.4.2"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@nestjs/testing",
+      "version": "12.6.0",
+      "source": "https://registry.npmjs.org/@nestjs/testing/12.6.0",
+      "peerDependencies": {
+        "@nestjs/core": "^12.0.0",
+        "@nestjs/common": "^12.0.0",
+        "@nestjs/microservices": "^12.0.0",
+        "@nestjs/platform-express": "^12.0.0"
+      },
+      "peerDependenciesMeta": {
+        "@nestjs/microservices": {
+          "optional": true
+        },
+        "@nestjs/platform-express": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "tslib": "2.9.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@nestjs/cli",
+      "version": "12.0.15",
+      "source": "https://registry.npmjs.org/@nestjs/cli/12.0.15",
+      "nodeRange": ">= 20.11",
+      "peerDependencies": {
+        "webpack": "^5.105.4",
+        "@swc/cli": "^0.8.0",
+        "@swc/core": "^1.15.18",
+        "ts-loader": "^9.5.4",
+        "@rspack/core": "^1.7.7 || ^2.1.10",
+        "webpack-node-externals": "^3.0.0",
+        "tsconfig-paths-webpack-plugin": "^4.2.0",
+        "fork-ts-checker-webpack-plugin": "^9.1.0"
+      },
+      "peerDependenciesMeta": {
+        "webpack": {
+          "optional": true
+        },
+        "@swc/cli": {
+          "optional": true
+        },
+        "@swc/core": {
+          "optional": true
+        },
+        "ts-loader": {
+          "optional": true
+        },
+        "@rspack/core": {
+          "optional": true
+        },
+        "webpack-node-externals": {
+          "optional": true
+        },
+        "tsconfig-paths-webpack-plugin": {
+          "optional": true
+        },
+        "fork-ts-checker-webpack-plugin": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "ora": "9.4.1",
+        "ansis": "4.5.0",
+        "chokidar": "5.0.0",
+        "commander": "15.1.0",
+        "minimatch": "11.0.9",
+        "cli-table3": "0.6.5",
+        "node-emoji": "2.2.0",
+        "typescript": "~6.0.2",
+        "jsonc-parser": "3.3.1",
+        "tsconfig-paths": "4.2.0",
+        "@inquirer/prompts": "8.7.5",
+        "@nestjs/schematics": "^12.0.13",
+        "@angular-devkit/core": "22.2.7",
+        "@angular-devkit/schematics": "22.2.7",
+        "@angular-devkit/schematics-cli": "22.2.7"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@nestjs/schematics",
+      "version": "12.0.16",
+      "source": "https://registry.npmjs.org/@nestjs/schematics/12.0.16",
+      "nodeRange": "^22.22.3 || ^24.15.0 || >=26.0.0",
+      "peerDependencies": {
+        "prettier": "^3.0.0",
+        "typescript": "^6.0.0"
+      },
+      "peerDependenciesMeta": {
+        "prettier": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "pluralize": "8.0.0",
+        "comment-json": "5.0.0",
+        "jsonc-parser": "3.3.1",
+        "@angular-devkit/core": "22.2.7",
+        "@angular-devkit/schematics": "22.2.7"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "typescript",
+      "version": "6.0.3",
+      "source": "https://registry.npmjs.org/typescript/6.0.3",
+      "nodeRange": ">=14.17",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "typescript-eslint",
+      "version": "8.73.0",
+      "source": "https://registry.npmjs.org/typescript-eslint/8.73.0",
+      "nodeRange": "^18.18.0 || ^20.9.0 || >=21.1.0",
+      "peerDependencies": {
+        "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0",
+        "typescript": ">=4.8.4 <6.1.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@typescript-eslint/utils": "8.73.0",
+        "@typescript-eslint/parser": "8.73.0",
+        "@typescript-eslint/eslint-plugin": "8.73.0",
+        "@typescript-eslint/typescript-estree": "8.73.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "eslint",
+      "version": "10.15.0",
+      "source": "https://registry.npmjs.org/eslint/10.15.0",
+      "nodeRange": "^20.19.0 || ^22.13.0 || >=24",
+      "peerDependencies": {
+        "jiti": "*"
+      },
+      "peerDependenciesMeta": {
+        "jiti": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "ajv": "^6.14.0",
+        "debug": "^4.3.2",
+        "espree": "^11.2.0",
+        "ignore": "^5.2.0",
+        "esquery": "^1.7.0",
+        "esutils": "^2.0.2",
+        "find-up": "^5.0.0",
+        "is-glob": "^4.0.0",
+        "minimatch": "^11.0.5",
+        "optionator": "^0.9.3",
+        "cross-spawn": "^7.0.6",
+        "glob-parent": "^6.0.2",
+        "imurmurhash": "^0.1.4",
+        "@eslint/core": "^1.2.1",
+        "eslint-scope": "^9.1.2",
+        "@humanfs/node": "^0.16.8",
+        "@types/estree": "^1.0.6",
+        "fast-deep-equal": "^3.1.3",
+        "natural-compare": "^1.4.0",
+        "file-entry-cache": "11.1.5 || >11.1.6 <12",
+        "@eslint/plugin-kit": "^0.7.3",
+        "eslint-visitor-keys": "^5.0.1",
+        "@eslint/config-array": "^0.23.6",
+        "@humanwhocodes/retry": "^0.4.2",
+        "escape-string-regexp": "^4.0.0",
+        "@eslint/config-helpers": "^0.7.0",
+        "@eslint-community/regexpp": "^4.12.2",
+        "@eslint-community/eslint-utils": "^4.8.0",
+        "@humanwhocodes/module-importer": "^1.0.1",
+        "json-stable-stringify-without-jsonify": "^1.0.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "pnpm",
+      "version": "12.23.0",
+      "source": "https://registry.npmjs.org/pnpm/12.23.0",
+      "nodeRange": ">=18",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "prisma",
+      "version": "7.10.1",
+      "source": "https://registry.npmjs.org/prisma/7.10.1",
+      "nodeRange": "^20.19 || ^22.12 || >=24.0",
+      "peerDependencies": {
+        "typescript": ">=5.4.0",
+        "better-sqlite3": ">=9.0.0"
+      },
+      "peerDependenciesMeta": {
+        "typescript": {
+          "optional": true
+        },
+        "better-sqlite3": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "mysql2": "3.24.4",
+        "postgres": "3.4.7",
+        "@prisma/dev": "0.24.17",
+        "@prisma/config": "7.10.1",
+        "@prisma/engines": "7.10.1",
+        "@prisma/studio-core": "0.33.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@prisma/client",
+      "version": "7.10.1",
+      "source": "https://registry.npmjs.org/@prisma/client/7.10.1",
+      "nodeRange": "^20.19 || ^22.12 || >=24.0",
+      "peerDependencies": {
+        "prisma": "*",
+        "typescript": ">=5.4.0"
+      },
+      "peerDependenciesMeta": {
+        "prisma": {
+          "optional": true
+        },
+        "typescript": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "@prisma/client-runtime-utils": "7.10.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@prisma/adapter-pg",
+      "version": "7.10.1",
+      "source": "https://registry.npmjs.org/@prisma/adapter-pg/7.10.1",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "pg": "^8.16.3",
+        "@types/pg": "^8.16.0",
+        "postgres-array": "3.0.4",
+        "@prisma/driver-adapter-utils": "7.10.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "pg",
+      "version": "8.23.1",
+      "source": "https://registry.npmjs.org/pg/8.23.1",
+      "nodeRange": ">= 16.0.0",
+      "peerDependencies": {
+        "pg-native": ">=3.0.1"
+      },
+      "peerDependenciesMeta": {
+        "pg-native": {
+          "optional": true
+        }
+      },
+      "declaredDependencies": {
+        "pgpass": "1.0.5",
+        "pg-pool": "^3.14.0",
+        "pg-types": "2.2.0",
+        "pg-protocol": "^1.16.1",
+        "pg-cloudflare": "^1.4.1",
+        "pg-connection-string": "^2.14.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@types/node",
+      "version": "24.10.0",
+      "source": "https://registry.npmjs.org/@types/node/24.10.0",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "undici-types": "~7.16.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langchain/core",
+      "version": "1.5.0",
+      "source": "https://registry.npmjs.org/@langchain/core/1.5.0",
+      "nodeRange": ">=20",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "zod": "^4.6.6",
+        "p-queue": "^6.6.2",
+        "mustache": "^4.2.0",
+        "langsmith": ">=0.11.0 <1.0.0",
+        "js-tiktoken": "^1.0.12",
+        "@cfworker/json-schema": "^4.1.4",
+        "@standard-schema/spec": "^1.1.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langchain/langgraph",
+      "version": "1.7.5",
+      "source": "https://registry.npmjs.org/@langchain/langgraph/1.7.5",
+      "nodeRange": ">=18",
+      "peerDependencies": {
+        "zod": "^3.25.32 || ^4.2.0",
+        "@langchain/core": "^1.3.4"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@langchain/protocol": "^0.0.21",
+        "@standard-schema/spec": "1.1.0",
+        "@langchain/langgraph-sdk": "~1.17.0",
+        "@langchain/langgraph-checkpoint": "^1.2.3"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langchain/langgraph-checkpoint",
+      "version": "1.2.3",
+      "source": "https://registry.npmjs.org/@langchain/langgraph-checkpoint/1.2.3",
+      "nodeRange": ">=18",
+      "peerDependencies": {
+        "@langchain/core": "^1.1.48"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "@langchain/langgraph-checkpoint-postgres",
+      "version": "1.1.4",
+      "source": "https://registry.npmjs.org/@langchain/langgraph-checkpoint-postgres/1.1.4",
+      "nodeRange": ">=18",
+      "peerDependencies": {
+        "@langchain/core": "^1.1.44",
+        "@langchain/langgraph-checkpoint": "^1.2.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "pg": "^8.12.0",
+        "postgres-array": "^3.0.4"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "langchain",
+      "version": "1.6.7",
+      "source": "https://registry.npmjs.org/langchain/1.6.7",
+      "nodeRange": ">=20",
+      "peerDependencies": {
+        "@langchain/core": "^1.4.2"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "zod": "^4.6.6",
+        "langsmith": ">=0.11.0 <1.0.0",
+        "@langchain/langgraph": "^1.7.2",
+        "@langchain/langgraph-checkpoint": "^1.2.2"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "zod",
+      "version": "4.6.7",
+      "source": "https://registry.npmjs.org/zod/4.6.7",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "amqplib",
+      "version": "2.4.1",
+      "source": "https://registry.npmjs.org/amqplib/2.4.1",
+      "nodeRange": ">=18",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "@qdrant/js-client-rest",
+      "version": "1.20.0",
+      "source": "https://registry.npmjs.org/@qdrant/js-client-rest/1.20.0",
+      "nodeRange": ">=22.0.0",
+      "peerDependencies": {
+        "typescript": ">=4.7"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "undici": "7.29.1",
+        "@qdrant/openapi-typescript-fetch": "1.2.6"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.5.438",
+      "source": "https://registry.npmjs.org/pdfjs-dist/6.5.438",
+      "nodeRange": ">=22.13.0 || >=24",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "mammoth",
+      "version": "1.13.0",
+      "source": "https://registry.npmjs.org/mammoth/1.13.0",
+      "nodeRange": ">=12.0.0",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "lop": "^0.4.2",
+        "jszip": "^3.7.1",
+        "argparse": "~1.0.3",
+        "base64-js": "^1.5.1",
+        "underscore": "^1.13.1",
+        "xmlbuilder": "^10.0.0",
+        "@xmldom/xmldom": "^0.8.6",
+        "dingbat-to-unicode": "^1.0.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langfuse/tracing",
+      "version": "6.1.1",
+      "source": "https://registry.npmjs.org/@langfuse/tracing/6.1.1",
+      "nodeRange": ">=22",
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.9.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@langfuse/core": "^6.1.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langfuse/otel",
+      "version": "6.1.1",
+      "source": "https://registry.npmjs.org/@langfuse/otel/6.1.1",
+      "nodeRange": ">=22",
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@opentelemetry/core": "^2.0.1",
+        "@opentelemetry/sdk-trace-base": "^2.0.1",
+        "@opentelemetry/otlp-exporter-base": ">=0.202.0 <0.300.0",
+        "@opentelemetry/exporter-trace-otlp-http": ">=0.202.0 <0.300.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@langfuse/core": "^6.1.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@langfuse/langchain",
+      "version": "6.1.1",
+      "source": "https://registry.npmjs.org/@langfuse/langchain/6.1.1",
+      "nodeRange": ">=22",
+      "peerDependencies": {
+        "@langchain/core": "^1.0.0",
+        "@opentelemetry/api": "^1.9.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@langfuse/core": "^6.1.1",
+        "@langfuse/tracing": "^6.1.1"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/api",
+      "version": "1.9.0",
+      "source": "https://registry.npmjs.org/@opentelemetry/api/1.9.0",
+      "nodeRange": ">=8.0.0",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/sdk-node",
+      "version": "0.223.2",
+      "source": "https://registry.npmjs.org/@opentelemetry/sdk-node/0.223.2",
+      "nodeRange": "^18.19.0 || >=20.6.0",
+      "peerDependencies": {
+        "@opentelemetry/api": ">=1.3.0 <1.10.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@opentelemetry/core": "2.12.1",
+        "@opentelemetry/api-logs": "0.223.2",
+        "@opentelemetry/sdk-logs": "0.223.2",
+        "@opentelemetry/resources": "2.12.1",
+        "@opentelemetry/sdk-trace": "2.12.1",
+        "@opentelemetry/sdk-metrics": "2.12.1",
+        "@opentelemetry/configuration": "0.223.2",
+        "@opentelemetry/propagator-b3": "2.12.1",
+        "@opentelemetry/sdk-trace-base": "2.12.1",
+        "@opentelemetry/sdk-trace-node": "2.12.1",
+        "@opentelemetry/exporter-zipkin": "2.12.1",
+        "@opentelemetry/instrumentation": "0.223.2",
+        "@opentelemetry/propagator-jaeger": "2.12.1",
+        "@opentelemetry/otlp-exporter-base": "0.223.2",
+        "@opentelemetry/context-async-hooks": "2.12.1",
+        "@opentelemetry/exporter-prometheus": "0.223.2",
+        "@opentelemetry/semantic-conventions": "^1.29.0",
+        "@opentelemetry/exporter-logs-otlp-grpc": "0.223.2",
+        "@opentelemetry/exporter-logs-otlp-http": "0.223.2",
+        "@opentelemetry/otlp-grpc-exporter-base": "0.223.2",
+        "@opentelemetry/exporter-logs-otlp-proto": "0.223.2",
+        "@opentelemetry/exporter-trace-otlp-grpc": "0.223.2",
+        "@opentelemetry/exporter-trace-otlp-http": "0.223.2",
+        "@opentelemetry/exporter-trace-otlp-proto": "0.223.2",
+        "@opentelemetry/exporter-metrics-otlp-grpc": "0.223.2",
+        "@opentelemetry/exporter-metrics-otlp-http": "0.223.2",
+        "@opentelemetry/exporter-metrics-otlp-proto": "0.223.2"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/core",
+      "version": "2.12.1",
+      "source": "https://registry.npmjs.org/@opentelemetry/core/2.12.1",
+      "nodeRange": "^18.19.0 || >=20.6.0",
+      "peerDependencies": {
+        "@opentelemetry/api": ">=1.0.0 <1.10.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@opentelemetry/semantic-conventions": "^1.29.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-base",
+      "version": "2.12.1",
+      "source": "https://registry.npmjs.org/@opentelemetry/sdk-trace-base/2.12.1",
+      "nodeRange": "^18.19.0 || >=20.6.0",
+      "peerDependencies": {
+        "@opentelemetry/api": ">=1.3.0 <1.10.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@opentelemetry/core": "2.12.1",
+        "@opentelemetry/resources": "2.12.1",
+        "@opentelemetry/sdk-trace": "2.12.1",
+        "@opentelemetry/semantic-conventions": "^1.29.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/otlp-exporter-base",
+      "version": "0.223.2",
+      "source": "https://registry.npmjs.org/@opentelemetry/otlp-exporter-base/0.223.2",
+      "nodeRange": "^18.19.0 || >=20.6.0",
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.3.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@opentelemetry/core": "2.12.1",
+        "@opentelemetry/otlp-transformer": "0.223.2"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "@opentelemetry/exporter-trace-otlp-http",
+      "version": "0.223.2",
+      "source": "https://registry.npmjs.org/@opentelemetry/exporter-trace-otlp-http/0.223.2",
+      "nodeRange": "^18.19.0 || >=20.6.0",
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.3.0"
+      },
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "@opentelemetry/sdk-trace": "2.12.1",
+        "@opentelemetry/otlp-transformer": "0.223.2",
+        "@opentelemetry/otlp-exporter-base": "0.223.2"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "rxjs",
+      "version": "7.8.2",
+      "source": "https://registry.npmjs.org/rxjs/7.8.2",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {
+        "tslib": "^2.1.0"
+      },
+      "deprecated": null
+    },
+    {
+      "name": "reflect-metadata",
+      "version": "0.2.2",
+      "source": "https://registry.npmjs.org/reflect-metadata/0.2.2",
+      "peerDependencies": {},
+      "peerDependenciesMeta": {},
+      "declaredDependencies": {},
+      "deprecated": null
+    }
+  ],
+  "checks": [
+    {
+      "package": "@nestjs/core",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">= 20",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/core",
+      "dependency": "rxjs",
+      "version": "7.8.2",
+      "range": "^7.1.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/core",
+      "dependency": "@nestjs/common",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/core",
+      "dependency": "reflect-metadata",
+      "version": "0.2.2",
+      "range": "^0.1.12 || ^0.2.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/core",
+      "dependency": "@nestjs/platform-express",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/common",
+      "dependency": "rxjs",
+      "version": "7.8.2",
+      "range": "^7.1.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/common",
+      "dependency": "reflect-metadata",
+      "version": "0.2.2",
+      "range": "^0.1.12 || ^0.2.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/platform-express",
+      "dependency": "rxjs",
+      "version": "7.8.2",
+      "range": "^7.1.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/platform-express",
+      "dependency": "@nestjs/core",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/platform-express",
+      "dependency": "@nestjs/common",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/testing",
+      "dependency": "@nestjs/core",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/testing",
+      "dependency": "@nestjs/common",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/testing",
+      "dependency": "@nestjs/platform-express",
+      "version": "12.6.0",
+      "range": "^12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/cli",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">= 20.11",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/schematics",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^22.22.3 || ^24.15.0 || >=26.0.0",
+      "pass": true
+    },
+    {
+      "package": "@nestjs/schematics",
+      "dependency": "typescript",
+      "version": "6.0.3",
+      "range": "^6.0.0",
+      "pass": true
+    },
+    {
+      "package": "typescript",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=14.17",
+      "pass": true
+    },
+    {
+      "package": "typescript-eslint",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.18.0 || ^20.9.0 || >=21.1.0",
+      "pass": true
+    },
+    {
+      "package": "typescript-eslint",
+      "dependency": "eslint",
+      "version": "10.15.0",
+      "range": "^8.57.0 || ^9.0.0 || ^10.0.0",
+      "pass": true
+    },
+    {
+      "package": "typescript-eslint",
+      "dependency": "typescript",
+      "version": "6.0.3",
+      "range": ">=4.8.4 <6.1.0",
+      "pass": true
+    },
+    {
+      "package": "eslint",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^20.19.0 || ^22.13.0 || >=24",
+      "pass": true
+    },
+    {
+      "package": "pnpm",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=18",
+      "pass": true
+    },
+    {
+      "package": "prisma",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^20.19 || ^22.12 || >=24.0",
+      "pass": true
+    },
+    {
+      "package": "prisma",
+      "dependency": "typescript",
+      "version": "6.0.3",
+      "range": ">=5.4.0",
+      "pass": true
+    },
+    {
+      "package": "@prisma/client",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^20.19 || ^22.12 || >=24.0",
+      "pass": true
+    },
+    {
+      "package": "@prisma/client",
+      "dependency": "prisma",
+      "version": "7.10.1",
+      "range": "*",
+      "pass": true
+    },
+    {
+      "package": "@prisma/client",
+      "dependency": "typescript",
+      "version": "6.0.3",
+      "range": ">=5.4.0",
+      "pass": true
+    },
+    {
+      "package": "pg",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">= 16.0.0",
+      "pass": true
+    },
+    {
+      "package": "@langchain/core",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=20",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=18",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph",
+      "dependency": "zod",
+      "version": "4.6.7",
+      "range": "^3.25.32 || ^4.2.0",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph",
+      "dependency": "@langchain/core",
+      "version": "1.5.0",
+      "range": "^1.3.4",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph-checkpoint",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=18",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph-checkpoint",
+      "dependency": "@langchain/core",
+      "version": "1.5.0",
+      "range": "^1.1.48",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph-checkpoint-postgres",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=18",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph-checkpoint-postgres",
+      "dependency": "@langchain/core",
+      "version": "1.5.0",
+      "range": "^1.1.44",
+      "pass": true
+    },
+    {
+      "package": "@langchain/langgraph-checkpoint-postgres",
+      "dependency": "@langchain/langgraph-checkpoint",
+      "version": "1.2.3",
+      "range": "^1.2.0",
+      "pass": true
+    },
+    {
+      "package": "langchain",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=20",
+      "pass": true
+    },
+    {
+      "package": "langchain",
+      "dependency": "@langchain/core",
+      "version": "1.5.0",
+      "range": "^1.4.2",
+      "pass": true
+    },
+    {
+      "package": "amqplib",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=18",
+      "pass": true
+    },
+    {
+      "package": "@qdrant/js-client-rest",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=22.0.0",
+      "pass": true
+    },
+    {
+      "package": "@qdrant/js-client-rest",
+      "dependency": "typescript",
+      "version": "6.0.3",
+      "range": ">=4.7",
+      "pass": true
+    },
+    {
+      "package": "pdfjs-dist",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=22.13.0 || >=24",
+      "pass": true
+    },
+    {
+      "package": "mammoth",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=12.0.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/tracing",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=22",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/tracing",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": "^1.9.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=22",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": "^1.9.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "@opentelemetry/core",
+      "version": "2.12.1",
+      "range": "^2.0.1",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "@opentelemetry/sdk-trace-base",
+      "version": "2.12.1",
+      "range": "^2.0.1",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "@opentelemetry/otlp-exporter-base",
+      "version": "0.223.2",
+      "range": ">=0.202.0 <0.300.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/otel",
+      "dependency": "@opentelemetry/exporter-trace-otlp-http",
+      "version": "0.223.2",
+      "range": ">=0.202.0 <0.300.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/langchain",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=22",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/langchain",
+      "dependency": "@langchain/core",
+      "version": "1.5.0",
+      "range": "^1.0.0",
+      "pass": true
+    },
+    {
+      "package": "@langfuse/langchain",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": "^1.9.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/api",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": ">=8.0.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/sdk-node",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.19.0 || >=20.6.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/sdk-node",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": ">=1.3.0 <1.10.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/core",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.19.0 || >=20.6.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/core",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": ">=1.0.0 <1.10.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/sdk-trace-base",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.19.0 || >=20.6.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/sdk-trace-base",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": ">=1.3.0 <1.10.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/otlp-exporter-base",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.19.0 || >=20.6.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/otlp-exporter-base",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": "^1.3.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/exporter-trace-otlp-http",
+      "dependency": "node",
+      "version": "24.22.3",
+      "range": "^18.19.0 || >=20.6.0",
+      "pass": true
+    },
+    {
+      "package": "@opentelemetry/exporter-trace-otlp-http",
+      "dependency": "@opentelemetry/api",
+      "version": "1.9.0",
+      "range": "^1.3.0",
+      "pass": true
+    }
+  ],
+  "failed": []
+}

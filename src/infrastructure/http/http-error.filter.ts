@@ -1,0 +1,34 @@
+import { Catch, HttpException } from '@nestjs/common';
+import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { ServerResponse } from 'node:http';
+import { errorResponseSchema } from '../../contracts/http.js';
+import { AppLogger } from '../logging/app-logger.js';
+import { RequestValidationError } from './zod-validation.pipe.js';
+
+@Catch()
+export class HttpErrorFilter implements ExceptionFilter {
+  constructor(
+    private readonly adapterHost: HttpAdapterHost,
+    private readonly logger: AppLogger,
+  ) {}
+
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const response = host.switchToHttp().getResponse<ServerResponse>();
+    const status = exception instanceof HttpException ? exception.getStatus() : 500;
+    const code = exception instanceof RequestValidationError ? 'VALIDATION_ERROR'
+      : status === 400 ? 'BAD_REQUEST'
+      : status === 404 ? 'NOT_FOUND'
+      : status >= 500 ? 'INTERNAL_ERROR' : 'HTTP_ERROR';
+    const message = code === 'VALIDATION_ERROR' ? '请求参数无效'
+      : code === 'BAD_REQUEST' ? '请求格式无效'
+      : code === 'NOT_FOUND' ? '资源不存在'
+      : code === 'INTERNAL_ERROR' ? '服务暂时无法处理请求' : '请求无法处理';
+    const payload = errorResponseSchema.parse({
+      code, message, retryable: status === 429 || status === 502 || status === 503 || status === 504,
+      requestId: response.getHeader('x-request-id'),
+    });
+    this.logger.write('error', { event: 'http_error', code, statusCode: status, requestId: payload.requestId });
+    this.adapterHost.httpAdapter.reply(response, payload, status);
+  }
+}

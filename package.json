@@ -1,0 +1,53 @@
+{
+  "name": "resume-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.22.3",
+    "pnpm": "12.23.0"
+  },
+  "packageManager": "pnpm@12.23.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "start:api": "node --env-file-if-exists=.env dist/src/main-api.js",
+    "start:worker": "node --env-file-if-exists=.env dist/src/main-worker.js",
+    "infra:init": "node scripts/infra-init.mjs",
+    "infra:provision": "node --env-file=infra/.env scripts/infra-provision.mjs",
+    "infra:config": "docker compose --env-file infra/.env -f infra/compose.yaml config --quiet",
+    "infra:up": "docker compose --env-file infra/.env -f infra/compose.yaml up -d --wait --wait-timeout 90",
+    "infra:stop": "docker compose --env-file infra/.env -f infra/compose.yaml stop",
+    "db:generate": "node --env-file=infra/.env scripts/prisma.mjs generate",
+    "db:deploy": "node --env-file=infra/.env scripts/prisma.mjs deploy",
+    "db:status": "node --env-file=infra/.env scripts/prisma.mjs status",
+    "db:validate": "node --env-file=infra/.env scripts/prisma.mjs validate",
+    "test:integration": "pnpm run build && node --env-file=infra/.env --test dist/test/integration/*.test.js",
+    "infra:persistence": "node --env-file=infra/.env dist/test/integration/persistence.fixture.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.6.0",
+    "@nestjs/core": "12.6.0",
+    "@nestjs/platform-express": "12.6.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "@qdrant/js-client-rest": "1.20.0",
+    "amqplib": "2.4.1",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@nestjs/testing": "12.6.0",
+    "@types/node": "24.10.0",
+    "@types/pg": "8.23.1",
+    "eslint": "10.15.0",
+    "prisma": "7.10.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0"
+  }
+}

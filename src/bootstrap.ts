@@ -1,0 +1,40 @@
+import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { NestFactory } from '@nestjs/core';
+import type { INestApplication, INestApplicationContext } from '@nestjs/common';
+import { ApiModule } from './app-api.module.js';
+import { WorkerModule } from './app-worker.module.js';
+import type { ApiConfig, WorkerConfig } from './modules/config/app-config.js';
+import { AppLogger } from './infrastructure/logging/app-logger.js';
+import { requestContext } from './infrastructure/logging/request-context.js';
+
+export async function createApi(config: ApiConfig): Promise<INestApplication> {
+  const app = await NestFactory.create(ApiModule.register(config), {
+    logger: false, abortOnError: false,
+  });
+  configureHttp(app);
+  return app;
+}
+
+export function configureHttp(app: INestApplication): void {
+  app.use((_request: IncomingMessage, response: ServerResponse, next: () => void) => {
+    const requestId = randomUUID();
+    const started = performance.now();
+    response.setHeader('x-request-id', requestId);
+    requestContext.run({ requestId }, () => {
+      response.once('finish', () => app.get(AppLogger).write('info', {
+        event: 'http_request_completed', requestId,
+        statusCode: response.statusCode,
+        durationMs: Math.round((performance.now() - started) * 100) / 100,
+      }));
+      next();
+    });
+  });
+}
+
+export async function createWorker(config: WorkerConfig): Promise<INestApplicationContext> {
+  return NestFactory.createApplicationContext(WorkerModule.register(config), {
+    logger: false, abortOnError: false,
+  });
+}
