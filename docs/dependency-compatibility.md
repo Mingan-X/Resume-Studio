@@ -39,7 +39,7 @@
 - core 1.5.1：AIMessageFields.usage_metadata与实现类的一致性，Zod V3兼容接口的可选description允许undefined。
 - 传递依赖langsmith 0.14.0：BaseRun/RunUpdate.events与RunTree/Tracer声明的一致性。
 
-补丁文件位于[core补丁](../patches/@langchain__core@1.5.1.patch)与[langsmith补丁](../patches/langsmith@0.14.0.patch)，由[pnpm-workspace.yaml](../pnpm-workspace.yaml)的patchedDependencies引用，哈希写入锁文件；当前分支尚未提交。补丁不修改上游JS运行逻辑，不开启skipLibCheck，不关闭exactOptionalPropertyTypes，不忽略peer。升级时必须复核并在上游修复后移除补丁。LangSmith仅为上游传递依赖，观测合成图显式关闭其tracing，未配置其云服务。
+补丁文件位于[core补丁](../patches/@langchain__core@1.5.1.patch)与[langsmith补丁](../patches/langsmith@0.14.0.patch)，由[pnpm-workspace.yaml](../pnpm-workspace.yaml)的patchedDependencies引用，哈希写入锁文件，已随S1.3任务本地提交。补丁不修改上游JS运行逻辑，不开启skipLibCheck，不关闭exactOptionalPropertyTypes，不忽略peer。升级时必须复核并在上游修复后移除补丁。LangSmith仅为上游传递依赖，观测合成图显式关闭其tracing，未配置其云服务。
 
 依赖与锁文件经冻结安装、编译核验；完整测试结果见[进度](progress.md)。此处的真实验证优先于下方2026-11-23保留的候选表，Langfuse接入记录见下节，模型适配器仍未接入。
 

@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | S1.1 | 工程基线 | 依赖锁定、ESM/装饰器编译、类型检查/Lint/测试、API与空Worker入口、Zod配置、统一HTTP错误、requestId日志 | — | — | 已完成 |
 | S1.2 | 基础设施诊断 | Compose项目隔离、PostgreSQL/Prisma诊断表与迁移、RabbitMQ confirm/return/ACK、Qdrant CRUD、重启持久化工具 | S1.1 | — | 已完成 |
-| S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4 已确定本地自托管 | 进行中（2026-11-25验收未通过，待T7） |
+| S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4 已确定本地自托管 | 待验收 |
 | S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8 | 未开始 |
 | S2.1 | 简历文件与证据 | Storage、上传、PDF/DOCX解析、文本块与结构化简历 | S1.4 | D6 | 未开始 |
 | S2.2 | JD与Rubric | JD草稿/结构化/确认/不可变发布、JobIndexTask、六维Rubric版本 | S1.4 | D1、D2 | 未开始 |
@@ -62,7 +62,7 @@ S1.1与S1.2是同一次初始化提交交付的基线，没有独立历史分支
 | S1.3-T6 | 文档与进度 | T1–T5 | 依赖说明、架构、测试、部署文档与进度记录 | 文档只描述已验证行为；未执行项如实记录 |
 | S1.3-T7 | 验收遗留修复 | T1–T6 | 见下方“S1.3-T7 任务说明” | 见下方“S1.3-T7 任务说明” |
 
-2026-11-25阶段验收未通过：T1–T5功能验收通过，`pnpm test`曾出现进程启动超时且当时改动未提交。验收记录见[开发进度](progress.md)，修复内容为S1.3-T7。T7完成并提交后重新验收。D4采用本地自托管，并按维护者要求合并到resume-studio的observability profile；专属网络、账号和数据卷，显式服务列表独立启停。分支feature/s1.3-checkpoint-setup，完整证据与限制见[开发进度](progress.md)。
+2026-11-25：原阶段验收未通过后，T7入口/清理修复及文档已分任务本地提交，并执行了规定的提交后连续回归。T7.5尚未满足全部通过：有效配置下API启动仍出现原限制内未就绪的失败；后续通过不覆盖该失败。按维护者指示置为待验收，不代表验收通过或T7.5完成。每次实际结果、耗时及残留检查见[开发进度](progress.md)。D4采用同一resume-studio项目的observability profile，专属网络、账号和数据卷，显式服务列表独立启停。分支feature/s1.3-checkpoint-setup，未推送、未合并。
 
 ### S1.3 验收证据索引
 
