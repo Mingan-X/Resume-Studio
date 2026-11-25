@@ -1,0 +1,77 @@
+import 'reflect-metadata';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
+import { trace } from '@opentelemetry/api';
+import { Test } from '@nestjs/testing';
+import { z } from 'zod';
+import { loadObservabilityConfig } from '../../src/infrastructure/observability/config.js';
+import { ObservabilityModule, ObservabilityService } from '../../src/infrastructure/observability/observability.module.js';
+import { assertObservabilityOwnership } from '../../src/infrastructure/observability/ownership.js';
+import { runObservedGraph, syntheticSecrets } from '../fixtures/observability-graph.js';
+
+const observationSchema = z.object({
+  id: z.string(), traceId: z.string(), name: z.string(), parentObservationId: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+}).passthrough();
+const responseSchema = z.object({ data: z.array(observationSchema) });
+
+await test('local Langfuse persists correlated callback/manual spans with no raw synthetic PII', { timeout: 90_000 }, async () => {
+  const config = loadObservabilityConfig(process.env);
+  assert.ok(config.enabled, 'Real Langfuse integration requires observability:init and running local services.');
+  await assertObservabilityOwnership(true);
+  const headers = { Authorization: `Basic ${Buffer.from(`${config.publicKey}:${config.secretKey}`).toString('base64')}` };
+  const projects = await fetch(`${config.baseUrl}/api/public/projects`, { headers, signal: AbortSignal.timeout(5000) });
+  assert.equal(projects.status, 200);
+  const projectList = z.object({ data: z.array(z.object({ id: z.string() })) }).parse(await projects.json());
+  assert.deepEqual(projectList.data.map(project => project.id), ['resume-studio-diagnostics']);
+  const module = await Test.createTestingModule({ imports: [ObservabilityModule.register(config)] }).compile();
+  await module.init();
+  const service = module.get(ObservabilityService);
+  const correlationId = randomUUID();
+  let traceId: string | undefined;
+  try {
+    const result = await service.run(correlationId, 'analysis', async () => {
+      traceId = trace.getActiveSpan()?.spanContext().traceId;
+      return runObservedGraph(service, correlationId);
+    });
+    assert.equal(result, 9);
+    assert.ok(traceId);
+    await service.flush();
+    const stats = service.stats();
+    assert.ok(stats && stats.exported > 0);
+    assert.equal(Object.values(stats.lost).reduce((a, b) => a + b, 0), 0);
+    const url = new URL('/api/public/v2/observations', config.baseUrl);
+    url.searchParams.set('traceId', traceId);
+    url.searchParams.set('fields', 'core,basic,io,metadata,trace_context');
+    url.searchParams.set('limit', '100');
+    const deadline = Date.now() + 45_000;
+    let observations: z.infer<typeof observationSchema>[] = [];
+    while (Date.now() < deadline) {
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, 200);
+      observations = responseSchema.parse(await response.json()).data;
+      if (observations.length >= stats.exported) break;
+      await delay(500);
+    }
+    assert.equal(observations.length, stats.exported, 'Every exported span must be persisted and readable.');
+    assert.ok(observations.some(span => span.name === 'score' && span.parentObservationId));
+    assert.ok(observations.some(span => span.name === 'synthetic-node' && span.parentObservationId));
+    assert.ok(observations.every(span => span.traceId === traceId && span.metadata.correlationId === correlationId));
+    const serialized = JSON.stringify(observations);
+    for (const secret of Object.values(syntheticSecrets)) assert.ok(!serialized.includes(secret));
+    assert.ok(serialized.includes('[REDACTED]'));
+  } finally {
+    await module.close();
+    if (traceId) {
+      // Only this invocation's random trace, in the verified diagnostics project.
+      await assertObservabilityOwnership();
+      const response = await fetch(`${config.baseUrl}/api/public/traces/${encodeURIComponent(traceId)}`, {
+        method: 'DELETE', headers, signal: AbortSignal.timeout(5000),
+      });
+      assert.ok(response.ok || response.status === 404, 'Test trace deletion request failed.');
+      await response.body?.cancel();
+    }
+  }
+});

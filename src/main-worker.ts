@@ -1,14 +1,10 @@
-import 'reflect-metadata';
-import { createWorker } from './bootstrap.js';
 import { loadConfig } from './modules/config/app-config.js';
-import { AppLogger } from './infrastructure/logging/app-logger.js';
-import { registerShutdown, reportStartupFailure } from './lifecycle.js';
+import { reportStartupFailure } from './startup-error.js';
 
 try {
-  const app = await createWorker(loadConfig('worker', process.env));
-  registerShutdown(app);
-  app.get(AppLogger).write('info', { event: 'application_started' });
-  process.send?.({ type: 'ready', role: 'worker' });
+  const config = loadConfig('worker', process.env);
+  const { startWorker } = await import('./bootstrap-worker.js');
+  await startWorker(config);
 } catch (error) {
   reportStartupFailure(error);
 }

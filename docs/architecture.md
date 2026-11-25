@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker与基础设施诊断已实现；本文的正式任务、简历分析、工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复及本地观测验证已实现；本文的正式任务、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -14,9 +14,20 @@
 
 **Checkpoint**：工作流状态快照及待完成节点，用于崩溃后继续；不替代任务记录、报告、授权或队列。Prisma 管业务表，官方 PostgresSaver 管自己的表，二者独立事务。
 
-以下任务实体、Outbox、NodeArtifact与Checkpoint均为目标设计；当前Schema只有诊断表。已确定的是组件方向、职责分工与一致性原则；候选并发数、超时、重试和租约参数须通过集成与负载测试确认，Rubric等级、评分映射和权重等业务政策须单独审查，不将这些提案写成已实现或生产级保证。
+以下业务任务实体、Outbox、NodeArtifact及它们与Checkpoint的联合恢复属于目标设计；当前Prisma Schema只有诊断表。官方Checkpoint表已由独立setup建立，并用于S1.3合成图测试。已确定的是组件方向、职责分工与一致性原则；候选并发数、超时、重试和租约参数须通过集成与负载测试确认，Rubric等级、评分映射和权重等业务政策须单独审查，不将这些提案写成已实现或生产级保证。
 
 ## 2. 整体架构
+
+下图表示目标业务链路。当前运行边界如下；基础设施适配器存在不等于API/Worker已调用它们。
+
+| 当前入口/模块 | 实际接线 | 验证边界 |
+|---|---|---|
+| API / 空Worker | main入口先校验配置，再动态导入bootstrap-api或bootstrap-worker；配置失败只调用独立startup-error；API只装配配置、日志和健康检查，Worker仅配置、日志及存活定时器 | 没有业务任务、模型调用或观测导出 |
+| Checkpointer | `src/infrastructure/checkpoint/`提供受控provision/setup与独立pg池；图仅在测试fixture中 | 旧子进程确认退出后同thread续跑；无首Checkpoint时从独立输入启动，不包含fence |
+| ObservabilityModule | `test/fixtures/observability-graph.ts`使用官方CallbackHandler及手工OTel span；独立集成测试注册Nest模块 | 合成输入与关联/脱敏验证；未验证跨API/Worker传播或真实LLM |
+| 本地服务 | 单一resume-studio项目，业务三服务在default网络，Langfuse六服务在observability网络 | 独立账号/卷、双向独立启停；运行结果见开发进度；本机存储性能仍有限制 |
+
+合成恢复图与合成观测图是两套测试，不应将各自通过推断为完整业务图的恢复与观测已联调。
 
 ```mermaid
 flowchart LR
@@ -46,7 +57,7 @@ flowchart LR
 
 PostgreSQL 是业务真源；Qdrant 是可重建索引；RabbitMQ 负责交付；Langfuse 负责观测。一个 PostgreSQL 实例可以用不同 schema/数据库与账号隔离业务和 Checkpointer；Langfuse 自托管的数据与账号另隔离，不让 Prisma 迁移接管上游表。
 
-本地开发复用PostgreSQL、RabbitMQ、Qdrant已有兼容镜像，但必须使用Resume Studio独立容器、网络和数据卷，不连接其他项目实例。Compose统一管理本项目三个服务并设置pull_policy: never；数据库/账号、vhost/权限、collection另作逻辑隔离。API/Worker可先本机启动，后按需要纳入Compose。Langfuse cloud或独立可选profile待决定。目标系统的健康检查不只表示进程存在：未来API就绪需数据库可用，Worker就绪需队列/数据库/所需配置可用；当前/health仍仅是liveness，诊断模块单独验证服务。LLM故障不应使查询已有报告的API失效。
+本地开发复用PostgreSQL、RabbitMQ、Qdrant已有兼容镜像，但必须使用Resume Studio独立容器、网络和数据卷，不连接其他项目实例。基础Compose管理业务三个服务，可选观测配置增加六个Langfuse服务；两份配置同属resume-studio项目，镜像固定digest并设置pull_policy: never。数据库/账号、vhost/权限、collection另作逻辑隔离。API/Worker目前在主机运行。Langfuse使用observability profile、专属网络、账号与卷；业务三服务和观测六服务各自显式启停。目标系统的健康检查不只表示进程存在：未来API就绪需数据库可用，Worker就绪需队列/数据库/所需配置可用；当前/health仍仅是liveness，诊断模块单独验证服务。LLM故障不应使查询已有报告的API失效。
 
 ## 3. 后端模块和依赖方向
 
@@ -304,9 +315,9 @@ cancelRequested为独立标志，运行中的取消在安全边界处理；终�
 
 `SUCCEEDED`要求所有必需步骤已完成并保存报告：六维都有合法判断状态，召回完成，所有选入精判的要求都有合法结果。unknown是合法业务判断，不等于系统失败；成功召回零岗位可以生成空推荐成功报告。`PARTIAL`表示解析成功且至少一个报告板块可用，但画像/匹配有执行失败、预算截断或显式降级；页面显示已评估/计划候选数量，不能把部分榜单说成全候选Top10。解析失败或两个结果板块都不可用为`FAILED`；部分产物留存供诊断但不伪装最终成功报告。
 
-数据库保存“用户请求已被接收、执行权、可查询进度、报告、重试计划”。Checkpointer保存“图状态、下一节点、pending writes”。Checkpoint表不由Prisma迁移/修改；首次setup作为受控初始化执行，不让每个请求竞争建表。业务池和saver池分别设置上限，计入PostgreSQL总连接预算。
+数据库保存“用户请求已被接收、执行权、可查询进度、报告、重试计划”。Checkpointer保存“图状态、下一节点、pending writes”。Checkpoint表不由Prisma迁移/修改；S1.3已经使用独立数据库resume_studio_checkpoint和langgraph schema，通过显式命令运行官方setup并分离初始化/运行账号；生产API/Worker尚未接入。首次setup作为受控初始化执行，不让每个请求竞争建表。业务池和saver池分别设置上限，计入PostgreSQL总连接预算。
 
-所引用的官方JS文档说明：`durability: sync`在run结束时等待待写入操作，并不意味着每个节点前都已强制同步提交；首次checkpoint之前崩溃仍可能看不到thread。采用sync作为候选，并通过Task输入快照和幂等产物提供额外保护，不承诺中间步骤绝不丢失。
+S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；本次核对该版本pregel/loop实现包含每步等待Checkpoint写入。测试还从数据库实际确认首节点Checkpoint后再强杀进程，避免把IPC通知当成持久化完成。首次Checkpoint之前仍可能没有thread，测试以独立保存的合成输入恢复。真实业务仍需Task输入快照、幂等产物和S1.4执行隔离；不能由该合成用例推导任意外部副作用恰好一次。
 
 图恢复规则：检查任务终态 → 获取执行锁/租约并判断旧执行是否已停止。确认停止且有未完成Checkpoint时，使用原thread_id、`invoke(null, config)`续跑；确认停止但无Checkpoint时，从冻结输入启动并复用合法NodeArtifact。无法确认停止则分配新恢复thread，从冻结输入与已提交产物重入，不读取旧thread的迟到Checkpoint作为新状态。graph已结束但任务未终态时按已验证产物幂等finalize，仍校验当前fence。普通JobIndexTask恢复不依赖Checkpoint，以索引任务状态、输入快照及幂等upsert恢复。改变graph/schema版本的部署保留旧版本恢复能力或明确迁移/重新分析，不能拿不兼容新图恢复旧状态。
 
@@ -397,7 +408,9 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 ## 10. 可观测性、隐私与部署门槛
 
-API生成request trace，W3C traceparent经Outbox/Rabbit传播；每次attempt关联taskId，图节点、检索、工具和模型各有span。LangChain调用挂Langfuse CallbackHandler；普通解析/算分用OTel手工span，不能只追模型而看不到普通代码耗时。
+目标业务链路：API生成request trace，W3C traceparent经Outbox/Rabbit传播；每次attempt关联taskId，图节点、检索、工具和模型各有span。LangChain调用挂Langfuse CallbackHandler；普通解析/算分用OTel手工span，不能只追模型而看不到普通代码耗时。当前HTTP requestId仅用于请求日志，尚未实现上述跨进程传播。
+
+当前S1.3只观测合成图：SDK回调及手工span共享trace/correlationId，队列白名单化，输入/输出替换为REDACTED，媒体上传关闭；按需ObservabilityModule未接入API/空Worker业务路径。观测最大容量128（可配置），最多16个span/批、128KiB、单请求在途，单批默认2秒并无重试，排队最多4秒；丢失计数可读取并在flush/关闭时输出。详见部署与测试文档。以下模型观测仍属目标设计。
 
 记录模型提供商、模型标识、prompt/schema版本、延迟、token、retry、工具名、节点状态、引用ID和候选数。费用在有可信价格/供应商usage时计算并标估计；没有usage不能填0冒充免费。UI只展示安全阶段，不输出模型隐藏推理链；可审计解释来自模型显式结果和证据。
 
@@ -432,17 +445,27 @@ Resume-Studio-Backend/
   src/                         # 已建立最小入口、配置、日志、HTTP与健康检查
     main-api.ts
     main-worker.ts
+    bootstrap-api.ts           # 仅API应用装配
+    bootstrap-worker.ts        # 仅Worker应用装配
+    startup-error.ts           # 无Nest运行依赖的安全启动错误
     app-api.module.ts
     app-worker.module.ts
     contracts/
     modules/                   # 业务模块，见§3
     workflows/                 # 业务图、节点与子图
-    infrastructure/            # Prisma/AMQP/Qdrant/Storage/Telemetry
+    infrastructure/            # 已有数据库、消息、向量、HTTP与日志适配器
+      checkpoint/              # 已有provision/setup、独立池、配置与归属校验
+      observability/           # 已有模块、脱敏、导出器、配置与归属校验
   prisma/                      # 当前仅合成诊断表schema/迁移；业务表尚未实现
-  test/                        # 已有配置、HTTP和进程测试；其余按阶段补齐
-  infra/                       # Compose和服务初始化配置
-  scripts/                     # 初始化、评测、索引维护
-  data/                        # 后续运行数据；必须gitignore
+  test/                        # 已有配置、HTTP、进程、恢复和观测测试
+    fixtures/                  # 合成观测图；不注册到API/Worker
+    integration/               # 真实服务测试与恢复子进程fixture
+  infra/
+    compose.yaml               # 业务三服务
+    compose.observability.yaml # 同项目Langfuse六服务，可选profile
+  scripts/                     # 已有初始化、显式启停和Prisma命令包装
+  patches/                     # 上游类型声明兼容补丁
+  data/                        # 本地运行资料和迁移快照，gitignore
 ```
 
 前端不在本仓库，见 Resume-Studio-Frontend；workflows尚未创建。当前已建立prisma、infra、scripts与临时data目录，生成的凭证/客户端/测试manifest不入Git。官方机制依据统一列在[兼容性文档来源](dependency-compatibility.md#5-官方来源)，本架构中的业务数量、超时、表和协议名称仍是项目提案。

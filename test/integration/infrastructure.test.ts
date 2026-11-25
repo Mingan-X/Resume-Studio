@@ -10,6 +10,8 @@ import { loadInfrastructureConfig } from '../../src/infrastructure/config.js';
 import { DatabaseService } from '../../src/infrastructure/database/database.service.js';
 import { RabbitmqService, PublishError, diagnosticMessageSchema } from '../../src/infrastructure/messaging/rabbitmq.service.js';
 import { VectorService } from '../../src/infrastructure/vector/vector.service.js';
+import { ownedQdrant } from '../../src/infrastructure/vector/ownership.js';
+import { collectionCleanupApi, collectionForRun, reconcileCollection } from '../support/qdrant-cleanup.js';
 
 // Required, never skip-on-missing: an integration run must actually contact the services.
 const config = loadInfrastructureConfig(process.env);
@@ -135,12 +137,17 @@ await test('Real PostgreSQL, RabbitMQ and Qdrant diagnostics', { timeout: 45_000
   });
 
   await t.test('Qdrant upsert/query/delete and wrong dimensions return a recognizable error', async () => {
-    const collection = `s12_${runId.replaceAll('-', '_')}`;
+    await ownedQdrant();
+    const collection = collectionForRun(runId);
     // Reserve this unique name before sending the create request. A timeout can still mean
     // the server committed creation, so cleanup cannot depend on the response succeeding.
     assert.equal((await vector.collectionExists(collection)).exists, false);
+    let createConfirmed = false;
+    let operationFailed = false;
+    let operationError: unknown;
     try {
       await vector.createCollection(collection, { vectors: { size: 3, distance: 'Cosine' } });
+      createConfirmed = true;
       await vector.upsert(collection, { wait: true, points: [
         { id: 1, vector: [1, 0, 0], payload: { runId, skill: 'synthetic-a' } },
         { id: 2, vector: [0, 1, 0], payload: { runId, skill: 'synthetic-b' } },
@@ -157,8 +164,17 @@ await test('Real PostgreSQL, RabbitMQ and Qdrant diagnostics', { timeout: 45_000
       assert.equal((await vector.count(collection, { exact: true })).count, 2);
       await vector.delete(collection, { wait: true, points: [1, 2] });
       assert.equal((await vector.count(collection, { exact: true })).count, 0);
-    } finally {
-      if ((await vector.collectionExists(collection)).exists) await vector.deleteCollection(collection);
+    } catch (error) {
+      operationFailed = true;
+      operationError = error;
     }
+    try {
+      await reconcileCollection({ runId, createConfirmed, api: collectionCleanupApi(config), verifyOwnership: ownedQdrant });
+    } catch (cleanupError) {
+      if (operationFailed) throw new AggregateError([operationError, cleanupError],
+        'Qdrant operation failed and cleanup is pending.', { cause: cleanupError });
+      throw cleanupError;
+    }
+    if (operationFailed) throw operationError;
   });
 });
