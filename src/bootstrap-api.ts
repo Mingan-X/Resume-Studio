@@ -2,12 +2,12 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NestFactory } from '@nestjs/core';
-import type { INestApplication, INestApplicationContext } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { ApiModule } from './app-api.module.js';
-import { WorkerModule } from './app-worker.module.js';
-import type { ApiConfig, WorkerConfig } from './modules/config/app-config.js';
+import type { ApiConfig } from './modules/config/app-config.js';
 import { AppLogger } from './infrastructure/logging/app-logger.js';
 import { requestContext } from './infrastructure/logging/request-context.js';
+import { registerShutdown } from './lifecycle.js';
 
 export async function createApi(config: ApiConfig): Promise<INestApplication> {
   const app = await NestFactory.create(ApiModule.register(config), {
@@ -33,8 +33,15 @@ export function configureHttp(app: INestApplication): void {
   });
 }
 
-export async function createWorker(config: WorkerConfig): Promise<INestApplicationContext> {
-  return NestFactory.createApplicationContext(WorkerModule.register(config), {
-    logger: false, abortOnError: false,
-  });
+export async function startApi(config: ApiConfig): Promise<void> {
+  const app = await createApi(config);
+  try {
+    await app.listen(config.HTTP_PORT, config.HTTP_HOST);
+    registerShutdown(app);
+    app.get(AppLogger).write('info', { event: 'application_started' });
+    process.send?.({ type: 'ready', role: 'api' });
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }

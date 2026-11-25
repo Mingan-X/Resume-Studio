@@ -1,6 +1,6 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import { AppLogger } from './infrastructure/logging/app-logger.js';
-import { ConfigValidationError } from './modules/config/app-config.js';
+import { reportStartupFailure } from './startup-error.js';
 
 export function registerShutdown(app: INestApplicationContext): void {
   let closing = false;
@@ -27,13 +27,4 @@ export function registerShutdown(app: INestApplicationContext): void {
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
   if (process.send) process.on('message', onMessage);
-}
-
-export function reportStartupFailure(error: unknown, code = 'STARTUP_FAILED'): void {
-  process.stderr.write(`${JSON.stringify({
-    timestamp: new Date().toISOString(), level: 'error',
-    code: error instanceof ConfigValidationError ? 'CONFIG_INVALID' : code,
-    ...(error instanceof ConfigValidationError ? { fields: error.fields } : {}),
-  })}\n`);
-  process.exitCode = 1;
 }

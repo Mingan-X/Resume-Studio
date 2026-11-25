@@ -5,6 +5,10 @@ import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { z } from 'zod';
 
 const entry = (role: 'api' | 'worker') => fileURLToPath(new URL(`../src/main-${role}.js`, import.meta.url));
 const cleanEnv = (): NodeJS.ProcessEnv => {
@@ -30,6 +34,30 @@ await test('both real entrypoints fail closed on missing configuration without l
       assert.ok(!child.stderr.includes('private-marker'));
     }
   }
+});
+
+await test('missing or invalid configuration exits without loading Nest or either bootstrap', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'resume-studio-modules-'));
+  try {
+    for (const role of ['api', 'worker'] as const) {
+      for (const extra of [{}, { APP_ENV: 'private-marker' }]) {
+        const report = join(directory, `${role}.json`);
+        const child = spawnSync(process.execPath, [
+          '--import', new URL('./fixtures/module-load.fixture.js', import.meta.url).href, entry(role),
+        ], { env: { ...cleanEnv(), ...extra, MODULE_LOAD_REPORT: report }, encoding: 'utf8', timeout: 10_000 });
+        assert.equal(child.error, undefined);
+        assert.equal(child.status, 1);
+        assert.equal(child.stdout, '');
+        assert.ok(child.stderr.includes('CONFIG_INVALID'));
+        assert.ok(!child.stderr.includes('private-marker'));
+        const modules = z.array(z.string()).parse(JSON.parse(readFileSync(report, 'utf8')) as unknown)
+          .map(url => decodeURIComponent(url).replaceAll('\\', '/'));
+        assert.ok(modules.some(url => url.endsWith('/modules/config/app-config.js')));
+        assert.ok(!modules.some(url => url.includes('/@nestjs/')), 'Invalid input loaded Nest.');
+        assert.ok(!modules.some(url => /\/bootstrap(?:-api|-worker)?\.js$/.test(url)));
+      }
+    }
+  } finally { rmSync(directory, { recursive: true }); }
 });
 
 await test('API and idle Worker run separately and close resources via the same shutdown path', { timeout: 20_000 }, async (t) => {

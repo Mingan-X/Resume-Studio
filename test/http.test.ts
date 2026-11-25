@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { Controller, Get, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ApiModule } from '../src/app-api.module.js';
-import { configureHttp } from '../src/bootstrap.js';
+import { configureHttp } from '../src/bootstrap-api.js';
 import { loadConfig } from '../src/modules/config/app-config.js';
 import { errorResponseSchema, healthResponseSchema } from '../src/contracts/http.js';
 
