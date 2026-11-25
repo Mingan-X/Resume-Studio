@@ -1,0 +1,70 @@
+diff --git a/dist/messages/ai.d.cts b/dist/messages/ai.d.cts
+index 8fbd3798d1b72c1590d0b440952191c37b8b85bf..9be918d3ebb65a4cc3fa7b95f899ab752da9f8d6 100644
+--- a/dist/messages/ai.d.cts
++++ b/dist/messages/ai.d.cts
+@@ -5,7 +5,7 @@ import { InvalidToolCall, ToolCallChunk } from "./tool.cjs";
+ export interface AIMessageFields<TStructure extends MessageStructure = MessageStructure> extends BaseMessageFields<TStructure, "ai"> {
+   tool_calls?: $InferToolCalls<TStructure>[];
+   invalid_tool_calls?: InvalidToolCall[];
+-  usage_metadata?: $InferMessageProperty<TStructure, "ai", "usage_metadata">;
++  usage_metadata?: $InferMessageProperty<TStructure, "ai", "usage_metadata"> | undefined;
+ }
+ export declare class AIMessage<TStructure extends MessageStructure = MessageStructure> extends BaseMessage<TStructure, "ai"> implements AIMessageFields<TStructure> {
+   readonly type: "ai";
+diff --git a/dist/messages/ai.d.ts b/dist/messages/ai.d.ts
+index 1a9d738ff20e84214402224859c0441de3a6031e..7444456ab3eca97594ee40b96b42d0b61d1cbcd5 100644
+--- a/dist/messages/ai.d.ts
++++ b/dist/messages/ai.d.ts
+@@ -5,7 +5,7 @@ import { InvalidToolCall, ToolCallChunk } from "./tool.js";
+ export interface AIMessageFields<TStructure extends MessageStructure = MessageStructure> extends BaseMessageFields<TStructure, "ai"> {
+   tool_calls?: $InferToolCalls<TStructure>[];
+   invalid_tool_calls?: InvalidToolCall[];
+-  usage_metadata?: $InferMessageProperty<TStructure, "ai", "usage_metadata">;
++  usage_metadata?: $InferMessageProperty<TStructure, "ai", "usage_metadata"> | undefined;
+ }
+ export declare class AIMessage<TStructure extends MessageStructure = MessageStructure> extends BaseMessage<TStructure, "ai"> implements AIMessageFields<TStructure> {
+   readonly type: "ai";
+diff --git a/dist/utils/types/zod.d.cts b/dist/utils/types/zod.d.cts
+index 7be14ecb375e376d4178a354858123e24f7d644d..201f1cd3a7757161097ed26f588a5348a2fb21fe 100644
+--- a/dist/utils/types/zod.d.cts
++++ b/dist/utils/types/zod.d.cts
+@@ -1,7 +1,7 @@
+ import { SerializableSchema } from "../standard_schema.cjs";
+ export interface ZodV3TypeDef {
+   typeName?: string;
+-  description?: string;
++  description?: string | undefined;
+   [key: string]: any;
+ }
+ export interface ZodV3Like<Output = any, Input = Output> {
+@@ -9,7 +9,7 @@ export interface ZodV3Like<Output = any, Input = Output> {
+   readonly _output: Output;
+   readonly _input: Input;
+   readonly _def: ZodV3TypeDef;
+-  readonly description?: string;
++  readonly description?: string | undefined;
+   parse(data: unknown, params?: any): Output;
+   safeParse(data: unknown, params?: any): {
+     success: boolean;
+diff --git a/dist/utils/types/zod.d.ts b/dist/utils/types/zod.d.ts
+index b52f6d0b775efe708f3fc3d78aa392d97b29cdac..c6ee39c8e0938374a1d06e8fc643e731ace471fa 100644
+--- a/dist/utils/types/zod.d.ts
++++ b/dist/utils/types/zod.d.ts
+@@ -1,7 +1,7 @@
+ import { SerializableSchema } from "../standard_schema.js";
+ export interface ZodV3TypeDef {
+   typeName?: string;
+-  description?: string;
++  description?: string | undefined;
+   [key: string]: any;
+ }
+ export interface ZodV3Like<Output = any, Input = Output> {
+@@ -9,7 +9,7 @@ export interface ZodV3Like<Output = any, Input = Output> {
+   readonly _output: Output;
+   readonly _input: Input;
+   readonly _def: ZodV3TypeDef;
+-  readonly description?: string;
++  readonly description?: string | undefined;
+   parse(data: unknown, params?: any): Output;
+   safeParse(data: unknown, params?: any): {
+     success: boolean;

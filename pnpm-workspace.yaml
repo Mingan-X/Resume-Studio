@@ -1,3 +1,6 @@
 allowBuilds:
   '@prisma/engines': true
   prisma: true
+patchedDependencies:
+  '@langchain/core@1.5.1': patches/@langchain__core@1.5.1.patch
+  langsmith@0.14.0: patches/langsmith@0.14.0.patch

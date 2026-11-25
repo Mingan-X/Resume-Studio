@@ -1,0 +1,44 @@
+diff --git a/lib/schemas.d.mts b/lib/schemas.d.mts
+index b2326fdcd854bcb1c92e96922dc6c0d8891af5aa..218cff38b8d8920c1546ee96e1dbbabc85bb9044 100644
+--- a/lib/schemas.d.mts
++++ b/lib/schemas.d.mts
+@@ -68,7 +68,7 @@ export interface BaseRun {
+     /** Serialized state of the run for potential future use. */
+     serialized?: object;
+     /** Events like 'start', 'end' linked to the run. */
+-    events?: KVMap[];
++    events?: KVMap[] | undefined;
+     /** Inputs that were used to initiate the run. */
+     inputs: KVMap;
+     /** Outputs produced by the run, if any. */
+@@ -166,7 +166,7 @@ export interface RunUpdate {
+     outputs?: KVMap;
+     parent_run_id?: string;
+     reference_example_id?: string;
+-    events?: KVMap[];
++    events?: KVMap[] | undefined;
+     session_id?: string;
+     session_name?: string;
+     address?: AgentAddress;
+diff --git a/lib/schemas.d.ts b/lib/schemas.d.ts
+index 6fb8b672e2527f900eaee8c21f08c5b2666d0ebf..96c1638e7f5d8c31812e1cffb6bd068fee547282 100644
+--- a/lib/schemas.d.ts
++++ b/lib/schemas.d.ts
+@@ -68,7 +68,7 @@ export interface BaseRun {
+     /** Serialized state of the run for potential future use. */
+     serialized?: object;
+     /** Events like 'start', 'end' linked to the run. */
+-    events?: KVMap[];
++    events?: KVMap[] | undefined;
+     /** Inputs that were used to initiate the run. */
+     inputs: KVMap;
+     /** Outputs produced by the run, if any. */
+@@ -166,7 +166,7 @@ export interface RunUpdate {
+     outputs?: KVMap;
+     parent_run_id?: string;
+     reference_example_id?: string;
+-    events?: KVMap[];
++    events?: KVMap[] | undefined;
+     session_id?: string;
+     session_name?: string;
+     address?: AgentAddress;
