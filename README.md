@@ -12,7 +12,9 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1 工程基线与 S1.2 基础设施诊断；简历上传、画像、岗位管理、召回、匹配和报告功能尚未实现。** 阶段状态见[开发计划](docs/development-roadmap.md)，验证记录见[开发进度](docs/progress.md)。
+**已完成 S1.1、S1.2；S1.3 的 Checkpointer、合成图恢复及本地 Langfuse 观测已实现，验收检查见开发进度。S1.3 待维护者验收，简历上传、画像、岗位管理、召回、匹配和报告尚未实现。** 阶段状态见[开发计划](docs/development-roadmap.md)，验证记录见[开发进度](docs/progress.md)。
+
+S1.3验收结论及每次检查的实际结果统一见[开发进度](docs/progress.md)。T7修复入口加载与Qdrant测试清理；本机存储性能仍有限制，历史通过不代替本次验收。
 
 已有能力：
 
@@ -21,7 +23,9 @@ Resume-Studio/
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
 - RabbitMQ publisher confirm、mandatory return、手动 ACK、重投和重复消息集成测试。
 - Qdrant 合成向量 CRUD、维数校验与基础设施持久化验证工具。
-- Docker Compose 管理本项目独立的容器、网络和数据卷，镜像可复用，不连接其他项目实例。
+- 官方 PostgreSQL Checkpointer：独立数据库/schema、运行与初始化账号、受控 setup；合成子进程强制终止后的续跑与首 Checkpoint 缺失恢复测试。
+- Docker Compose统一在resume-studio项目下管理；Langfuse使用observability profile、专属网络和数据卷，业务与观测可分别启停。
+- 观测span白名单脱敏、有界导出队列及失败计数；本地Langfuse不可用时合成业务图仍成功。
 
 ## 目标流程
 
@@ -35,7 +39,7 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 |---|---|---|
 | 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7 | OpenAPI生成（决策D8） |
 | 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2 | 事务 Outbox、业务任务消费者 |
-| AI 工作流与观测 | — | LangGraph.js、LangChain.js、PostgreSQL Checkpointer、Langfuse |
+| AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x（合成图验证） | 业务工作流、模型适配 |
 | 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
 具体依赖以 package.json 和 pnpm-lock.yaml 为准；候选组合及兼容性边界见[依赖说明](docs/dependency-compatibility.md)。
@@ -63,11 +67,13 @@ pnpm run start:api
 pnpm run typecheck
 pnpm run lint
 pnpm test
-# 完成本地部署及迁移后执行：
+# 完成基础设施、Checkpoint初始化及本地Langfuse部署后执行：
 pnpm run test:integration
 ```
 
 覆盖范围与限制见[测试文档](docs/testing.md)。真实集成测试不以服务不可用为理由自动跳过。
+
+业务三服务使用 `pnpm run infra:up` / `pnpm run infra:stop`，Langfuse六服务使用 `pnpm run observability:up` / `pnpm run observability:stop`。两组属于同一Compose项目，各自使用明确的服务列表；初始化、凭证位置和卷迁移说明见[部署文档](docs/deployment.md#s13-本地-langfuse-与独立启停)。
 
 ## 文档
 

@@ -18,7 +18,7 @@
 5. 业务任务表/产物与官方PostgresSaver分别承担用户状态/报告和图恢复；通过operationKey、fence、执行锁、对账和必要时恢复thread隔离处理不同事务边界。
 6. PostgreSQL为真源，Qdrant为可重建派生索引；rubric与JD、模型和评分配置都版本化。图不直接传递自由格式Agent对话作为业务合同。
 7. ScoringModule为纯TS函数；missing evidence为unknown，不套用参考项目默认L2、JD文本充当证据或按最新全局简历兜底。
-8. 拟采用Node24.22.3、Nest12.6、TS6.0.3、Prisma7.10.1、LangGraph1.7.5/core1.5、Zod4.6.7、Langfuse6.1.1/OTel2.x组合。其余精确包与服务版本见兼容性文档，不在此复制第二份完整清单。
+8. 已接入Node24.22.3、Nest12.6、TS6.0.3、Prisma7.10.1、LangGraph1.7.5/core1.5.1、Zod4.6.7、Langfuse6.1.1/OTel2.x组合；工作流与观测仅有合成图验证。完整精确包、服务版本及待接入项见兼容性文档。
 9. 本地复用兼容镜像，容器、网络和数据卷按项目独立。Compose仅管理resume-studio项目，不操作其他项目实例；镜像固定digest并禁止自动拉取。
 
 ## 后续待确认事项
@@ -44,7 +44,7 @@
 | 自己实现Checkpoint/运行时 | 不选，采用官方PostgresSaver；只写必要的业务任务协调逻辑 |
 | 模型直接给综合分 | 不选，无法可靠审计或确定性调权 |
 | 所有依赖都装latest | 不选，已查到Prisma RC、TS工具链、OTel主版本冲突 |
-| Langfuse自托管或cloud | 待用户决定，权衡基础设施负担、trace出网和数据控制 |
+| Langfuse部署 | 2026-11-25已部署本地Langfuse4.84.0；按维护者要求归入resume-studio项目的observability profile，专属账号/卷/网络并独立启停 |
 
 ## 后果
 
@@ -52,7 +52,7 @@
 
 代价：需要Outbox表、任务状态机、去重、租约与故障注入；Qdrant和Postgres存在最终一致性；Checkpointer不能自动包住业务事务；模型在“返回后尚未落库”窗口仍可能重复调用。这些机制按业务依赖顺序实现，并分别验证故障边界。
 
-当前依赖及适配器的运行验证见[兼容性说明](../dependency-compatibility.md)与[测试文档](../testing.md)。工作流与观测组件仍为候选，发生兼容冲突时记录证据和最小调整，不私自更换技术方向。
+当前依赖及适配器的运行验证见[兼容性说明](../dependency-compatibility.md)与[测试文档](../testing.md)。LangGraph、官方Checkpointer与Langfuse/OTel已接入；业务工作流、模型服务和旧执行fence隔离仍待实现。S1.3的阶段状态和回归结论以[开发进度](../progress.md)为准，本机持久化存储性能仍需单独评估。发生兼容冲突时记录证据和最小调整，不私自更换技术方向。
 
 ## 重新评估触发条件
 

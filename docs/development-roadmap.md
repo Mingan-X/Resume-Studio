@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | S1.1 | 工程基线 | 依赖锁定、ESM/装饰器编译、类型检查/Lint/测试、API与空Worker入口、Zod配置、统一HTTP错误、requestId日志 | — | — | 已完成 |
 | S1.2 | 基础设施诊断 | Compose项目隔离、PostgreSQL/Prisma诊断表与迁移、RabbitMQ confirm/return/ACK、Qdrant CRUD、重启持久化工具 | S1.1 | — | 已完成 |
-| S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4（仅观测部分） | 未开始 |
+| S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4 已确定本地自托管 | 进行中（2026-11-25验收未通过，待T7） |
 | S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8 | 未开始 |
 | S2.1 | 简历文件与证据 | Storage、上传、PDF/DOCX解析、文本块与结构化简历 | S1.4 | D6 | 未开始 |
 | S2.2 | JD与Rubric | JD草稿/结构化/确认/不可变发布、JobIndexTask、六维Rubric版本 | S1.4 | D1、D2 | 未开始 |
@@ -50,7 +50,7 @@ S1.1与S1.2是同一次初始化提交交付的基线，没有独立历史分支
 
 目标：用合成图验证官方Checkpointer与观测链路，不依赖真实简历、模型服务或业务任务表。
 
-范围调整说明：原计划把“旧执行fence隔离、新恢复thread”放在本阶段，但这些验收需要AnalysisTask的租约、fenceToken和activeGraphThreadId，而这些字段在S1.4才建立。因此该部分移到 [S1.4-T7](#4-s14-任务与消息可靠性)，本阶段只验证Checkpointer自身的初始化、续跑和权限隔离。
+范围调整说明：原计划把“旧执行fence隔离、新恢复thread”放在本阶段，但这些验收需要AnalysisTask的租约、fenceToken和activeGraphThreadId，而这些字段在S1.4才建立。因此该部分移到 [S1.4-T7](#4-s14-任务与消息可靠性)。本阶段的恢复部分只验证Checkpointer自身的初始化、续跑和权限隔离；观测部分按T4/T5验证关联、脱敏及故障隔离。
 
 | 任务 | 目标 | 依赖 | 产出 | 验收 |
 |---|---|---|---|---|
@@ -60,8 +60,43 @@ S1.1与S1.2是同一次初始化提交交付的基线，没有独立历史分支
 | S1.3-T4 | OTel与Langfuse接入 | T1、D4 | ObservabilityModule、Langfuse回调与OTel span、配置Schema | Langfuse SDK与服务端版本兼容；合成图运行时收到含correlationId的关联span；OTel依赖满足Langfuse要求的2.x线 |
 | S1.3-T5 | 观测故障隔离与脱敏 | T4 | 有界缓冲与脱敏处理、故障测试 | Langfuse不可用时合成图仍成功并记录观测丢失指标；含合成手机号/邮箱/密钥的输入不出现在上报数据中 |
 | S1.3-T6 | 文档与进度 | T1–T5 | 依赖说明、架构、测试、部署文档与进度记录 | 文档只描述已验证行为；未执行项如实记录 |
+| S1.3-T7 | 验收遗留修复 | T1–T6 | 见下方“S1.3-T7 任务说明” | 见下方“S1.3-T7 任务说明” |
 
-D4未决定前，T1–T3可以先做；T4、T5等待决策。
+2026-11-25阶段验收未通过：T1–T5功能验收通过，`pnpm test`曾出现进程启动超时且当时改动未提交。验收记录见[开发进度](progress.md)，修复内容为S1.3-T7。T7完成并提交后重新验收。D4采用本地自托管，并按维护者要求合并到resume-studio的observability profile；专属网络、账号和数据卷，显式服务列表独立启停。分支feature/s1.3-checkpoint-setup，完整证据与限制见[开发进度](progress.md)。
+
+### S1.3 验收证据索引
+
+表中“已实现”描述分支工作，不表示已通过阶段验收或已合并。T6不修改T1–T5的行为，也不以历史通过覆盖最近失败。
+
+| 任务 | 实现/配置入口 | 对应验证 | 当前边界 |
+|---|---|---|---|
+| T1 | [依赖清单](../package.json)、[锁文件](../pnpm-lock.yaml)、[补丁配置](../pnpm-workspace.yaml) | [依赖说明](dependency-compatibility.md)及既有冻结安装记录 | 已接入；T6核对本地版本，不重新选型或安装 |
+| T2 | [受控provision/setup](../src/infrastructure/checkpoint/admin.ts)、[独立池](../src/infrastructure/checkpoint/store.ts) | [Checkpoint集成测试](../test/integration/checkpoint.test.ts)：重复setup、权限、池上限/关闭 | 已验证合成环境，未接入业务Worker |
+| T3 | [恢复子进程](../test/integration/checkpoint-worker.fixture.ts) | 同一Checkpoint集成测试：强杀、确认退出、续跑/从独立输入重启 | 不含旧执行fence隔离，后者仍属S1.4-T7 |
+| T4 | [观测模块](../src/infrastructure/observability/observability.module.ts)、[Compose配置](../infra/compose.observability.yaml) | [真实Langfuse测试](../test/integration/observability.test.ts)：服务端读回、关联、父子span | 已验证合成图，未接入真实模型或跨进程trace |
+| T5 | [白名单脱敏](../src/infrastructure/observability/privacy.ts)、[有界导出](../src/infrastructure/observability/exporter.ts) | [观测故障测试](../test/observability.test.ts)、[真实停机记录](progress.md) | 已有专项证据，未承诺可靠投递或长期负载 |
+| T6 | 依赖、架构、测试、部署文档与[本次进度](progress.md) | 链接/锚点/命令/版本/修改边界检查及本次工程检查 | 历史结果保留；最新验收以progress为准 |
+| T7 | 入口拆分、独立启动错误、模块加载测试、Qdrant归属/对账清理及文档 | 见下方T7.1–T7.5与[进度记录](progress.md) | 保留原超时/断言；提交后进行连续回归 |
+
+### S1.3-T7 任务说明
+
+目标：修复2026-11-25阶段验收的阻塞项，使S1.3满足“任务完成的定义”并可合并。依据见[验收记录](progress.md)与[专项排查](research/failure-diagnosis-2026-11-25.md)。在当前分支 `feature/s1.3-checkpoint-setup` 上进行。
+
+| 子任务 | 目标 | 产出 | 验收 |
+|---|---|---|---|
+| T7.1 | 入口先校验配置再加载应用 | `main-api.ts`、`main-worker.ts` 先用只依赖Zod的配置模块校验，通过后再 `await import()` 对应的创建函数；拆分 `bootstrap.ts`，API与Worker各自只导入自己的模块树；启动失败报告函数移到不依赖Nest或 `AppLogger` 的独立模块 | `process.test.ts` 原有断言与10秒/8秒限制不变；新增测试：用Node 24 `module.registerHooks` 预加载脚本记录已加载模块，断言缺配置路径不加载任何 `@nestjs/*`；有效配置下API/Worker启动、关闭与日志事件不变 |
+| T7.2 | Qdrant测试的“创建结果未知”清理 | `infrastructure.test.ts` 在create失败或超时后进入有界对账：在固定期限内轮询存在性，出现即删除；期限内仍无法确认时，把本轮集合名写入 `data/` 下的manifest并让测试明确失败。删除前核对Qdrant容器的Compose项目、服务、端口与卷标签 | 用本地可控延迟的HTTP桩复现“客户端超时 → 首次查询不存在 → 服务端迟到创建 → 最终被删除”；真实Qdrant运行后 `s12_*` 残留为0；只删除本轮精确名称，不按前缀批量删除 |
+| T7.3 | 文档去除易过期的计数 | README、ADR-0001、架构、部署文档中不再写具体的通过/失败数量，改为链接[开发进度](progress.md)；[测试文档](testing.md#当前验收状态)的“当前验收状态”只指向最新进度记录 | 除progress.md外，文档不复制具体通过/失败运行计数；链接与锚点有效 |
+| T7.4 | 分任务提交 | 按T1–T7分别提交（可把紧密相关的任务合并为一个提交），说明格式 `S1.3-T2 增加Checkpointer独立schema与受控setup`；凭证、`data/`、`dist/`、生成目录不入库 | `git status` 干净；`git log` 能对应到任务编号。不推送、不合并，合并由维护者在重新验收后进行 |
+| T7.5 | 回归与记录 | 在progress.md追加T7记录 | 提交后在同一环境连续运行 `pnpm test` 3次、`pnpm run test:integration` 2次，全部通过；记录每次的通过数与耗时、Qdrant残留检查结果。任一次失败如实记录，不以重跑通过覆盖 |
+
+不在T7范围：
+
+- 迁移Docker数据盘或项目到SSD（环境事项，另行安排）。
+- 提高测试或客户端超时、跳过或放宽断言、关闭兼容性检查、把持久化卷改为tmpfs。
+- `ObservabilityService` 的全局provider生命周期问题（已记录为非阻塞观察，接入业务进程时处理）。
+
+T7完成后将阶段状态改为“待验收”，由维护者重新验收。
 
 ## 4. S1.4 任务与消息可靠性
 
@@ -108,7 +143,7 @@ D4未决定前，T1–T3可以先做；T4、T5等待决策。
 | D1 | 六维Rubric | 每维L1–L5及unknown | 行为标准、证据门槛和等级映射；20/40/60/80/100仅为示例 | S2.2、S2.4 |
 | D2 | LLM服务商与具体模型 | 未选定 | 结构化输出能力、模型标识与版本、数据区域、预算 | S2.2、S2.4 |
 | D3 | Embedding模型 | 未选定 | 中文技能检索效果、向量维数、模型版本、费用、区域 | S2.3 |
-| D4 | Langfuse部署 | 云端或独立自托管 | 脱敏数据出网范围、资源成本、SDK与服务端版本 | S1.3-T4 |
+| D4 | Langfuse部署 | **已确定：本地独立自托管**（2026-11-25） | T4接入时核对资源、镜像、SDK/服务端版本；默认脱敏，不启用云端上报 | 部署方向已解除阻塞；T4/T5实施记录见progress |
 | D5 | 前端框架 | **已确定**：Vue 3 + TypeScript + Vite | 见[前端ADR-0001](https://github.com/Mingan-X/Resume-Studio-Frontend/blob/main/docs/decisions/0001-frontend-stack.md) | — |
 | D6 | 文件范围 | 文本层PDF与DOCX | OCR是否首版必须、费用与隐私；复杂版式质量样本 | S2.1 |
 | D7 | 评分与数据政策 | unknown单列、硬条件待核实、eligible进Top10；真实数据默认保留30天 | 目标岗位类型、权重、真实数据授权与保留时间 | S2.5、S3.2 |
