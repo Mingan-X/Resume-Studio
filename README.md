@@ -12,9 +12,9 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1、S1.2；S1.3 的 Checkpointer、合成图恢复及本地 Langfuse 观测已实现，验收检查见开发进度。S1.3 待维护者验收，简历上传、画像、岗位管理、召回、匹配和报告尚未实现。** 阶段状态见[开发计划](docs/development-roadmap.md)，验证记录见[开发进度](docs/progress.md)。
+**已完成 S1.1、S1.2、S1.3；简历上传、画像、岗位管理、召回、匹配和报告尚未实现。** 阶段状态见[开发计划](docs/development-roadmap.md)，验证记录见[开发进度](docs/progress.md)。
 
-S1.3验收结论及每次检查的实际结果统一见[开发进度](docs/progress.md)。T7修复入口加载与Qdrant测试清理；本机存储性能仍有限制，历史通过不代替本次验收。
+S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败，重跑通过。该限制在部署服务器或硬件满足条件后重新验证，判断依据与处理规则见[开发进度](docs/progress.md)。
 
 已有能力：
 
