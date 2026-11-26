@@ -213,10 +213,13 @@ model OutboxEvent {
   leaseUntil DateTime? @map("lease_until")
   publishAttempts Int @default(0) @map("publish_attempts")
   publishedAt DateTime? @map("published_at")
+  failedAt DateTime? @map("failed_at")
+  lastErrorCode String? @map("last_error_code") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([publishedAt, availableAt, leaseUntil])
   @@index([ownerId, aggregateType, aggregateId])
+  @@index([ownerId, failedAt, publishedAt, availableAt])
   @@map("outbox_event")
 }
 
