@@ -57,8 +57,90 @@ model Owner {
   outboxEvents OutboxEvent[]
   quarantines Quarantine[]
   syntheticIndexTargets SyntheticIndexTarget[]
+  fileAssets FileAsset[]
+  resumes Resume[]
 
   @@map("owner")
+}
+
+model FileAsset {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  storageKey String @unique @map("storage_key") @db.Uuid
+  sha256 String @db.Char(64)
+  mime String @db.VarChar(128)
+  size Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  versions ResumeVersion[]
+  @@unique([ownerId, id, sha256])
+  @@map("file_asset")
+}
+
+model Resume {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  versions ResumeVersion[]
+  @@unique([ownerId, id])
+  @@index([ownerId, createdAt, id])
+  @@map("resume")
+}
+
+model ResumeVersion {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  resumeId String @map("resume_id") @db.Uuid
+  resume Resume @relation(fields: [ownerId, resumeId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  version Int
+  fileAssetId String @map("file_asset_id") @db.Uuid
+  fileHash String @map("file_hash") @db.Char(64)
+  fileAsset FileAsset @relation(fields: [ownerId, fileAssetId, fileHash], references: [ownerId, id, sha256], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  blocks EvidenceBlock[]
+  uploads ResumeUpload[]
+  extractedDocument ExtractedDocument?
+  @@unique([resumeId, version])
+  @@unique([ownerId, id])
+  @@unique([ownerId, id, fileHash])
+  @@map("resume_version")
+}
+
+model EvidenceBlock {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  sourceVersionId String @map("source_version_id") @db.Uuid
+  resumeVersion ResumeVersion @relation(fields: [ownerId, sourceVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  ordinal Int
+  text String
+  textHash String @map("text_hash") @db.Char(64)
+  location Json @db.JsonB
+  @@unique([sourceVersionId, ordinal])
+  @@unique([ownerId, sourceVersionId, id])
+  @@map("evidence_block")
+}
+
+model ResumeUpload {
+  ownerId String @map("owner_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  fileHash String @map("file_hash") @db.Char(64)
+  resumeVersionId String @map("resume_version_id") @db.Uuid
+  resumeVersion ResumeVersion @relation(fields: [ownerId, resumeVersionId, fileHash], references: [ownerId, id, fileHash], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@id([ownerId, idempotencyKey])
+  @@map("resume_upload")
+}
+
+model ExtractedDocument {
+  sourceVersionId String @id @map("source_version_id") @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  fileHash String @map("file_hash") @db.Char(64)
+  resumeVersion ResumeVersion @relation(fields: [ownerId, sourceVersionId, fileHash], references: [ownerId, id, fileHash], onDelete: NoAction, onUpdate: NoAction)
+  document Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, sourceVersionId, fileHash])
+  @@map("extracted_document")
 }
 
 // S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.

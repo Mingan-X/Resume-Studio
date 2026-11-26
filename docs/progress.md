@@ -8,6 +8,152 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.1-T10 阶段回归与交接（待验收）
+
+S2.1-T1–T9实现、检查与按任务提交完成，T10同步README/架构/测试/API/契约/依赖/部署及进度。阶段改为待验收，按维护者授权用--no-ff合并develop并推送；不操作master。文本抽取不是语义结构化，ParsedResume仅契约/校验器，模型EXTRACT留S2.4。
+
+| 检查 | 本轮结果 |
+|---|---|
+| pnpm run typecheck / pnpm run lint | 通过，零警告 |
+| pnpm test | 64通过、0失败、0跳过，9.569秒 |
+| pnpm run openapi:check | 通过，Schema与产物一致；新增上传/列表/详情与文件reason |
+| pnpm run test:integration | 99项：97通过、2失败、0跳过，632.630秒；唯一失败为Docker Qdrant createCollection原5秒超时及父项，按L2接受，非全绿 |
+| T8真实HTTP/文件/DB | 6/6通过，父21.276秒；含幂等、owner、分页、空/扫描/加密/超限、文件/DB失败、解析断连、提交响应丢失找回 |
+| T7真实文件与DB | 6/6通过，父3.861秒；含并发PDF/DOCX、不可变、引用与回收 |
+| 迁移 | generate/validate通过，deploy两次/status通过，共9条迁移，无pending |
+| pnpm install --frozen-lockfile | 最终依赖集合通过；原严格peer、安装脚本策略不放宽 |
+| 资源复核 | Qdrant集合0；本轮业务简历/FileAsset/ExtractedDocument计数均0；最新fence清单cleaned=true；测试临时文件与队列/策略按精确本轮身份清理 |
+| 文档与diff | 9份文档106个本地链接有效；git diff --check通过；后续状态/交接文本再次核对 |
+
+本阶段遇到的编译、Lint、上传与旧测试竞争失败均已逐项追加记录，没有覆盖历史失败；旧测试修正仅确认数据库会话实际退出、直接领取测试续租、心跳用例读取一致快照，未扩大原超时/租约或改变业务恢复逻辑。最终完整回归除L2全部通过，L1/L2仍未解除。
+
+未执行/延后：原生Qdrant未运行，未执行对照且未启停；Linux解析资源分支/新机冷安装/生产负载与认证未验证。S2.1无“统一验收前延后表”中的任务；后续真实模型Key、embedding真实索引、人工标注及目标服务器验证仍按该表延后，不用假数据补成已完成。参考文档不等于OCR/模型/评分/报告可用；PDF复杂阅读顺序显式警告，仅可靠页码；DOCX没有虚构页码。
+
+后续阶段从更新后的develop开始S2.2，依次至S3.3。用户已授权每阶段完成后自主新开会话继续，交接必须沿用本路线图和原生Qdrant手动管理规则。
+
+## 2026-11-27 S2.1-T9 提交补记
+
+T9契约与引用校验已按任务提交，功能与验证同前述T9完成记录：typecheck/lint通过，最终联合基础测试64/64通过，固定中文多经历/多项目样例拒绝无引用、伪造及额外字段。模型调用与语义产物持久化均未执行，属于S2.4。最终阶段集成97通过、2项L2，详见随后T10记录，不以契约样例替代模型验证。
+
+## 2026-11-27 S2.1-T8 上传、列表与版本详情完成
+
+已接线POST /api/v1/resumes同步multipart上传、GET游标列表和版本详情；RESUME_API_ENABLED显式本地开关，可信IdentityPort，生产/公网固定身份拒绝。OpenAPI复用运行时Schema，413/422有安全reason，409按owner/key/原文件哈希绑定；不返回路径/owner/语义占位字段。stream→隔离解析→文件提交→DB事务，失败精确补偿；提交响应丢失保留已引用文件并支持同key找回。storage:reconcile按归属、24小时、已退出原上传进程和真实无引用条件恢复未知提交/遗留锁，不删除数据库/卷或配置。
+
+检查：typecheck、零警告lint、openapi:generate/check通过；最终pnpm test64/64（9.569秒），含配置限制和真实崩溃清理；HTTP+消费者专项17/17（73.662秒），阶段最终HTTP组新增空文件与提交响应丢失后6/6通过（父21.276秒），文件/数据库组6/6通过。busboy与类型依赖精确声明/锁文件、冻结安装通过。首次400、超限500及类型错误均在前记录保留，未降低校验。未执行真实简历/生产认证/模型、Linux/新机验证。
+
+断连边界：提交前中断不会提交业务记录，提交后响应丢失属于幂等恢复窗口，不能删除已提交版本；不是跨系统原子事务承诺。旧清单无PID、PID复用或DB无法查询时保留待核查。阶段仍待最终完整集成结论，不提前合并。
+
+## 2026-11-27 S2.1-T7 引用与不可变产物完成补记
+
+T7新增引用单元测试与真实PDF/DOCX/存储/数据库6项专项均通过；迁移9条已应用，generate/validate、重复deploy/status通过。阶段最终基础检查typecheck、零警告lint、pnpm test64/64通过，openapi:check通过；T7全量中的原心跳测试竞争已按同快照与实际续租修正，专项17/17及阶段全量当前已通过相应组。历史失败不覆盖，最终全量计数随T10追加。
+
+引用及JSONB读写全部经Schema校验，稳定块ID及哈希可追溯；并发两份不同owner文件不串数据。未调用模型，不把ParsedResume契约误当已完成语义抽取。数据库版本/原文件不可原地替换，删除仍由后续S3.2生命周期处理。T7提交保留阶段进行中，不单独推送/合并。
+
+## 2026-11-27 S2.1-T9 ParsedResume契约与引用校验完成
+
+教育/工作/项目/技能的严格Zod契约包含schemaVersion、resumeVersionId和每项sourceRefs；nullable字段必须显式null，缺失集合为空数组，有内容条目缺引用拒绝。校验器复用T7的逐字区间、代理对、owner/版本/块检查；额外字段及totalScore拒绝。固定中文教育/多项目合成样例验证通过，没有调用模型或持久化语义抽取结果，EXTRACT仍由S2.4实现。
+
+本项执行typecheck、零警告lint与pnpm test通过；最终联合基础测试64/64通过、0跳过（9.569秒），包含契约专项。openapi:check通过（T9契约不注册语义抽取路由）。未执行真实模型/标注/语义质量评估：不属于T9且按路线图延后。工作区包含待提交T7/T8与T10文档，不改变其状态；T9可独立于HTTP提交。
+
+## 2026-11-27 S2.1-T8 HTTP专项修复与T9契约实现
+
+上传首次正常请求400已修正multipart parts计数；次轮HTTP3通过/2失败（含父），唯一行为失败为超限文件500而非413。根因是StoragePort超限后终止源流，multipart未同步结束，直到30秒传输deadline；现拒绝时终止parser并保留原始安全错误原因。复验HTTP+消费者专项17/17通过（73.662秒），含真实PDF/DOCX上传、幂等409、列表游标、owner404、422/413、文件提交/DB失败补偿、解析断连。心跳测试改为真实续租通知和同一快照后12/12通过，待阶段全量。
+
+新增storage:reconcile崩溃对账：过期manifest、确认uploaderPid已不存在、DB无引用三条件；未知/复用PID或旧清单保留，操作锁也带PID。测试真实fork后SIGKILL、确认exit、验证活进程/被引用文件保留及精确清理。最新typecheck/lint通过，pnpm test63/63（18.715秒）包含该崩溃专项与T9固定样例。
+
+T9已定义严格ParsedResume教育/工作/项目/技能Schema与每项sourceRefs，缺失为null/空数组；有内容条目无引用拒绝，复用T7拒绝伪造/跨owner/跨版本/越界引用及模型额外分数字段。只验证固定中文多项目合成样例，不调用模型、不持久化语义产物。后续追加最终检查和分任务提交；尚无阶段合并/推送。
+
+## 2026-11-27 S2.1-T7 产物与引用专项，T8接线记录
+
+T7增加ExtractedDocument表及不可变触发器、完成产物后禁止新增文本块；产物与版本/文件哈希复合外键绑定。引用校验覆盖owner/sourceType/version/block、UTF-16半开区间、逐字quote及代理对；块ID由输入版本/parser/ordinal/text稳定派生。generate/validate、deploy两次/status通过（9条迁移）；typecheck、lint通过；pnpm test61/61通过（25.801秒）；真实PDF/DOCX+存储+数据库专项6/6通过（6.857秒），并发不同owner数据不串，精确清理。
+
+T7完整集成93项：89通过、4失败、0跳过（589.030秒），T7全部通过；Qdrant创建超时及父项按L2候选，另有心跳用例/父项失败，actual acknowledged=1预期0。检查测试发现直接等待350ms猜测续租完成，并在两次独立查询间允许心跳更新，断言异常会被生产故障处理器当失败任务持久移交并ACK。最小修正改为等待真实续租通知、RepeatableRead同快照读取两表，再按原逻辑修改fence并验证无ACK；原生产逻辑和8秒会话上限不变，待专项/全量验证。不归入L1/L2。
+
+T8准备：busboy1.6.0/@types1.5.5精确声明与冻结安装通过，官方LICENSE/README已核查；同步上传、列表/详情、配置、OpenAPI已接线。首次typecheck因readonly Schema shape及可空filename失败，已修复；首次真实HTTP正常上传400而非201，定位到busboy partsLimit边界计数，改成保留终止边界空间且files=1/fields=0仍严格拒绝额外字段；原始文件10MiB限制仍由StoragePort流式执行。HTTP专项待复验，不把路由接线当验证完成。
+
+## 2026-11-27 S2.1-T6 DOCX段落与表格文本完成
+
+Mammoth1.13.0在ZIP预检后接收Buffer，通过公开transformDocument hook和Zod节点校验抽取中文段落、软换行、表格行/单元格与段落序号。HTML不提供给客户端，图片不读取，禁止externalFileAccess；不虚构页码。正文缺失/损坏/空文本/加密/旧.doc及文本超限明确失败；节点深度受限，原始文件与文本保持分离。
+
+首次DOCX专项0/2：两例CORRUPT_FILE，直接合成实验定位到Mammoth初始化ExternalPromise.__proto__与新增disable-proto开关冲突；移除非任务要求的开关，文件/网络/进程与资源限制保持。修正后typecheck、零警告lint、完整pnpm test60/60通过、0跳过（8.964秒），其中DOCX两项及T4隔离/PDF全部通过。依赖安装/冻结安装通过，锁文件随T4准备提交；未更换解析器或修改上游源码。位置方案在文件与证据文档定稿。
+
+未执行：Linux、真实简历、任意复杂Word版式保证、OCR、真实模型抽取。页面/表格展示不能把抽取顺序等同原始视觉布局。T4–T6分别提交，阶段仍进行中，尚未推送或合并。
+
+## 2026-11-27 S2.1-T5 PDF文本与页码定位完成
+
+PDF.js6.5.438 legacy文本适配器已接入隔离worker。中文、多页、项目列表、双栏/单行表格、扫描/混合图像页、密码、损坏、空白、30/31页与文本超限使用合成ToUnicode样本验证。PDF位置定稿为真实一基页码与bounds=null；基线矩阵不是精确字形框，不伪造坐标。复杂阅读顺序显式READING_ORDER_UNCERTAIN，混合无文本页PARTIAL_TEXT_LAYER。块持久身份由T7保存，语义抽取仍未实现。
+
+typecheck、零警告lint通过；PDF专项2/2通过（5.699秒）；扩展30页与项目列表后pnpm test58/58通过（10.702秒）。依赖精确安装/冻结安装通过（依赖集中随T4预检执行器提交）；未运行真实简历/OCR/Linux。T4分任务暂存时曾因hash-object绕过换行转换导致cached diff检查发现CRLF尾空白；已在未推送的T4提交中归一化并amend，cached diff检查通过，不修改远程历史。
+
+## 2026-11-27 S2.1-T4 预检与有界解析执行完成
+
+实现文件类型签名交叉校验、OLE/CFB/旧.doc/.docm明确拒绝、ZIP实际解压量/压缩比/条目/CRC/路径/链接/嵌套/外部关系防护；子进程接收内存字节并限制权限、网络、单实例并发、输出量、总期限、JS堆和RSS。拒绝或中止后等待真实close与在途资源监测；不是仅Promise超时。CPU以总执行期限约束，RSS是轮询而非OS瞬时硬配额；Windows实测，Linux待部署验证。
+
+检查：typecheck和最终零警告lint通过（首次类型导入Lint失败已修正）；真实隔离/恶意ZIP专项3/3通过；pnpm test56/56通过；精确安装D11选定yauzl3.4.0、PDF.js6.5.438、Mammoth1.13.0及@types/yauzl3.4.0，锁文件同步，每次冻结安装通过。安装PDF/Mammoth为后续适配器准备，本提交不宣称其解析已接线；T5/T6代码分别提交。T6发现Mammoth与非任务要求的disable-proto开关不兼容，移除该额外开关，权限/网络/资源限制不变，联合复验记录随T6追加。
+
+未执行：Linux、生产负载/安全审计、真实文档质量；测试全部使用合成字节。资源限制是实验参数，不保证生产容量。基础/集成历史失败完整保留；T3全量剩余仅L2，T4不增加外部服务访问。
+
+## 2026-11-27 S2.1-T3 完成与回归结论
+
+第三轮默认Docker完整集成92项：90通过、2失败、0跳过（617.435秒），仅Qdrant createCollection原5秒超时及父测试，子用例6.173秒；归属核验后集合只读查询为空，按已接受L2记录。fence/消费者两处测试前提修正通过全量验证，Langfuse通过，S2.1数据库专项5项全部通过，全部本轮业务测试清理完成。原生Qdrant未运行，对照未执行且未操作。T3完成，仍不解除L1/L2，不把默认命令记成全绿。
+
+累计已执行T3检查：generate/validate、deploy两次/status（8条迁移）、typecheck/lint、真实数据库专项、三轮完整集成，失败与修复均见前述记录。最终共享工作区基础测试58/58通过（含已经完成验证的T4/T5代码，10.702秒）；T3单独开发阶段的52/1 L1结果仍保留。T3按任务提交迁移、repository、专项和回归helper最小修正；解析依赖/实现另按T4–T6提交。未执行Linux、新机冷安装或生产验证。
+
+## 2026-11-27 S2.1-T3 第二轮回归及消费者测试前提修复；T4专项通过
+
+第二轮默认Docker全量92项：88通过、4失败、0跳过，596.987秒；仅消费者analysis并发接管子项/父项与Qdrant创建子项/父项失败。fence、Checkpointer、Langfuse、S2.1数据库、其余可靠性测试均通过。消费者实得limit而预期deferred：测试直接claim后使用2秒租约，但没有TaskDeliveryHandler心跳，发布/接线超过租约时消费者合法接管。最小修正仅在测试验证“仍在租约内”期间按原heartbeatMs续租；随后停止心跳，按原逻辑显式过期并验证新fence/旧写拒绝。未扩大生产租约、测试窗口或放宽断言。专项12/12通过（54.816秒），精确资源已清理；修正后typecheck、零警告lint通过，第三轮完整回归已启动。
+
+T4真实预检/隔离专项3/3通过（4.798秒），含类型与OLE/CFB、伪造ZIP展开量/CRC、路径/链接/嵌套/外部关系、真实子进程超时/abort/RSS/堆限制、权限/网络/环境隔离、输出校验与PID退出。完整pnpm test为56/56通过、0跳过（7.419秒）；该次覆盖T3与T4及两处可靠性测试helper修正的编译。默认解析worker尚无PDF/DOCX适配器，明确失败而不是产出假文本。Linux资源监测和复杂真实解析样本未执行；接下来按T5/T6验证。
+
+## 2026-11-27 S2.1-T3 修正后专项复核与T4并行准备
+
+终止会话同步修正后，首次fence专项仍失败：5项中2通过、3失败（含父测试），114.094秒；unknown-old用例报Worker ended before late-checkpoint，首Checkpoint前重启用例报Worker event timed out: claimed（原20秒）。该轮清单cleaned=true，未修改业务行为、期限或断言。再次诊断运行带父测试名称筛选，Node runner实际运行了全部5项，5通过、0跳过（35.710秒）；不能将它称为只跑一项，也不覆盖前次失败。第二轮完整集成已启动，旧Worker隔离与Checkpointer通过，消费者并发接管出现新失败，等待最终异常；Langfuse1/1通过。
+
+首轮Docker Qdrant经归属核验后只读查询集合为空，createCollection超时符合L2；原生进程未运行，对照未执行，没有启停它。原API冷启动L1、首次Langfuse超时及两轮fence失败分别保留，不合并成同一种环境问题。
+
+完整集成等待期间，准备仅依赖T1/T2的S2.1-T4，尚未标完成：yauzl3.4.0、@types/yauzl3.4.0精确安装及冻结安装通过；ZIP流式实际展开量/CRC/路径/链接/外部关系预检、隔离子进程及合成测试代码已写入。T4 typecheck通过；首次lint因仅类型用途的z导入失败，改为import type后lint通过。T4运行/恶意样本/资源边界尚未执行，PDF/DOCX适配器未实现，不提前发布路由或声称解析成功。T3/T4分别组织提交，阶段尚未合并或推送。
+
+## 2026-11-27 S2.1-T3 首轮完整回归与故障定位补记
+
+默认Docker完整test:integration：92项中87通过、5失败、0跳过，551.672秒；失败为Checkpoint fence子用例及父测试、Qdrant子用例及父测试、真实Langfuse。S2.1数据库5项在完整套件中全部通过（父3.243秒）；其余任务创建/消费者/Outbox/重试/对账/API均通过，测试输出确认本轮记录/队列/策略清理。
+
+- fence失败是终止旧数据库会话后立即reconcile得到lock-held而非recovered。核对[PostgreSQL16官方说明](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-SIGNAL)：pg_terminate_backend默认timeout=0只确认信号发送，不等待会话实际退出。最小修正仅修改测试terminateLock helper，使用3000ms有界等待并断言返回true，再执行原恢复断言；仍在原5000ms statement预算内，不改业务恢复、测试总体超时或原断言。该同步缺口不能归入L1/L2，待专项与全量复验。
+- Qdrant堆栈明确失败于createCollection的原5秒限制，子用例8.068秒包含归属/清理；未返回CleanupPendingError，仍需只读核对集合残留后按L2记录。不调大限制、不操作原生实例。
+- Langfuse为TimeoutError，原测试未提供具体fetch阶段；九服务均healthy后用同一专项、相同超时单独复验1/1通过（13.471秒）。没有改配置、测试、模型或依赖，不据单次通过宣称消除冷启动/负载风险；保留首轮失败，不将其误算L1。
+
+## 2026-11-27 S2.1-T3 持久化模型与迁移，回归进行中（feature/s2.1-resume-evidence）
+
+实现FileAsset、Resume、ResumeVersion、EvidenceBlock、ResumeUpload与repository；复合外键保护owner/版本/文件哈希，unique(resumeId,version)，触发器拒绝原地UPDATE；owner/key事务锁与同库事务保证上传并发幂等和回滚。没有给S1.4合成任务的版本UUID添加业务外键。ExtractedDocument仍按T7实现。
+
+已执行：db:generate和db:validate通过；核验项目PostgreSQL容器/端口/卷后db:deploy成功、再次deploy无pending，db:status显示8条迁移全部已应用。新迁移未改历史表。Prisma关系显式NoAction以匹配SQL默认动作，调整后重新generate/validate通过。typecheck和lint通过。新增真实数据库专项5/5通过（9.502秒），包括T2回收命令真实引用检查，合成记录及本轮临时目录已精确清理。
+
+失败记录：准备时Docker引擎未启动，启动Docker Desktop后首次docker inspect超时；第二次业务容器/卷归属检查成功。infra:up因PostgreSQL恢复期间unhealthy退出1；日志显示非正常关机后的fsync/自动恢复，一次ready后服务子进程退出码2并再次恢复，之后healthy且迁移/专项成功，未重置数据。observability:up两次因Web启动健康检查超时失败，之后Web实际健康200、Worker启动，最终九服务healthy。新集成测试曾因UUID模板字符串推断出现TS2322编译失败，改用Schema派生类型修复；基础测试最终52通过、1失败、0跳过（52.897秒），唯一失败为Child api did not start（8049.8ms），按L1保留。
+
+完整pnpm run test:integration正在运行；目前已发现旧Worker隔离、Langfuse持久化与Qdrant用例失败，尚待结束输出具体原因，不认定全部属于L1/L2，不标任务完成。原生Qdrant未发现运行进程，未启动/停止，原生对照未执行。文档39个本地文件链接及git diff --check通过。尚未提交T3、合并阶段或推送；后续记录补充最终回归结果与处理。
+
+## 2026-11-27 S2.1-T2 本地存储与精确暂存补偿（feature/s2.1-resume-evidence）
+
+新增StoragePort及本地适配器：专用绝对根目录与项目/路径归属标记、服务器UUID键、流式大小上限与SHA-256、独占创建、fsync、WRITING/READY/COMMITTING/COMMITTED清单、提交及读取。检查路径祖先/真实路径、拒绝junction/symlink/文件硬链接；不承诺防御拥有根目录写权限的恶意本机管理员。
+
+即时补偿只处理本次暂存操作，拒绝discard已提交文件；每个操作的独占目录锁覆盖提交、删除与回收引用检查，未知提交结果和崩溃遗留锁保留可核查状态，不盲删files区。新增storage:reclaim命令供操作系统定时调用：24小时、真实数据库无引用、归属核验后才删除受控暂存文件；缺表/DB故障失败关闭。T3尚未建表，真实命令成功路径待T3/T8联调；不宣称跨文件/数据库事务已完成。
+
+检查：首次typecheck通过；首次lint发现no-useless-assignment失败，删除不必要的状态变量后修复。首轮基础测试51/51通过；补根目录标记、回收命令及两项故障测试后最终typecheck、零警告lint通过，pnpm test为53通过、0失败、0跳过（4.522秒）。6项真实临时目录专项覆盖持久读回、独立同内容文件、超限/空文件/源流异常/中止补偿、路径/junction拒绝、DB引用/故障、提交失败状态、非本项目目录和回收锁竞争。git diff --check通过。仅package scripts变化，没有依赖声明/锁解析变化。
+
+未执行：真实DB回收命令成功路径（T3前缺少file_asset表）、突然断电耐久性、Linux验证、全量集成（T2测试使用真实临时目录和引用端口，未接服务）。准备T3时只读Compose查询失败：dockerDesktopLinuxEngine命名管道不存在，正在启动本机Docker并核查项目资源，不操作原生Qdrant。T1冷启动L1失败仍保留，T2成功不解除L1。
+
+## 2026-11-27 S2.1-T1 文件、证据与处理契约（feature/s2.1-resume-evidence）
+
+完成T1契约与设计产出；S2.1仍进行中，尚无上传/解析业务路由。开始时工作区干净，fetch后HEAD与origin/develop相同（左右差异0/0），未操作master。已阅读AGENTS、CONTRIBUTING、路线图§5/§6、最新进度与相关需求/架构/契约。
+
+- 新增文件、版本响应、文本块、引用、ExtractedDocument及失败原因的严格Zod契约；UTF-16半开区间、NFC/换行顺序、块UUID/ordinal/哈希、owner/版本隔离规则见[文件与证据契约](resume-evidence.md)。PDF/DOCX位置字段仍暂定，待T5/T6样本实验。
+- 明确同步上传201、幂等409、大小413、解析422；同owner/key绑定原始字节sha256。只定义Schema，未注册未实现路由或修改OpenAPI。R2及架构PARSE/上传链同步为上传时解析、分析时读已存产物、S2.4执行语义EXTRACT。
+- 完成合成样本矩阵和资源限制实验方案的逐项人工式静态核对；尚未生成/运行解析文件样本，不把设计矩阵当质量实测。
+- registry复核pdfjs-dist6.5.438、mammoth1.13.0、yauzl3.4.0，保存精简元数据及integrity，读取官方发布包README/package.json。Node fetch首次ECONNRESET，pnpm查询/curl下载成功；初次读取误用eslint.config.mjs失败，随后读取实际eslint.config.js。未安装新依赖、未修改锁文件。包文档说明及安全边界已写入依赖说明。
+
+检查：typecheck通过；lint通过（零警告）；pnpm test共47项，46通过、1失败、0跳过，81.752秒。唯一失败为原process.test.ts有效配置API启动用例8238.8ms、Child api did not start，符合已接受L1的API冷启动8秒限制；其余用例及新增2项契约测试通过。没有调整超时、断言或以重复运行覆盖失败。6份文档50个本地文件链接有效；git diff --check通过。
+
+未执行：集成测试、迁移、冻结安装、解析样本与资源边界、Linux验证；T1无服务/迁移/依赖安装变更，解析专项属于T4–T6。真实模型、人工标注、目标服务器与L1/L2解除继续按路线图延后，不使用占位结果。T2/T3可按依赖顺序继续；阶段未完成，未合并或推送。
+
 ## 2026-11-27 决策确认与develop集成分支流程
 
 维护者一次确认全部待决策事项，并授权AI连续完成后续全部阶段，不逐阶段停下验收。只改文档。

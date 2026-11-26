@@ -1,0 +1,126 @@
+{
+  "packages": [
+    {
+      "metadata": {
+        "version": "6.5.438",
+        "engines": {
+          "node": ">=22.13.0 || >=24"
+        },
+        "license": "Apache-2.0",
+        "repository": {
+          "url": "git+https://github.com/mozilla/pdf.js.git",
+          "type": "git"
+        },
+        "optionalDependencies": {
+          "@napi-rs/canvas": "^1.0.13"
+        },
+        "dist": {
+          "shasum": "e7f8986ec4ea04057b5d9d2f0e5b63ea94d2303f",
+          "tarball": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.5.438.tgz",
+          "fileCount": 570,
+          "integrity": "sha512-vg8Pw1x+AFKy4AMDvhuWl5cOYV8d698UoEANoFFhc79hqXDnZQqnOXoxw3HG907WHOg1JYOvLhP756boddFxpA==",
+          "signatures": [
+            {
+              "sig": "MEYCIQCHpARAHxjhmQYrv76T3PzkM9FflAZUZOyhnmSiAeva3wIhAKNa1q++oA9OwGCdoJqR618RG7DqFWmYTuk34Mlze1JB",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIQCnhrHziJt7WeagumZHQTRV/H+EbMUo1TGNMxeq3I09/QIgSN1S5hdEoPMghm1+QgwY9ae3lDFuqNfqvCbi6E9fNcg="
+            }
+          ],
+          "attestations": {
+            "url": "https://registry.npmjs.org/-/npm/v1/attestations/pdfjs-dist@6.5.438",
+            "provenance": {
+              "predicateType": "https://slsa.dev/provenance/v1"
+            }
+          },
+          "unpackedSize": 37616588
+        },
+        "publishedAt": "2026-11-01T18:22:21.69Z",
+        "peerDependencies": {},
+        "deprecated": null
+      },
+      "name": "pdfjs-dist"
+    },
+    {
+      "metadata": {
+        "version": "1.13.0",
+        "engines": {
+          "node": ">=12.0.0"
+        },
+        "license": "BSD-2-Clause",
+        "repository": {
+          "url": "git+https://github.com/mwilliamson/mammoth.js.git",
+          "type": "git"
+        },
+        "dependencies": {
+          "lop": "^0.4.2",
+          "jszip": "^3.7.1",
+          "argparse": "~1.0.3",
+          "base64-js": "^1.5.1",
+          "underscore": "^1.13.1",
+          "xmlbuilder": "^10.0.0",
+          "@xmldom/xmldom": "^0.8.6",
+          "dingbat-to-unicode": "^1.0.1"
+        },
+        "dist": {
+          "shasum": "c054d53bfe4f47ca4713f2e9af93abf5b10bd1f2",
+          "tarball": "https://registry.npmjs.org/mammoth/-/mammoth-1.13.0.tgz",
+          "fileCount": 119,
+          "integrity": "sha512-2cawcYFcP7ISfXbBcL9lmVgTNWo88v/52ND1gnywHtVT/pX0//puPnf0iMPV9ZgmuvNOE+zkIhDgZ9M2c2dDDg==",
+          "signatures": [
+            {
+              "sig": "MEYCIQD88r+U+TNYuey4weymQC/uBa9QCZAVHi64pN1x5EdSngIhAJzhqqQAOLyF/yvek3EEE1InS+OnmXctekXoyKcbassC",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEUCIQCSUDIs3Wh8n67YB+rlB1acAntG7/CFEcoFlvqMPS8+IQIgb+UcASRPPrbJkxD/hUM8YMTgYP5Fu5kaSp6J/888z2w="
+            }
+          ],
+          "unpackedSize": 1671388
+        },
+        "publishedAt": "2026-09-26T22:11:25.198Z",
+        "peerDependencies": {},
+        "deprecated": null
+      },
+      "name": "mammoth"
+    },
+    {
+      "metadata": {
+        "version": "3.4.0",
+        "engines": {
+          "node": ">=12"
+        },
+        "license": "MIT",
+        "repository": {
+          "type": "git",
+          "url": "git+https://github.com/thejoshwolfe/yauzl.git"
+        },
+        "dependencies": {
+          "pend": "~1.2.0"
+        },
+        "dist": {
+          "integrity": "sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==",
+          "shasum": "88b2a21455f37ca7dccf2eeb33bacb4392322719",
+          "tarball": "https://registry.npmjs.org/yauzl/-/yauzl-3.4.0.tgz",
+          "fileCount": 6,
+          "unpackedSize": 109901,
+          "signatures": [
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEQCIAryCA/YldNOUaI+uMPErdGkEtaa0WT8/jNaEdG/79Y0AiAsqjFoWFD/xiEZcaSUb8EwPqTtEYwi7NMaqbtdVMiI/Q=="
+            }
+          ]
+        },
+        "publishedAt": "2026-06-07T12:57:28.373Z",
+        "peerDependencies": {},
+        "deprecated": null
+      },
+      "name": "yauzl"
+    }
+  ],
+  "checkedOn": "2026-11-27",
+  "source": "npm registry via pnpm view"
+}

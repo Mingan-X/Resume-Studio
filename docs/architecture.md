@@ -97,7 +97,7 @@ API入口组合 Controller、应用服务和领域模块；Worker入口组合消
 ```mermaid
 flowchart TD
     START([开始/恢复]) --> LOAD[加载冻结输入及产物]
-    LOAD --> PARSE[普通服务: 提取文件文字]
+    LOAD --> PARSE[普通服务: 按授权版本读取已存文本产物]
     PARSE --> EXTRACT[LLM: 结构化经历与技能]
     EXTRACT --> VALIDATE[Zod + 引用校验 + 日期归一化]
     VALIDATE --> PROF[子图: 读取rubric并生成六维判断]
@@ -112,7 +112,7 @@ flowchart TD
     SAVE --> END([结束])
 ```
 
-这里画像与召回共享已验证简历，不存在互相循环依赖。如果未来要把六维结果作为召回条件，应改图让召回依赖画像，不能在并行执行时偷读尚未完成的结果。
+S2.1规划在上传请求内同步解析并持久化文本；PARSE按可信owner及resumeVersionId读取已存ExtractedDocument，不重新解析文件。语义结构化EXTRACT在S2.4实现；S2.1只定义ParsedResume契约与引用校验。文件与证据规则见[文件与证据契约](resume-evidence.md)。这里画像与召回共享已验证简历，不存在互相循环依赖。如果未来要把六维结果作为召回条件，应改图让召回依赖画像，不能在并行执行时偷读尚未完成的结果。
 
 每个可重入节点用规范化的结构化材料计算 `operationKey = hash(taskType, taskId, node, branchKey, inputHash, versionSnapshot)`，先查询已保存的NodeArtifact，命中且版本/Schema校验一致才复用。`inputHash`覆盖节点实际消费的不可变输入与配置；`versionSnapshot`包含componentVersion、schemaVersion及所有影响输出的版本。LLM节点还须包含promptVersion、modelConfigVersion，使用rubric/评分/embedding的节点相应包含这些版本。不得用无分隔的字符串拼接，也不能只按taskId缓存语义结果。
 
@@ -364,6 +364,10 @@ erDiagram
 
 ### 6.2 分工与状态机
 
+S2.1-T3新增FileAsset、Resume、ResumeVersion、EvidenceBlock与ResumeUpload映射及迁移。ResumeVersion通过(ownerId,resumeId)和(ownerId,fileAssetId,fileHash)复合外键保护关联；EvidenceBlock/ResumeUpload绑定同owner版本；内容表由触发器禁止UPDATE。ResumeRepository按owner/key事务advisory lock串行化首次上传，同事务创建记录与幂等绑定。S1.4合成任务UUID没有追加真实简历外键。迁移/运行验证以progress为准，ExtractedDocument持久化与引用内容校验仍待T7，HTTP待T8。
+
+S2.1-T7/T8接入ExtractedDocument不可变产物与同事务上传；完整产物存在后禁止追加块。HTTP同步解析运行在无模型/数据库凭证的隔离子进程，成功提交版本后201；引用经owner、版本、文本哈希与UTF-16边界逐字校验。文件系统与数据库之间采用manifest和引用检查补偿，已提交但响应丢失通过幂等重放找回；崩溃清理确认原进程退出后再按真实DB引用执行。所有权/接口与运行限制见api、deployment和progress；ParsedResume语义产物尚未执行。
+
 AnalysisTask状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`；暂时失败走`RUNNING → RETRY_WAIT → RUNNING`。JobIndexTask具有独立的`QUEUED/RUNNING/RETRY_WAIT/SUCCEEDED/FAILED/CANCELLED`生命周期，不套用画像/报告的PARTIAL语义；JobVersion.indexStatus仅反映对应目标版本是否可供索引查询。两类任务共享租约、交付和重试原语，状态迁移由各自业务校验。
 
 cancelRequested为独立标志，运行中的取消在安全边界处理；终态不可被迟到Worker改回RUNNING。恢复/重试保持原taskType/taskId及输入快照；仅确认旧执行及其写入停止后复用原thread，无法确认时按§5.3新建恢复thread并使用fence。新的简历分析/重新召回创建新taskId，不覆盖历史任务或报告；索引的新输入/目标版本创建新JobIndexTask，原版本失败重试仍保留原索引任务身份。
@@ -467,7 +471,7 @@ S1.4-T9由独立脚本使用 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI
 
 | 入口（拟定） | 调用链与返回 |
 |---|---|
-| POST /resumes | UploadController → 类型/大小校验 → Storage → ResumeService → 文件/版本记录；失败清理暂存，孤儿文件定期回收 |
+| POST /resumes | UploadController → 类型/大小校验与受控暂存 → 隔离子进程同步预检/解析 → 文件提交 → 同事务FileAsset/Resume/ResumeVersion/ExtractedDocument/文本块及幂等记录 → 201；解析失败413/422且无业务记录，精确补偿暂存；未知提交结果先对账，遗留暂存按数据库引用与归属核对回收；不新增任务类型 |
 | POST /jobs | JobController → 保存JD草稿与版本 → 结构化/确认；发布事务创建JobIndexTask+OutboxEvent后再调度索引，届时返回对应jobVersionId与索引taskId；草稿创建不等于索引已开始 |
 | POST /analyses | 校验owner/输入状态/幂等键 → 冻结配置 → AnalysisTask+OutboxEvent事务 → 202 + taskId/statusUrl |
 | GET /tasks/:id | owner校验 → Task+TaskEvent查询 → 状态、stage、完成数/总数、重试时间、safeError、reportId |

@@ -63,6 +63,24 @@
 
 ## 2. 容器基线
 
+S2.1-T8：busboy1.6.0作为直接依赖（原已由Nest/multer传递解析），@types/busboy1.5.5作为开发依赖，固定版本与冻结锁文件。registry复核Node>=10.16、无peer；官方发布包LICENSE为MIT，README说明fileSize截断及limit事件。采用流式multipart直接进入StoragePort，避免Multer memoryStorage整文件缓存与diskStorage绕开本项目暂存协议；代价为维护少量请求适配与中止代码。包发布时间较早，不等于已完成安全审计，后续S3.3审计；运行限制和HTTP专项以progress为准。
+
+### S2.1 解析依赖复核与接入（2026-11-27）
+
+[本次registry快照](research/parser-dependencies-2026-11-27.json)记录版本、发布时间、engines/peers、许可证与发布包integrity。pdfjs-dist 6.5.438（2026-11-01，Apache-2.0，Node >=22.13.0或>=24）、mammoth 1.13.0（2026-09-26，BSD-2-Clause，Node >=12）、yauzl 3.4.0（2026-06-07，MIT，Node >=12），均未声明peer，未标记deprecated；本机Node24.22.3满足声明。近期发布与未deprecated只是维护状态证据，不等于安全审计或运行验证。
+
+直接Node fetch registry失败ECONNRESET，改用pnpm registry查询及curl下载官方npm发布包成功；已阅读各包README/package.json及Mammoth/yauzl安全说明。发布包只解压到忽略目录data/parser-dependency-review供只读核查，不是已安装依赖。来源由快照内tarball及integrity固定，未以可变GitHub主分支作为版本依据。
+
+用途与成本：PDF.js负责PDF文本与真实位置，带可选@napi-rs/canvas（平台二进制成本，T5实验确认加载方式）；Mammoth负责DOCX正文/表格，整包JSZip读取带来内存成本，所以先用yauzl流式预检实际展开量。Mammoth默认禁止externalFileAccess，不净化生成HTML，且文档明确提示恶意文件可能消耗CPU/内存，必须隔离执行；如果使用transformDocument，其API被上游标为不稳定，升级需专项回归。yauzl须启用lazyEntries、strictFileNames与validateEntrySizes，但不校验CRC，应用需另行验证CRC及总量/压缩比/链接/嵌套包。三者都不能单独提供完整安全沙箱。
+
+S2.1-T4已精确安装yauzl3.4.0及开发类型@types/yauzl3.4.0（MIT，无peer，未声明engines，需本机编译验证），传递依赖pend；锁文件同步，pnpm12.23.0冻结安装通过。用途为受限子进程内顺序读取ZIP流并核对实际展开量，CRC使用Node内置zlib.crc32，不增加CRC包；类型包无运行成本。PDF.js/Mammoth随后在T5/T6接入，完整运行验证以progress为准。
+
+S2.1-T5安装pdfjs-dist6.5.438与锁定的可选canvas1.2.1及win32-x64构件，冻结安装通过；使用官方建议的legacy构建。子进程未授权addon，未使用渲染，中文文本提取在无canvas能力下专项通过；不按上游警告建议删除node_modules/锁文件。可选二进制带来安装体积但不是生产文件读写权限。Node24.22.3/严格TypeScript编译与Lint通过，质量及限额结果见progress。
+
+S2.1-T6安装mammoth1.13.0并冻结锁文件，共新增22项解析依赖（JSZip/XML等），无需额外类型包；使用transformDocument的公开hook而非导入内部模块，升级必须重跑段落/表格样本。首轮隔离失败定位到上游lib/promises.js的ExternalPromise.__proto__赋值，与额外Node禁用原型开关冲突；移除该非需求开关而不更换解析器，不放开文件/网络/子进程权限，不修改包源码。首次失败与后续检查见progress；不据包支持承诺任意OOXML版式。
+
+替代方案：Python/MinerU或云端解析会新增服务/隐私边界，D11已排除；仅用JSZip不能提供本任务要求的流式资源预检；不另选解析方向。T1只冻结候选和边界，T4–T6安装时精确声明并同步锁文件，验证冻结安装、运行样本和传递依赖；目前不宣称解析可用。
+
 | 服务 | 镜像版本 | digest |
 |---|---|---|
 | PostgreSQL 16.15 | pgvector/pgvector:pg16 | sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a |
@@ -98,7 +116,7 @@
 | PDF解析 | pdfjs-dist6.5.438 | Node>=22.13；文本提取、双栏阅读顺序与容器原生依赖需样本验证 |
 | DOCX解析 | mammoth1.13.0 | 只取文字，不直接展示未经净化HTML；表格与证据定位需验证 |
 
-Rubric、LLM服务商/具体模型、Embedding模型与维数仍待确定。不能因候选包存在而生成凭证或声称模型API已可用。
+Rubric起草、OpenAI兼容中转模型与百炼embedding方向已按路线图D1/D2/D3确认；实际模型配置/Key与真实验证按统一验收延后。不能因候选包存在而生成凭证或声称模型API已可用。
 
 Langfuse自托管包含web/worker、PostgreSQL、ClickHouse、Redis及对象存储，官方建议至少4核/16GiB；可能有可选gateway。其内部BullMQ/Redis属于上游观测平台，不作为业务队列。部署方式于2026-11-25确定为本地独立自托管；附属镜像tag/digest和实际接线已在S1.3-T4完成，采用同项目profile与独立数据/网络。
 
@@ -123,4 +141,4 @@ Langfuse自托管包含web/worker、PostgreSQL、ClickHouse、Redis及对象存�
 - [amqplib官方API](https://amqp-node.github.io/amqplib/channel_api.html)：publish返回值、confirm与manual ACK。
 - [PostgreSQL生命周期](https://www.postgresql.org/support/versioning/)、[Qdrant官方release](https://github.com/qdrant/qdrant/releases/tag/v1.20.2)。
 - [Langfuse SDK与兼容性](https://langfuse.com/docs/observability/sdk/typescript/overview)、[LangChain集成](https://langfuse.com/docs/integrations/langchain/tracing)、[Docker Compose](https://langfuse.com/self-hosting/deployment/docker-compose)、[官方Compose源码v4.84.0](https://github.com/langfuse/langfuse/blob/v4.84.0/docker-compose.yml)、[4.84.0发布](https://github.com/langfuse/langfuse/releases/tag/v4.84.0)。
-- [PDF.js官方仓库](https://github.com/mozilla/pdf.js)、[Mammoth官方仓库](https://github.com/mwilliamson/mammoth.js)：解析能力与安全边界；未运行样本。
+- [PDF.js官方仓库](https://github.com/mozilla/pdf.js)、[Mammoth官方仓库](https://github.com/mwilliamson/mammoth.js)：解析能力与安全边界；S2.1合成样本运行记录见progress。

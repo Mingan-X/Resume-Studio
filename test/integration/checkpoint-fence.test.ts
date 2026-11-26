@@ -119,7 +119,10 @@ await test('S1.4-T7 real paused workers, official checkpoints and fenced artifac
   async function terminateLock(label: string) {
     const rows = await dbService.pool.query("SELECT DISTINCT a.pid FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid WHERE a.application_name=$1 AND a.usename=current_user AND l.locktype='advisory' AND l.granted", [label]);
     const pid = z.array(z.object({ pid: z.int().positive() })).length(1).parse(rows.rows)[0]!.pid;
-    await dbService.pool.query('SELECT pg_terminate_backend($1::int)', [pid]);
+    // The default timeout=0 only confirms signal delivery, not session exit/lock release.
+    // Wait within the existing 5s statement budget before asserting recovery.
+    const stopped = await dbService.pool.query('SELECT pg_terminate_backend($1::int, 3000::bigint) AS stopped', [pid]);
+    assert.equal(z.array(z.object({ stopped: z.boolean() })).length(1).parse(stopped.rows)[0]?.stopped, true);
   }
   async function nextMessage(ownerId: string, taskId: string) {
     const task = await db.analysisTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: taskId } } });

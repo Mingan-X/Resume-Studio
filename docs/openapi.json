@@ -3,7 +3,7 @@
   "info": {
     "title": "Resume Studio Backend",
     "version": "0.1.0",
-    "description": "S1.4已实现HTTP契约。任务路由仅在TASK_API_ENABLED=true时启用；固定开发身份不提供生产认证。"
+    "description": "任务与简历路由分别通过TASK_API_ENABLED/RESUME_API_ENABLED启用；固定开发身份仅用于本地开发，不提供生产认证。"
   },
   "servers": [
     {
@@ -50,7 +50,9 @@
               "IDEMPOTENCY_CONFLICT",
               "INVALID_STATE",
               "HTTP_ERROR",
-              "INTERNAL_ERROR"
+              "INTERNAL_ERROR",
+              "PAYLOAD_TOO_LARGE",
+              "UNSUPPORTED_FILE"
             ]
           },
           "message": {
@@ -62,6 +64,24 @@
           "requestId": {
             "type": "string",
             "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "FILE_TOO_LARGE",
+              "UNSUPPORTED_TYPE",
+              "SIGNATURE_MISMATCH",
+              "ENCRYPTED_FILE",
+              "CORRUPT_FILE",
+              "SCANNED_PDF",
+              "EMPTY_TEXT",
+              "PAGE_LIMIT",
+              "TEXT_LIMIT",
+              "ZIP_LIMIT",
+              "UNSAFE_ARCHIVE",
+              "PARSER_TIMEOUT",
+              "PARSER_MEMORY_LIMIT"
+            ]
           }
         },
         "required": [
@@ -598,6 +618,961 @@
           },
           "409": {
             "description": "任务已结束，INVALID_STATE",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resumes": {
+      "post": {
+        "operationId": "uploadResume",
+        "summary": "同步上传并解析简历",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "原文件与解析产物已提交；幂等重放返回原版本",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "resumeId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "resumeVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "file": {
+                      "type": "object",
+                      "properties": {
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "mime": {
+                          "type": "string",
+                          "enum": [
+                            "application/pdf",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "required": [
+                        "sha256",
+                        "mime",
+                        "size"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "extractedDocument": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "RESUME"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "fileHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "parserVersion": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "READING_ORDER_UNCERTAIN",
+                              "TABLE_LAYOUT_LOST",
+                              "PARTIAL_TEXT_LAYER"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "fileHash",
+                        "parserVersion",
+                        "normalizationVersion",
+                        "blocks",
+                        "warnings"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "resumeId",
+                    "resumeVersionId",
+                    "version",
+                    "file",
+                    "extractedDocument",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "同幂等键不同文件",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件超过10 MiB",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "文件不支持或解析失败；reason给出原因",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listResumes",
+        "summary": "当前owner的简历列表",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "createdAt/id降序游标分页",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "latestVersionId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "latestVersionId",
+                          "version",
+                          "createdAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resumes/{resumeId}/versions/{versionId}": {
+      "get": {
+        "operationId": "getResumeVersion",
+        "summary": "读取简历版本与已存文本证据",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "resumeId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "不可变文本与警告，不返回结构化占位",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "resumeId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "resumeVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "file": {
+                      "type": "object",
+                      "properties": {
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "mime": {
+                          "type": "string",
+                          "enum": [
+                            "application/pdf",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ]
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "required": [
+                        "sha256",
+                        "mime",
+                        "size"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "extractedDocument": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "RESUME"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "fileHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "parserVersion": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "READING_ORDER_UNCERTAIN",
+                              "TABLE_LAYOUT_LOST",
+                              "PARTIAL_TEXT_LAYER"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "fileHash",
+                        "parserVersion",
+                        "normalizationVersion",
+                        "blocks",
+                        "warnings"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "resumeId",
+                    "resumeVersionId",
+                    "version",
+                    "file",
+                    "extractedDocument",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
             "headers": {
               "x-request-id": {
                 "schema": {

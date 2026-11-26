@@ -6,6 +6,8 @@ import { errorResponseSchema } from '../../contracts/http.js';
 import { AppLogger } from '../logging/app-logger.js';
 import { RequestValidationError } from './zod-validation.pipe.js';
 import { IdempotencyConflictError, TaskNotFoundError, TaskInvalidStateError } from '../../modules/tasks/task-errors.js';
+import { ParseFailure } from '../../modules/parsing/contracts.js';
+import { StorageError } from '../../modules/storage/storage.port.js';
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
@@ -16,10 +18,14 @@ export class HttpErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<ServerResponse>();
-    const status = exception instanceof IdempotencyConflictError ? exception.statusCode
+    const fileReason = exception instanceof ParseFailure ? exception.reason
+      : exception instanceof StorageError && exception.code === 'FILE_TOO_LARGE' ? 'FILE_TOO_LARGE' : undefined;
+    const status = fileReason ? fileReason === 'FILE_TOO_LARGE' ? 413 : 422
+      : exception instanceof IdempotencyConflictError ? exception.statusCode
       : exception instanceof TaskNotFoundError ? 404 : exception instanceof TaskInvalidStateError ? 409
       : exception instanceof HttpException ? exception.getStatus() : 500;
-    const code = exception instanceof IdempotencyConflictError ? exception.code
+    const code = fileReason ? status === 413 ? 'PAYLOAD_TOO_LARGE' : 'UNSUPPORTED_FILE'
+      : exception instanceof IdempotencyConflictError ? exception.code
       : exception instanceof TaskInvalidStateError ? 'INVALID_STATE'
       : exception instanceof RequestValidationError ? 'VALIDATION_ERROR'
       : status === 400 ? 'BAD_REQUEST'
@@ -34,6 +40,7 @@ export class HttpErrorFilter implements ExceptionFilter {
     const payload = errorResponseSchema.parse({
       code, message, retryable: status === 429 || status === 502 || status === 503 || status === 504,
       requestId: response.getHeader('x-request-id'),
+      ...(fileReason ? { reason: fileReason } : {}),
     });
     this.logger.write('error', { event: 'http_error', code, statusCode: status, requestId: payload.requestId });
     this.adapterHost.httpAdapter.reply(response, payload, status);
