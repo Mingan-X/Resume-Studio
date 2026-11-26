@@ -65,6 +65,26 @@ export const taskDispatchSchema = z.object({
 }).strict();
 export type TaskDispatch = z.infer<typeof taskDispatchSchema>;
 
+export const taskFailureCodeSchema = z.enum(['UPSTREAM_TIMEOUT', 'RATE_LIMITED', 'DEPENDENCY_UNAVAILABLE',
+  'UPSTREAM_5XX', 'INPUT_INVALID', 'UNSUPPORTED_INPUT', 'OUTPUT_INVALID', 'EXECUTION_FAILED',
+  'BUDGET_EXHAUSTED', 'DEADLINE_EXCEEDED']);
+export const quarantineCodeSchema = z.enum(['MALFORMED_MESSAGE', 'TASK_NOT_AVAILABLE', 'FUTURE_GENERATION', 'MESSAGE_ID_REUSED']);
+export const deadMessageSchema = z.object({
+  schemaVersion: z.literal(1), kind: z.literal('dead'), messageId: uuid,
+  taskType: taskTypeSchema, occurredAt: z.iso.datetime(),
+  originalMessageId: uuid.nullable(), errorCode: z.union([taskFailureCodeSchema, quarantineCodeSchema]),
+  source: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('task'), taskId: uuid, dispatchGeneration: z.int().positive() }).strict(),
+    z.object({ kind: z.literal('quarantine'), quarantineId: uuid, messageHash: hash }).strict(),
+  ]),
+}).strict();
+export type DeadMessage = z.infer<typeof deadMessageSchema>;
+export const outboundTaskMessageSchema = z.union([taskDispatchSchema, deadMessageSchema]);
+export type OutboundTaskMessage = z.infer<typeof outboundTaskMessageSchema>;
+
+export const usageReservationSchema = z.object({ modelCalls: nonnegative, tokens: nonnegative, costMicros: nonnegative }).strict();
+export type UsageReservation = z.infer<typeof usageReservationSchema>;
+
 export const taskCountsSchema = z.object({
   schemaVersion: z.literal(1), planned: nonnegative, completed: nonnegative, failed: nonnegative,
 }).strict().refine(value => value.completed + value.failed <= value.planned);

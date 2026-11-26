@@ -92,7 +92,7 @@ setup声明durable direct交换机、durable quorum队列并核验实际生效�
 
 `outbox:publish`只处理开发固定owner的到期事件，一个批次最多10条、60秒，正常无事件输出idle退出。单次连接/发布/确认共同最多5秒，租约15秒；失败时指数退避写回数据库，最多8次、从事件创建起最长1小时，参数见[outbox配置](../src/infrastructure/outbox/config.ts)。遇到失败、非法事件、预算耗尽、取消或失去租约，命令返回非零状态；failedAt/lastErrorCode保留可核查原因。未提供自动预算重置或人工恢复命令，避免无限重发。
 
-命令通过AbortSignal释放本次RabbitMQ连接，退出关闭数据库池。当前不是常驻调度器；API/空Worker启动路径保持兼容，后续在现有Worker内接线。任务创建HTTP及业务重试尚未交付；T4提供下述显式消费会话。消息发布成功不表示任务完成。
+命令通过AbortSignal释放本次RabbitMQ连接，退出关闭数据库池。当前不是常驻调度器；API/空Worker启动路径保持兼容，后续在现有Worker内接线。任务创建HTTP未交付；T4提供下述消费会话，T5接入失败移交。消息发布成功不表示任务完成。
 
 T3迁移 `202611250002_s14_outbox_publisher`只追加Outbox失败字段、结果互斥约束和查询索引；不改已应用的T1迁移。回退应用代码时保留新字段和队列/消息，避免数据丢失；权限/策略回退应先核实没有活动发布/消费并单独安排，普通回退不自动删除拓扑。
 
@@ -109,9 +109,19 @@ pnpm run tasks:consume job-index
 
 领取任务时同事务创建TaskAttempt和RUNNING收据、递增fenceToken；默认租约60秒、心跳10秒，租约不超过冻结输入期限。每次尝试还受10分钟执行上限限制；次数与总期限跨尝试保留，不因进程重启重置。参数与Schema见[consumer配置](../src/infrastructure/consumer/config.ts)。本阶段处理器只接受kind=synthetic的冻结输入，产出一条SYNTHETIC_COMPLETED事件，与任务SUCCEEDED、尝试结束和收据DONE同事务提交，之后才ACK；不会生成真实报告或岗位索引。
 
-有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交；这只验证合成数据库写入。尚未接入LangGraph/Checkpoint，因此不能推断旧图停止或同thread并发安全（T7）。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；预算耗尽、未知/非法消息安全停止消费并保留消息，失败分类、可靠重试和隔离区仍属T5，不通过ACK丢弃。
+有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交；这只验证合成数据库写入。尚未接入LangGraph/Checkpoint，因此不能推断旧图停止或同thread并发安全（T7）。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；T5已为预算耗尽和非法消息增加下述持久移交流程。
 
 迁移 `202611260001_s14_task_execution_guard`增加数据库trigger，禁止任务fenceToken/generation回退及已终态任务变回其他状态；无需重建表或改旧迁移。回退应用时保留记录和约束，不重置任务/收据/队列。该trigger不替代应用fence条件，也不限制官方Checkpoint内部SQL。
+
+### S1.4-T5 重试、dead事件与隔离区
+
+更新后先 `pnpm run db:generate`、`pnpm run build`，按前述方法确认PostgreSQL归属后执行 `pnpm run db:deploy`，再执行 `pnpm run outbox:setup` 补齐两类dead路由绑定；旧requested及Broker DLX绑定保留，队列/策略不清空。迁移202611260002只新增任务retryAt和Quarantine可信消费主体/去重字段及约束，兼容历史无owner诊断行。
+
+使用原 `tasks:consume` 和 `outbox:publish` 命令。可恢复错误写RETRY_WAIT和延迟Outbox后ACK，实际到期后需再次运行发布批次及消费会话；没有常驻扫描器。次数、时间、token/成本/调用预算来自冻结输入，不因重试重置；错误分类和24–30秒/96–120秒退避见[架构§5.4](architecture.md#54-重试死信与长任务)。业务FAILED与dead发布成功是不同状态，查询数据库的任务errorCode和Outbox publishedAt/failedAt/lastErrorCode判断各自结果，不通过ACK或返回码宣称所有dead都已投递。
+
+未知/畸形消息在同事务保存脱敏Quarantine和dead Outbox后ACK；数据库不可写或写dead事件失败时整个事务回滚、不ACK。只持久哈希、UUID及允许的元数据，不保存非法正文/原始异常，不能靠隔离记录恢复原报文。当前没有隔离区清理/重放API；禁止按前缀或全部Quarantine记录清库。
+
+回退到T4代码时先停止会读取新dead事件的发布进程并保留数据/消息：旧发布器不认识dead契约，会将其标为INVALID_EVENT，不能保证混跑版本正确。已迁移的字段和数据保留，不删除旧迁移、队列或卷；需要回退时单独评估待发新事件，不能自动重置事件预算。此次无依赖升级、新账号、新Docker服务或新vhost。
 
 ## S1.3 诊断组件初始化
 

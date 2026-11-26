@@ -55,6 +55,7 @@ model Owner {
   analysisTasks AnalysisTask[]
   jobIndexTasks JobIndexTask[]
   outboxEvents OutboxEvent[]
+  quarantines Quarantine[]
 
   @@map("owner")
 }
@@ -70,6 +71,7 @@ model AnalysisTask {
   reportId String? @map("report_id") @db.Uuid
   inputSnapshot Json @map("input_snapshot") @db.JsonB
   status AnalysisTaskStatus @default(QUEUED)
+  retryAt DateTime? @map("retry_at")
   stage String @default("QUEUED") @db.VarChar(64)
   generation Int @default(1)
   fenceToken BigInt @default(0) @map("fence_token")
@@ -104,6 +106,7 @@ model JobIndexTask {
   indexVersion String @map("index_version") @db.VarChar(64)
   inputSnapshot Json @map("input_snapshot") @db.JsonB
   status JobIndexTaskStatus @default(QUEUED)
+  retryAt DateTime? @map("retry_at")
   stage String @default("QUEUED") @db.VarChar(64)
   generation Int @default(1)
   fenceToken BigInt @default(0) @map("fence_token")
@@ -226,6 +229,11 @@ model OutboxEvent {
 // Invalid deliveries may have no valid UUID messageId or trusted owner.
 model Quarantine {
   id String @id @db.Uuid
+  // Trusted consuming identity; legacy diagnostic rows may be unowned.
+  ownerId String? @map("owner_id") @db.Uuid
+  owner Owner? @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  consumerName String? @map("consumer_name") @db.VarChar(128)
+  dedupeKey String? @map("dedupe_key") @db.Char(64)
   messageId String? @map("message_id") @db.Uuid
   messageHash String @map("message_hash") @db.Char(64)
   errorCode String @map("error_code") @db.VarChar(64)
@@ -233,5 +241,6 @@ model Quarantine {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([messageHash, createdAt])
+  @@unique([ownerId, consumerName, dedupeKey])
   @@map("quarantine")
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { taskDispatchSchema } from '../../contracts/tasks.js';
+import { taskDispatchSchema, quarantineCodeSchema } from '../../contracts/tasks.js';
 import type { TaskDispatch, TaskType, AnalysisInputSnapshot, JobIndexInputSnapshot } from '../../contracts/tasks.js';
 
 export const syntheticCompletionSchema = z.object({
@@ -17,15 +17,21 @@ export type ClaimResult = { kind: 'acquired'; claim: ExecutionClaim } | { kind: 
 export const consumerName = (type: TaskType) => type === 'analysis' ? 'analysis.worker.v1' : 'job-index.worker.v1';
 export const taskRoute = (type: TaskType) => type === 'analysis' ? 'analysis.requested.v1' : 'job.index.requested.v1';
 
+export class RejectedTaskDelivery extends Error {
+  constructor(readonly code: z.infer<typeof quarantineCodeSchema>) { super(quarantineCodeSchema.parse(code)); }
+}
+
 export function decodeTaskDelivery(delivery: { content: Buffer; properties: { contentType?: unknown; messageId?: unknown };
   fields: { exchange: string; routingKey: string } }, taskType: TaskType, exchange: string): TaskDispatch {
   if (delivery.content.length > 8_192 || delivery.properties.contentType !== 'application/json'
     || delivery.fields.exchange !== exchange || delivery.fields.routingKey !== taskRoute(taskType)) {
-    throw new Error('Invalid task delivery envelope.');
+    throw new RejectedTaskDelivery('MALFORMED_MESSAGE');
   }
-  const message = taskDispatchSchema.parse(JSON.parse(delivery.content.toString('utf8')) as unknown);
+  let message: TaskDispatch;
+  try { message = taskDispatchSchema.parse(JSON.parse(delivery.content.toString('utf8')) as unknown); }
+  catch { throw new RejectedTaskDelivery('MALFORMED_MESSAGE'); }
   if (message.taskType !== taskType || delivery.properties.messageId !== message.messageId) {
-    throw new Error('Task delivery identity mismatch.');
+    throw new RejectedTaskDelivery('MALFORMED_MESSAGE');
   }
   return message;
 }

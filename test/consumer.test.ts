@@ -36,7 +36,8 @@ await test('consumer validates bounded body, task type, message ID, content type
 
 await test('heartbeat failure aborts work and prevents completion even when handler returns late', async () => {
   const f = fixture(); let completed = 0, beats = 0, aborted = false;
-  const handler = new TaskDeliveryHandler({ claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
+  const handler = new TaskDeliveryHandler({ fail: () => { assert.fail('Heartbeat failure must not be recorded as task failure'); },
+    reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
     heartbeat: () => { beats++; return Promise.reject(new Error('database unavailable')); },
     complete: () => { completed++; return Promise.resolve(); },
   }, f.identity, { execute: async (claim, signal) => {
@@ -52,12 +53,14 @@ await test('heartbeat failure aborts work and prevents completion even when hand
 await test('terminal and deferred dispositions never execute; successful ACK decision follows complete', async () => {
   const f = fixture(); let completed = false;
   for (const kind of ['ack', 'deferred'] as const) {
-    const handler = new TaskDeliveryHandler({ claim: () => Promise.resolve({ kind }),
+    const handler = new TaskDeliveryHandler({ fail: () => { assert.fail('No task failure expected'); },
+      reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind }),
       heartbeat: () => { assert.fail('No heartbeat expected'); }, complete: () => { assert.fail('No completion expected'); },
     }, f.identity, { execute: () => { assert.fail('No execution expected'); } }, consumerConfigSchema.parse({}));
     assert.equal(await handler.handle(f.message, new AbortController().signal), kind);
   }
-  const handler = new TaskDeliveryHandler({ claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
+  const handler = new TaskDeliveryHandler({ fail: () => { assert.fail('No task failure expected'); },
+    reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
     heartbeat: () => Promise.resolve(), complete: async () => { await delay(10); completed = true; },
   }, f.identity, new SyntheticCompletionHandler(), consumerConfigSchema.parse({}));
   assert.equal(await handler.handle(f.message, new AbortController().signal), 'ack'); assert.equal(completed, true);

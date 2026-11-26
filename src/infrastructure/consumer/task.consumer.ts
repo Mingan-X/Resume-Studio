@@ -1,7 +1,8 @@
 import { connect } from 'amqplib';
 import type { ChannelModel, Channel, ConsumeMessage } from 'amqplib';
 import { z } from 'zod';
-import { decodeTaskDelivery } from './contracts.js';
+import { decodeTaskDelivery, RejectedTaskDelivery } from './contracts.js';
+import type { QuarantineStore } from './quarantine.store.js';
 import type { TaskDeliveryHandler } from './task-delivery.handler.js';
 import type { TaskType } from '../../contracts/tasks.js';
 import { taskTypeSchema } from '../../contracts/tasks.js';
@@ -15,7 +16,8 @@ export type ConsumerSessionResult = { received: number; acknowledged: number; re
 
 export class TaskConsumer {
   constructor(private readonly url: string, private readonly topology: TaskTopology,
-    private readonly handler: Pick<TaskDeliveryHandler, 'handle'>) {}
+    private readonly handler: Pick<TaskDeliveryHandler, 'handle'>,
+    private readonly quarantine?: Pick<QuarantineStore, 'persist'>) {}
 
   async run(taskType: TaskType, options: unknown = {}, signal?: AbortSignal): Promise<ConsumerSessionResult> {
     const type = taskTypeSchema.parse(taskType), settings = sessionSchema.parse(options);
@@ -53,8 +55,15 @@ export class TaskConsumer {
         if (!delivery) { stop('error'); return; }
         received++;
         active = (async () => {
-          const message = decodeTaskDelivery(delivery, type, this.topology.exchange);
-          const disposition = await this.handler.handle(message, abort.signal);
+          let disposition: 'ack' | 'deferred';
+          try {
+            const message = decodeTaskDelivery(delivery, type, this.topology.exchange);
+            disposition = await this.handler.handle(message, abort.signal);
+          } catch (error) {
+            if (!(error instanceof RejectedTaskDelivery) || !this.quarantine || abort.signal.aborted) throw error;
+            await this.quarantine.persist(delivery, type, error.code);
+            disposition = 'ack'; // durable quarantine + dead outbox, never ACK just because decoding failed
+          }
           if (finished || abort.signal.aborted) return;
           if (disposition === 'deferred') { stop('deferred'); return; }
           receivingChannel.ack(delivery); // never a different/reconnected channel

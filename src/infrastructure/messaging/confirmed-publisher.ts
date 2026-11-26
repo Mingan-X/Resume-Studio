@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { EventEmitter } from 'node:events';
 import { connect } from 'amqplib';
 import type { ChannelModel, ConfirmChannel, Message } from 'amqplib';
-import { taskDispatchSchema } from '../../contracts/tasks.js';
-import type { TaskDispatch } from '../../contracts/tasks.js';
+import { outboundTaskMessageSchema } from '../../contracts/tasks.js';
+import type { OutboundTaskMessage } from '../../contracts/tasks.js';
 import { PublishError } from './rabbitmq.service.js';
 import type { TaskTopology } from './task-topology.js';
 
 export interface TaskPublisherPort {
-  publish(message: TaskDispatch, signal?: AbortSignal): Promise<void>;
+  publish(message: OutboundTaskMessage, signal?: AbortSignal): Promise<void>;
 }
 
 // A socket AbortSignal bounds handshake, channel RPC, confirm and cleanup together.
@@ -49,7 +49,7 @@ export async function withRabbitConnection<T>(url: string, timeoutMs: number,
 }
 
 export function awaitConfirm(channel: EventEmitter & Pick<ConfirmChannel, 'publish'>, connection: EventEmitter,
-  exchange: string, routingKey: string, message: TaskDispatch): Promise<void> {
+  exchange: string, routingKey: string, message: OutboundTaskMessage): Promise<void> {
   const correlationId = randomUUID();
   return new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -82,13 +82,15 @@ export class ConfirmedTaskPublisher implements TaskPublisherPort {
   constructor(private readonly url: string, private readonly topology: TaskTopology,
     private readonly timeoutMs: number) {}
 
-  async publish(input: TaskDispatch, signal?: AbortSignal): Promise<void> {
-    const message = taskDispatchSchema.parse(input);
+  async publish(input: OutboundTaskMessage, signal?: AbortSignal): Promise<void> {
+    const message = outboundTaskMessageSchema.parse(input);
     await withRabbitConnection(this.url, this.timeoutMs, async connection => {
       const channel = await connection.createConfirmChannel();
       channel.on('error', () => { /* No raw broker errors in logs. */ });
-      await awaitConfirm(channel, connection, this.topology.exchange,
-        message.taskType === 'analysis' ? 'analysis.requested.v1' : 'job.index.requested.v1', message);
+      const dead = 'kind' in message;
+      const route = message.taskType === 'analysis' ? 'analysis' : 'job.index';
+      await awaitConfirm(channel, connection, dead ? this.topology.deadExchange : this.topology.exchange,
+        `${route}.${dead ? 'dead' : 'requested'}.v1`, message);
     }, signal);
   }
 }

@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布及T4租约消费已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费与T5重试/隔离区已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -214,7 +214,7 @@ T3已实现边界：
 - 成功标记和失败更新都检查eventId、ownerId、leaseOwner、租约未到期及未终结状态。confirm后数据库写入失败直接暴露错误并保留租约，过期可再领取；真实子进程在该窗口被强杀的T3测试验证重复messageId，并由测试专用ConsumerReceipt事务吸收。T4另实现实际消费路径，见§5.4。
 - 默认最多8次发布尝试，自事件createdAt起1小时总期限；1秒起指数退避、上限30秒，抖动为上限的50%–100%。延迟写回availableAt，不在进程中睡眠重试。耗尽或非法事件保存failedAt/lastErrorCode且publishedAt为空，事件和任务仍保留；不自动重置预算，不把基础设施投递失败改成业务任务FAILED。人工恢复入口及告警暂未实现。
 - 每个批次最多10条、60秒总期限，到期中止后续发送；单次已开始的数据库操作还受原3秒等待/5秒事务及SQL限制。`outbox:publish`只运行一个批次，未接入后台调度；不创建额外服务。默认身份仅发布固定开发owner的事件。未来服务多owner调度需另定义授权范围。
-- 持久化payload经Zod及事件类型/版本/聚合ID一致性检查，目前仅支持两类requested.v1。未知事件终止自动发送并保留错误；新增事件类型需增加明确的契约和路由，不能任意指定exchange。trace传播、业务重试dead事件属于后续接入。
+- 持久化payload经Zod及事件类型/版本/聚合ID一致性检查，支持两类requested.v1及T5 dead.v1（来源为任务或Quarantine）。未知事件终止自动发送并保留错误；新增类型必须明确定义契约和路由，不能任意指定exchange。跨进程trace仍待接入。
 
 RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.4.0配置为180秒；DLX目标暂时无绑定时的留存/恢复测试等待该完整周期，未降低服务端周期或改变5秒发布限制。quorum单节点部署验证不代表多节点高可用。官方行为依据：[publisher confirms](https://www.rabbitmq.com/docs/confirms)、[quorum queues](https://www.rabbitmq.com/docs/quorum-queues)、[amqplib channel API](https://amqp-node.github.io/amqplib/channel_api.html)；本地实测结果见开发进度。
 
@@ -241,7 +241,7 @@ RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.
 
 心跳更新任务及当前收据采用同一事务、同一个数据库时间。心跳不重叠执行；失败会abort本次处理器，完成前等待已开始的心跳结束，禁止后台继续续租。执行受输入冻结预算、跨尝试首个startedAt推导的总期限及单次上限限制。当前只执行无外部副作用的合成处理器；处理结果与输入哈希核对后，在同事务写SYNTHETIC_COMPLETED TaskEvent、SUCCEEDED、TaskAttempt结束及ConsumerReceipt DONE，再在原channel ACK。合成状态没有报告/indexStatus语义，真实产物事务将随S2接入。
 
-数据库不可读/不可写、SQL提交失败、心跳/租约丢失、格式错误或停机均不ACK，关闭会话且不自动重连形成热循环。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。新数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。当前没有任务重试Outbox、失败dead事件、隔离区、对账器、取消API或Checkpoint联动，分别属于T5–T8；receipt存在和租约失效都不能证明旧LangGraph已停止。
+数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。对账器、取消API、Checkpoint联动仍属T6–T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
 
 **业务重试采用数据库延迟Outbox**：失败分类后，在事务中更新Task为RETRY_WAIT、递增dispatchGeneration、写入新的messageId与availableAt；提交后ACK原消息。发布器到期再投递。无需RabbitMQ延迟插件，也不会在TTL队列头部阻塞不同延迟消息。
 
@@ -265,6 +265,16 @@ flowchart LR
 不可恢复：不支持文件、损坏文件、版本/Schema错误、无法修复的引用；可恢复：短期模型限流、Qdrant/Rabbit/数据库连接故障。依赖配置缺失应阻止Worker就绪；不能把所有4xx一律当永久失败或一律重试。
 
 失败耗尽时将失败记录与dead Outbox一起提交，再ACK；死信为脱敏元数据，原文保存在受控业务存储。未知任务/无法解码消息写Quarantine记录并可靠发dead事件；数据库不可写时不ACK，暂停消费/关闭channel让broker后续重投，避免立即nack(requeue=true)热循环。
+
+#### S1.4-T5 已实现的失败移交
+
+- 处理器以TaskFailure显式标识UPSTREAM_TIMEOUT/RATE_LIMITED/DEPENDENCY_UNAVAILABLE/UPSTREAM_5XX为可恢复；INPUT_INVALID/UNSUPPORTED_INPUT/OUTPUT_INVALID为永久错误，未知异常归为EXECUTION_FAILED，不解析错误字符串或把任意HTTP 4xx都当永久错误。仅处理器异常/输出校验进入分类；领取、心跳、预算数据库写入、完成/失败事务错误仍暴露为会话失败且不ACK。
+- 失败事务锁定当前任务并核验owner/代次/token/attempt/租约。可重试且预算允许时写RETRY_WAIT、retryAt、递增generation，结束attempt、原receipt DONE和TaskEvent，新建messageId及延迟Outbox；所有写入同事务。first retry为24–30秒，后续96–120秒，带20%抖动；由数据库availableAt发布，任务retryAt另阻止提前执行。原taskId与快照不变，旧generation重投直接处置，不再次执行。
+- 次数上限取冻结输入，时间总期限由首次attempt.startedAt加maxDurationMs决定，覆盖执行和重试等待。下一次退避无法容纳在总期限内时直接FAILED/DEADLINE_EXCEEDED；次数耗尽为BUDGET_EXHAUSTED。最后一次执行进程中断后，重投也会持久终结，不无限重新领取。总期限到达时仅仍持有当前token且租约恰被该期限截断的执行可以提交失败；不能延长租约或提交成功，接管后的旧token仍被拒绝。
+- 每次外部调用前通过budget.reserve原子预留modelCalls/tokens/costMicros（整数微单位），写任务累计usage及本次attempt的token/cost；预留超过剩余预算先拒绝，因此不会先调用再发现超额。失败不退还预留，防止网络结果未知时低估费用；这是保守预算而非精确账单。真实适配器尚未接入，必须申报足够的调用上限并复用此接口，不能用嵌套SDK重试绕过它。elapsedMs记录已结束尝试的执行时间，总deadline另覆盖等待时间。
+- 永久错误/预算耗尽写FAILED、attempt结束、receipt DONE、失败事件和dead Outbox后才ACK。dead消息只带事件/原消息ID、任务类型/ID/代次或隔离区ID/哈希、白名单错误码；不携带原文、SQL、原始异常、凭证或任意路径。发布到resume.dead的analysis.dead.v1 / job.index.dead.v1，同一类型终端队列同时保留Broker DLX原requested路由。confirm/mandatory/return及T3有界重发同样适用；失败记录保留不等于已经投递，耗尽发布预算后仍需人工处置，尚无自动恢复/告警入口。
+- 无法解码、消息身份/路由不符、未知/不可见任务、未来代次或messageId复用冲突保存Quarantine与dead Outbox后才ACK。Quarantine的ownerId来自消费上下文而不是不可信消息；新增owner/consumerName/dedupeKey复合唯一约束，哈希覆盖正文和信封，不保存原信封/正文。相同非法投递重放/并发只插入一次；没有可用UUID则messageId为空。新服务总是写可信owner，旧诊断无owner记录兼容保留，不开放查询/删除API。
+- 重试/失败/隔离事务提交后ACK前强杀进程：重投分别由旧代次、终态、隔离唯一键吸收，不重复增加Outbox或attempt。T5仍只执行合成处理器，不包含定时对账、真实图恢复或外部副作用恰好一次保证。
 
 队列DLX是保险路径。RabbitMQ默认dead-letter转发不能一概视为不丢失；quorum队列需配置官方at-least-once dead-lettering所需策略（含reject-publish overflow等），目标DLQdurable并可达，交付上限不使用未知默认值。实现任务系统时用真实broker验证策略，不能只写exchange名就声称可靠。
 

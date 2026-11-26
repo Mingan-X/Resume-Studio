@@ -45,6 +45,8 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 | test/integration/outbox.test.ts | 真实PostgreSQL SKIP LOCKED、并发发布/过期租约令牌隔离、RabbitMQ路由/return/overflow NACK、TCP丢confirm/断连恢复、确认后强杀重复发布、测试收据去重、预算持久化、quorum DLX无绑定后的留存与恢复 |
 | test/consumer.test.ts | 有界消息/路由/身份校验、心跳失败中止且拒绝迟到结果、终态和有效执行重复处置、完成事务先于ACK决定 |
 | test/integration/consumer.test.ts | 两类任务重复消费、并发领取与真实双消费者、过期接管/旧token写入拒绝、心跳与收据同步、旧代次/终态、只读数据库不ACK、完成SQL故障回滚、提交后ACK前强杀重投、停机及非法消息保留 |
+| test/task-failure.test.ts | 明确错误分类、退避上下限、dead契约与聚合关系、原始异常/正文排除 |
+| test/integration/retry.test.ts | 两类任务延迟重试及耗尽dead、调用/token/费用跨尝试累计、执行/总期限、最后尝试中断、dead return、事务故障、隔离区并发去重与脱敏、三种持久移交后强杀重投 |
 
 任务集成用例注册独立TasksModule并替换身份provider，以本轮随机Owner隔离数据；不向API或Worker增加业务路由。并发测试在两次真实SELECT均返回不存在后释放屏障，强制触发唯一约束竞争。故障测试通过Prisma扩展在真实Outbox INSERT之前或之后抛错，执行的SQL仍在真实交互事务内，验证任务与Outbox均不残留，并用原key重试成功。HTTP测试只注册测试专用409路由，验证统一错误体、requestId和日志白名单。
 
@@ -57,6 +59,12 @@ T3测试前需应用新迁移。它在已有诊断权限内创建 `s12.t3.<本�
 T4使用新的 `s12.t4.<本轮UUID>` 队列与策略，创建和清理前验证本项目归属；只清理本轮确认新建的精确资源。两类任务各测重复投递、条件领取、单调fence和过期接管；使用真实数据库提前过期本轮租约后验证旧token心跳/结果/终态不能提交，不把此测试说成T7旧LangGraph/Checkpoint隔离。
 
 数据库不可写通过单独连接的 `default_transaction_read_only=on` 实现，不改共享账号权限或数据库全局配置。完成事务故障由Prisma扩展注入超过列宽的stage，触发真实PostgreSQL错误，核对终态、事件与DONE收据整体回滚且RabbitMQ重投。`consumer-crash.fixture.ts`运行实际消费者，数据库提交后暂扣ACK并通知父进程，父进程强杀后由另一个实际消费者处理重投，验证只有一次尝试与完成事件。停机/格式错误/活跃租约测试均检查未ACK及redelivered；无skip-on-missing，不自动重置数据库。
+
+T5在 `s12.t5.<本轮UUID>` 资源执行实际发布/消费，默认consumer装配QuarantineStore；T4旧用例显式不装配隔离服务时仍验证安全拒绝，不代表CLI缺少T5接线。T5先断言availableAt/retryAt与发布器idle，再仅对本轮精确任务移动到期时间，加速后续尝试；次数/总期限/预算/错误断言保持。RPC/socket超时均不扩大。
+
+T5故障注入用事务代理修改真实Outbox INSERT的payloadVersion触发CHECK失败；验证retry/dead或Quarantine与Outbox整体回滚，原消息不ACK。数据库预算在每次模拟外部调用前实际预留，逐项使modelCalls/tokens/costMicros的跨尝试剩余量不足，断言第二次外部调用不会发生。`retry-crash.fixture.ts`分别在retry/dead/quarantine事务提交后、ACK前被父进程强杀，重投不得重复写事件。未知/非法报文仅保留哈希和允许元数据，使用模拟秘密检查隔离和dead消息无原文。
+
+T5清理独立建立RabbitMQ连接，不依赖可能已失败的观察channel；本轮队列和成功创建的Owner精确ID保存在被忽略的 `data/s15-runs/` manifest。清理后标记cleaned并验证残留；manifest不授权按前缀批量删除，后续人工处理必须再次核验项目归属与运行记录。全部测试用例通过不代表对账器、真实模型适配器或长期服务稳定性已交付。
 
 DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，观察源quorum队列保留并最终转发。RabbitMQ 4.4.0本地内部dead-letter publisher confirm timeout实测为180000ms，测试最长等待190秒覆盖一次内部重试，父用例最长300秒；该等待与外部publish的5秒截止分开。未修改服务端设置或原有Qdrant/API测试超时，因此完整集成通常需要数分钟。单节点quorum未验证多副本故障或DLX长期积压容量。
 
@@ -107,7 +115,7 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 ## 尚未验证
 
-正式业务任务输入/所有权、真实报告/索引执行器、任务执行重试/失败dead事件、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布及T4消费均有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复的实际运行结果见进度记录；旧执行fence与新恢复thread隔离仍由S1.4-T7验收。对应阶段见[开发计划](development-roadmap.md)。
+正式业务任务输入/所有权、真实报告/索引执行器、对账器、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布/消费及T5失败移交已有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复的实际运行结果见进度记录；旧执行fence与新恢复thread隔离仍由S1.4-T7验收。对应阶段见[开发计划](development-roadmap.md)。
 
 当前RabbitMQ重投测试不能证明业务任务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；旧Worker迟到写入、旧thread隔离和两类任务各自的终态保护在S1.4-T7中单独验收。
 

@@ -1,5 +1,5 @@
-import { taskDispatchSchema } from '../../contracts/tasks.js';
-import type { TaskDispatch } from '../../contracts/tasks.js';
+import { taskDispatchSchema, deadMessageSchema } from '../../contracts/tasks.js';
+import type { TaskDispatch, OutboundTaskMessage } from '../../contracts/tasks.js';
 import type { IdentityPort } from '../../modules/identity/identity.module.js';
 import { ownerIdSchema } from '../../modules/identity/identity.module.js';
 import { PublishError } from '../messaging/rabbitmq.service.js';
@@ -21,6 +21,19 @@ export function dispatchFromClaim(claim: OutboxClaim): TaskDispatch {
   return message;
 }
 
+export function outboundFromClaim(claim: OutboxClaim): OutboundTaskMessage {
+  if (!['analysis.dead.v1', 'job.index.dead.v1'].includes(claim.eventType)) return dispatchFromClaim(claim);
+  const message = deadMessageSchema.parse(claim.payload);
+  const aggregateType = message.source.kind === 'task'
+    ? (message.taskType === 'analysis' ? 'AnalysisTask' : 'JobIndexTask') : 'Quarantine';
+  const aggregateId = message.source.kind === 'task' ? message.source.taskId : message.source.quarantineId;
+  if (message.messageId !== claim.eventId || claim.payloadVersion !== 1 || claim.aggregateType !== aggregateType
+    || claim.aggregateId !== aggregateId || claim.eventType !== (message.taskType === 'analysis' ? 'analysis.dead.v1' : 'job.index.dead.v1')) {
+    throw new Error('Invalid dead event reference.');
+  }
+  return message;
+}
+
 export class OutboxPublisher {
   constructor(private readonly store: Pick<OutboxStore, 'claim' | 'markPublished' | 'markFailed'>, private readonly transport: TaskPublisherPort,
     private readonly identity: IdentityPort, private readonly config: OutboxConfig) {}
@@ -31,8 +44,8 @@ export class OutboxPublisher {
     const claim = await this.store.claim(ownerId);
     if (!claim) return 'idle';
     if (claim.failedAt) return 'exhausted';
-    let message: TaskDispatch;
-    try { message = dispatchFromClaim(claim); }
+    let message: OutboundTaskMessage;
+    try { message = outboundFromClaim(claim); }
     catch {
       return await this.store.markFailed(claim, 'INVALID_EVENT', 0, true) ? 'invalid' : 'lease-lost';
     }

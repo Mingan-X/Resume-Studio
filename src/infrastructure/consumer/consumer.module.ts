@@ -10,6 +10,7 @@ import { consumerConfigSchema } from './config.js';
 import { TaskExecutionStore } from './task-execution.store.js';
 import { SyntheticCompletionHandler, TaskDeliveryHandler } from './task-delivery.handler.js';
 import { TaskConsumer } from './task.consumer.js';
+import { QuarantineStore } from './quarantine.store.js';
 
 @Module({})
 export class ConsumerModule {
@@ -20,8 +21,9 @@ export class ConsumerModule {
       { provide: TaskExecutionStore, inject: [DatabaseService], useFactory: (db: DatabaseService) => new TaskExecutionStore(db, execution) },
       { provide: TaskDeliveryHandler, inject: [TaskExecutionStore, IDENTITY], useFactory: (store: TaskExecutionStore, identity: IdentityPort) =>
         new TaskDeliveryHandler(store, identity, new SyntheticCompletionHandler(), execution) },
-      { provide: TaskConsumer, inject: [TaskDeliveryHandler], useFactory: (handler: TaskDeliveryHandler) =>
-        new TaskConsumer(config.rabbitmqUrl, taskTopology(), handler) },
+      { provide: QuarantineStore, inject: [DatabaseService, IDENTITY], useFactory: (db: DatabaseService, identity: IdentityPort) => new QuarantineStore(db, identity) },
+      { provide: TaskConsumer, inject: [TaskDeliveryHandler, QuarantineStore], useFactory: (handler: TaskDeliveryHandler, quarantine: QuarantineStore) =>
+        new TaskConsumer(config.rabbitmqUrl, taskTopology(), handler, quarantine) },
     ], exports: [TaskConsumer] };
   }
 }

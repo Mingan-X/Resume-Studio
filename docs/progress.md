@@ -8,6 +8,50 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T5 有界任务重试、dead事件与持久隔离区（分支 feature/s1.4-task-foundation）
+
+状态：T5实现与专项验证通过，完整回归仍有既有Qdrant失败，S1.4保持“进行中”。先按维护者授权将此前工作保存为4个本地提交：501544e（T1/T2）、485c004（T3）、8ede21c（T4）、aaea0ab（累计文档）；提交后工作区曾干净，再开始本任务。T5与本记录整理为单独本地提交，未推送、未合并，未以提交表示阶段验收通过。
+
+实现内容：
+
+- 显式失败分类；可恢复错误在同事务写RETRY_WAIT/retryAt、generation+1、结束attempt、原receipt DONE、TaskEvent和新messageId的延迟Outbox，提交后才ACK。首次退避24–30秒、后续96–120秒，任务retryAt另阻止提前消费，taskId/快照不变。
+- 永久失败、次数或时间预算耗尽写FAILED与最小dead Outbox后ACK；总期限覆盖重试等待。最后尝试中断后重投也持久终结，旧token不能覆盖新执行。原始异常不写数据库/消息；未知处理器异常映射EXECUTION_FAILED，预算/心跳/提交数据库错误不会误判为可ACK的业务异常。
+- 增加budget.reserve端口，调用前在真实事务内预留modelCalls/tokens/costMicros并累计attempt token/cost，跨尝试不归零；超额先拒绝。保守预留不自动退款，真实LLM/SDK尚未接入；外部适配器必须复用此端口，不能把模拟预算测试当成真实账单或外部副作用exactly-once保证。
+- Quarantine按可信消费owner/consumerName/dedupeKey唯一写入，与dead Outbox同事务；消息来源owner不可信。存消息哈希、可用UUID和白名单元数据，不存非法正文/原始信封/异常；并发和提交后重投由唯一约束吸收。未知/不可见任务、未来代次、messageId复用冲突也隔离；数据库不可写仍不ACK。
+- requested/dead契约均由Zod校验，Outbox核对事件/来源聚合，真实confirm+mandatory+return沿用T3。终端队列新增analysis.dead.v1/job.index.dead.v1绑定并保留原Broker DLX requested绑定。新迁移202611260002只追加retryAt和隔离区可信身份/去重字段，兼容旧诊断行，不改已应用历史迁移。无新依赖/账号/vhost/Docker服务。
+- 保留显式有界消费/发布命令，未增加T6对账/常驻调度或T7图锁；更新README、架构、部署回退说明、测试和路线图。
+
+逐次检查（test runner耗时不含构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| T1～T4提交前核对 | 仅本阶段53个文件；无凭证/运行数据/生成文件入暂存。T1已应用迁移末尾空行提示保留，未改校验和；T3/T4/文档暂存检查通过。既有验证结果写入commit正文 |
+| T5初始build、db:generate | 通过；生成Prisma客户端，未跟随CLI升级提示 |
+| PostgreSQL归属、db:deploy第1次 | 通过，新增T5迁移，未重置库 |
+| db:deploy第2次、db:status | 通过，无pending，5条迁移均已应用 |
+| T5真实专项第1次 | 5通过、7失败（含父测试），116.328秒；前5个失败分类/预算/期限场景通过，后续观察连接丢心跳导致断连、断言连锁失败及清理失败，见排查 |
+| 首轮Lint | 通过，零警告 |
+| 故障注入接口调整期间build | 3次失败：Prisma扩展客户端与普通客户端的泛型/重载签名不兼容；未用类型断言绕过，最终用仅交互事务的窄端口和真实事务代理注入SQL错误，后续构建通过 |
+| 首轮失败遗留精确清理 | 核对测试场景/时间/预算和16组Owner/task精确ID，归属检查通过后删除本轮4队列/策略及16主体关联测试数据，剩余Owner0；证据保存在忽略目录data/s15-runs |
+| T5真实专项第2次 | 12通过、0失败、0跳过，65.026秒；真实错误移交/隔离SQL回滚、只读数据库、三种handoff后SIGKILL均通过；本轮资源残留0 |
+| outbox:setup复验 | 通过；读回正式resume.dead两条新dead绑定及原requested绑定均存在，无purge |
+| typecheck、Lint修正后 | 均通过，零警告；最终代码复核也通过 |
+| pnpm test（追加dead return与并发隔离用例后构建） | 38通过、0失败、0跳过，28.376秒；原API/Worker限制保持，L1本轮未复现 |
+| db:validate、schema diff | 通过、无差异；5条迁移状态正常 |
+| 完整test:integration（最终代码） | 55通过、2失败、0跳过，466.737秒；T5父/子14项全部通过（父78.535秒），T1/T2、T3、T4、Checkpoint及Langfuse均通过；仅既有Qdrant创建超时及父测试失败 |
+| tasks:consume analysis（最终Nest装配） | 空队列运行60秒后received=0/acknowledged=0/reason=deadline，退出0；QuarantineStore注入正常 |
+| 最终RabbitMQ残留核查 | 只保留4条正式队列和1条正式策略，ready/unacked均0，AMQP连接0；本轮T3/T4/T5临时资源清理完成 |
+| Qdrant残留核查 | s12_*残留0，未覆盖原超时失败 |
+| 文件检查 | 初步22文件/50本地链接；补齐进度与路线图后24文件/96链接有效、无行尾空白；git diff --check通过，无依赖或锁文件变化，凭证/data/dist/生成产物未进入变更 |
+
+失败排查和修正：
+
+- 第1次专项在故障注入时临时编译Nest测试容器，观察AMQP连接在该段停顿中被broker关闭。服务端2026-11-26 05:17:02 UTC记录该连接 `missed heartbeats from client, timeout: 10s`；随后共用channel读取和清理失败，残留消息又干扰后续强杀断言。没有把这些失败记为通过。移除不必要的Nest装配，故障测试改为直接代理真实Prisma事务/INSERT（payloadVersion=0触发真实CHECK）；事务端口保留完整事务语义，未降低校验。
+- 原清理复用失败channel，已改为独立连接；每轮记录精确命名空间和成功创建的Owner ID到忽略目录manifest，清理成功后标记cleaned。第一次无事先manifest，依据本轮执行时间、16个场景产生的预算/任务状态和精确ID逐一核对后清理，未按前缀批量删业务数据；后续轮次manifest记录正常。
+- 完整回归仍出现既有Qdrant创建超时，服务端集合 `s12_05db51d7_be03_4f20_b8d6_4856e2f85c86` PUT耗时6.948138秒，超过未变的5秒限制；迟到200后精确DELETE成功（0.114784秒），s12_*残留0。处理方向仍是独立安排存储性能修复/目标硬件复验，不能扩大超时或改tmpfs掩盖。本批未改Qdrant、API启动测试或观测链路；Langfuse本轮通过，不抹除T4历史HTTP超时记录。
+
+未执行/限制：未实现T6定时对账、常驻Worker调度、T7 Checkpoint隔离、T8查询/取消API或T9 OpenAPI；未实现真实LLM/SDK错误映射与预留额度结算、隔离区重放/清理API、发布预算耗尽人工恢复和告警。未做多节点故障/长期负载、服务器/SSD、新机冻结安装（依赖未变）、容器重启实验。延迟重试仍需再次运行原Outbox发布批次；数据库持久移交不是立即可靠送达，T3发布失败达到上限时保留事件待处理。未推送、未合并。
+
 ## 2026-11-26 S1.4-T1～T4 本地提交整理与T5启动
 
 维护者授权按规范保存现有工作后继续下一任务。本轮将T1/T2、T3、T4分别整理为本地提交，累计文档单独提交；保留各次失败与未执行项，未推送、未合并。前述“未提交”是各记录当时状态，不改写历史。T5范围仍严格按路线图：任务重试/失败分类、延迟Outbox、dead事件和Quarantine；不提前实施T6对账/T7 Checkpoint隔离。
