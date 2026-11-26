@@ -16,6 +16,7 @@
 pnpm run typecheck
 pnpm run lint
 pnpm test
+pnpm run openapi:check
 pnpm run test:integration
 ```
 
@@ -25,13 +26,14 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 
 `pnpm run test:integration:native-qdrant`额外读取 `infra/.env.qdrant-native`，只在该测试上下文中改用维护者授权的Windows原生Qdrant。准备方法见[原生Qdrant回归对照](deployment.md#原生qdrant回归对照)。它执行同一组集成文件、原5秒Qdrant超时和CRUD/维数断言；默认Docker结果与对照结果分别记入progress，两套不要同时运行。对照通过不代表原Docker路径修复。
 
-真实服务测试文件使用 `--test-concurrency=1` 顺序运行，以减少三组测试共享本机Docker资源时的竞争。并行执行曾出现Qdrant创建超过5秒，但串行后仍复发；专项排查还确认停止观测服务后仍可能超时，不能只归因于测试并发或Langfuse。只限制文件之间的调度，各用例的池并发、重投、强杀与超时断言不变；不将串行验收描述为同时满负载验证。
+真实服务测试文件使用 `--test-concurrency=1` 顺序运行，以减少测试共享本机Docker资源时的竞争。并行执行曾出现Qdrant创建超过5秒，但串行后仍复发；专项排查还确认停止观测服务后仍可能超时，不能只归因于测试并发或Langfuse。只限制文件之间的调度，各用例的池并发、重投、强杀与超时断言不变；不将串行验收描述为同时满负载验证。
 
 ## 覆盖范围
 
 | 测试 | 验证内容 |
 |---|---|
 | test/config.test.ts | 配置转换、必需字段、非法端口、未知环境、秘密字段排除 |
+| test/openapi.test.ts | 生成产物与运行时Schema一致；过期/缺失副本检查失败且不重写文件；真实路径、两类任务状态与内部字段排除 |
 | test/http.test.ts | 编译后的Nest依赖注入、实际HTTP、400/404/500契约、非法JSON、并发requestId隔离 |
 | test/process.test.ts | API/Worker真实子进程的启动失败、正常启动、关闭、日志脱敏与端口释放；registerHooks记录缺配置/非法配置时未加载Nest或bootstrap |
 | test/infrastructure-config.test.ts | 拒绝外部地址、其他数据库/vhost、管理员账号及非项目端口 |
@@ -52,6 +54,7 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 | test/reconciliation.test.ts | 锁标识稳定性、游标跨过阻塞任务/回绕、修复后才发布、定时不重叠、停止与连续失败上限 |
 | test/integration/reconciliation.test.ts | 两类过期任务真实恢复消费、双对账竞争、持锁子进程不抢占/强杀后恢复、锁连接终止中止处理器、行锁/取消/owner隔离、原Outbox预算/过期发布租约、缺消息/旧确认未终态、恢复上限、只读DB与SQL回滚 |
 | test/integration/checkpoint-fence.test.ts | 真实旧Worker操作系统级暂停/恢复、终止实际锁连接、未知旧执行分配新thread、官方saver迟到写入隔离、旧token产物/终态拒绝；确认退出后同thread恢复/无Checkpoint重启；旧索引执行不能修改合成新版本目标 |
+| test/integration/task-api.test.ts | 实际HTTP/Nest/数据库装配、资源owner隐藏、严格请求与安全错误、持久阶段/计数/重试信息；两类任务重复取消、队列/重试取消、完成竞争、旧token拒绝、只读DB、SQL回滚、实际Worker清理边界与取消收据 |
 
 任务集成用例注册独立TasksModule并替换身份provider，以本轮随机Owner隔离数据；不向API或Worker增加业务路由。并发测试在两次真实SELECT均返回不存在后释放屏障，强制触发唯一约束竞争。故障测试通过Prisma扩展在真实Outbox INSERT之前或之后抛错，执行的SQL仍在真实交互事务内，验证任务与Outbox均不残留，并用原key重试成功。HTTP测试只注册测试专用409路由，验证统一错误体、requestId和日志白名单。
 
@@ -80,6 +83,12 @@ T7的 `checkpoint-fence-worker.fixture.ts`使用实际TaskDeliveryHandler、Post
 确认停止用例先强杀并等待实际退出，再调用可信 `confirmWorkerExit`；活进程调用必须拒绝。同thread有Checkpoint时null输入续跑、无Checkpoint时冻结输入重启，最终合成值与已提交产物一致。JobIndexTask用两个实际子进程验证新版本SyntheticIndexTarget先完成后旧执行不能改写；同时验证即便旧输入重新取得有效租约，也不能把新版本目标设为READY。此目标为合成替身，不是已实现的JobVersion或Qdrant索引。
 
 T7 manifest位于 `data/s17-runs/<UUID>.json`，记录本轮Owner及全部新旧thread。清理先恢复/结束并等待所有本轮子进程，再复核PostgreSQL归属，逐个调用官方deleteThread并确认不存在，只删除这些Owner下的合成记录，最后验证业务/Checkpoint池均关闭。Windows暂停/恢复已实际执行；其他平台SIGSTOP/SIGCONT分支未验证。测试不停止共享服务、不清空数据库或按前缀删除线程。
+
+T8通过真实HTTP监听器访问TaskController；测试身份只通过Nest provider替换，不新增公开owner输入。GET在真实数据库读回阶段和TaskEvent计数；取消POST先确认202只保存flag，再由实际消费/对账事务完成。专用子进程在收到abort后继续等待清理屏障，父进程确认其仍持锁、仍为RUNNING，释放后才观察CANCELLED和DONE收据。只读连接的取消请求返回安全500；故障注入触发真实TaskEvent列宽错误，核对状态/fence/attempt/收据整体回滚，正常重试只写一个取消事件。T6原“跳过取消”断言随T8行为改为“无锁时取消，终态重复扫描跳过”，保留持锁不抢占及其他隔离断言。
+
+T8使用data/s18-runs/<UUID>.json记录本轮Owner；清理先等待全部自有子进程退出并关闭HTTP，再复核PostgreSQL归属，精确删除本轮记录并确认池关闭。它不请求LLM或写Checkpoint，不创建共享队列/向量数据。基础配置测试另外拒绝生产模式、公网监听、非法开关及非项目数据库；未启用任务API的原进程加载/超时断言保持不变。
+
+T9在独立生成进程初始化官方Zod扩展并载入实际编译后的contracts，输出OpenAPI 3.1；基础测试以临时副本制造过期和缺失状态，确认check退出非零且不写回。测试不通过改动真实产物来模拟失败。CI配置执行同一openapi:check及基础检查，完整真实集成仍单独运行；远端CI未运行时必须在progress记录，不能把本机命令成功称为CI已通过。
 
 DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，观察源quorum队列保留并最终转发。RabbitMQ 4.4.0本地内部dead-letter publisher confirm timeout实测为180000ms，测试最长等待190秒覆盖一次内部重试，父用例最长300秒；该等待与外部publish的5秒截止分开。未修改服务端设置或原有Qdrant/API测试超时，因此完整集成通常需要数分钟。单节点quorum未验证多副本故障或DLX长期积压容量。
 

@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区、对账及T7合成图Checkpoint/fence联合隔离已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区、对账、Checkpoint/fence联合隔离、任务查询/取消API及OpenAPI生成已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -22,11 +22,11 @@
 
 | 当前入口/模块 | 实际接线 | 验证边界 |
 |---|---|---|
-| API / 空Worker | main入口先校验配置，再动态导入bootstrap-api或bootstrap-worker；配置失败只调用独立startup-error；API只装配配置、日志和健康检查，Worker仅配置、日志及存活定时器 | 没有业务任务、模型调用或观测导出 |
+| API / 空Worker | main入口先校验配置再动态装配；默认API仅健康检查，TASK_API_ENABLED=true时额外动态装配TaskApiModule；Worker仅配置、日志及存活定时器 | 任务API仅固定开发owner/loopback；数据库查询和取消请求，不执行任务/模型或导出观测 |
 | TasksModule / IdentityModule | 显式register数据库连接；应用服务取得可信owner，再校验合成输入，通过TaskRepository写任务和Outbox | 默认固定开发主体，可替换身份provider；仅数据库创建/幂等，不含发布器、消费者或任务HTTP接口 |
 | OutboxModule | 显式注册身份、数据库与消息发布适配器，`outbox:publish`执行有界批次 | 短事务领取/发布/条件标记；无常驻轮询，消费者由ConsumerModule提供 |
 | ConsumerModule | `tasks:consume`按任务类型运行有界手动ACK会话；身份、执行存储和合成处理器通过Nest装配 | TaskAttempt/ConsumerReceipt、租约心跳与fence保护合成完成事件；未接入业务图或常驻调度 |
-| ReconciliationModule | `tasks:reconcile once/watch`按owner分页扫描两类任务，事务修复后调用Outbox发布器 | 与消费者共享执行锁标识；只恢复调度或按预算失败，不凭空生成报告/Checkpoint终态 |
+| ReconciliationModule | `tasks:reconcile once/watch`按owner分页扫描两类任务，事务修复后调用Outbox发布器；T8包含取消请求 | 与消费者共享执行锁标识；恢复调度、按预算失败或无锁时取消，不凭空生成报告/Checkpoint成功终态 |
 | Checkpointer | 独立provision/setup与pg池；`tasks:consume:graph`显式装配CheckpointTaskHandler合成图 | 未知旧执行切换thread；确认实际执行收束或子进程退出才同thread续跑；产物/终态由业务fence保护，尚无真实简历图 |
 | ObservabilityModule | `test/fixtures/observability-graph.ts`使用官方CallbackHandler及手工OTel span；独立集成测试注册Nest模块 | 合成输入与关联/脱敏验证；未验证跨API/Worker传播或真实LLM |
 | 本地服务 | 单一resume-studio项目，业务三服务在default网络，Langfuse六服务在observability网络 | 独立账号/卷、双向独立启停；运行结果见开发进度；本机存储性能仍有限制 |
@@ -244,7 +244,7 @@ TaskAttempt.executionStoppedAt只记录可信停止证据：TaskDeliveryHandler�
 
 心跳更新任务及当前收据采用同一事务、同一个数据库时间。心跳不重叠执行；失败会abort本次处理器，完成前等待已开始的心跳结束，禁止后台继续续租。执行受输入冻结预算、跨尝试首个startedAt推导的总期限及单次上限限制。当前只执行无外部副作用的合成处理器；处理结果与输入哈希核对后，在同事务写SYNTHETIC_COMPLETED TaskEvent、SUCCEEDED、TaskAttempt结束及ConsumerReceipt DONE，再在原channel ACK。合成状态没有报告/indexStatus语义，真实产物事务将随S2接入。
 
-数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。T6对账已接入合成执行锁，T7扩展到官方合成图；取消API仍属T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
+数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。T6对账已接入合成执行锁，T7扩展到官方合成图；T8增加取消的持久终结，receipt存在和租约失效都不能证明旧LangGraph已停止。
 
 **业务重试采用数据库延迟Outbox**：失败分类后，在事务中更新Task为RETRY_WAIT、递增dispatchGeneration、写入新的messageId与availableAt；提交后ACK原消息。发布器到期再投递。无需RabbitMQ延迟插件，也不会在TTL队列头部阻塞不同延迟消息。
 
@@ -347,8 +347,8 @@ erDiagram
 #### S1.4-T1/T2 已实现的映射
 
 - `IdentityModule` 默认提供固定开发owner `00000000-0000-4000-8000-000000000001`，由迁移建立Owner记录；`IDENTITY`/`IdentityPort`可替换，应用服务不接受请求正文的ownerId。未知身份不能自动建立Owner，任务外键拒绝未登记主体。此适配器未接入公网入口，不代表完成登录鉴权。
-- 两类任务保持独立表与状态枚举，初始 `QUEUED`、generation=1、fenceToken=0；分析任务初始activeGraphThreadId=taskId、graphGeneration=1。租约、取消、预算使用量等字段只提供存储，领取/心跳/状态迁移由后续任务实现。
-- `TaskAttempt`、`TaskEvent`、`ConsumerReceipt`保留taskType/taskId，并以analysisTaskId/jobIndexTaskId互斥外键绑定实际任务；SQL CHECK要求类型、taskId及外键一致，复合外键同时校验ownerId。TaskEvent的seq为正且按taskType/taskId唯一；单调序号的分配逻辑随进度写入实现，本批不提供事件写入服务。TaskAttempt费用用整数微单位与currency保存。
+- 两类任务保持独立表与状态枚举，初始 `QUEUED`、generation=1、fenceToken=0；分析任务初始activeGraphThreadId=taskId、graphGeneration=1。T1提供存储，T4–T8已接入领取/心跳、预算累计、恢复和取消状态迁移。
+- `TaskAttempt`、`TaskEvent`、`ConsumerReceipt`保留taskType/taskId，并以analysisTaskId/jobIndexTaskId互斥外键绑定实际任务；SQL CHECK要求类型、taskId及外键一致，复合外键同时校验ownerId。TaskEvent的seq为正且按taskType/taskId唯一，T4–T8在任务行锁事务中为完成/重试/恢复/取消分配序号；SSE仍未提供。TaskAttempt费用用整数微单位与currency保存。
 - `OutboxEvent`保留通用aggregateType/aggregateId，无分析任务专属外键；创建服务在同一事务内创建对应聚合并写调度事件。`Quarantine`面向无法可信解析的基础设施消息，messageId可空、不信任owner；本批无面向用户的隔离区查询。其他新增应用查询均显式限定ownerId。
 - 合成输入Schema固定 `schemaVersion: 1`、`kind: synthetic`，明确冻结输入版本、预算及配置版本；versionId暂为合成UUID，无尚不存在的ResumeVersion/JobVersion外键。快照内嵌于任务JSONB，因此任务、快照、Outbox是同库同事务。写入及幂等读回都执行Zod校验；SQL核对快照owner/版本与列一致，并用trigger禁止更新输入、版本、owner、幂等键和requestHash。S2接入真实资源时须另加迁移与授权检查，不能直接把合成ID当成业务记录。
 - 幂等作用域为 `(ownerId, taskType, Idempotency-Key)`，各任务表唯一 `(ownerId,idempotencyKey)`；key按UUID校验并统一小写。SHA-256覆盖任务类型及完整验证后的快照（含owner、所有版本和预算），递归排序对象键，数组顺序保持；不包含生成的taskId、事件时间。相同请求返回原taskId，差异请求抛出安全的 `IDEMPOTENCY_CONFLICT`，HTTP错误适配器映射409。并发唯一冲突发生后先回滚，再从新事务视图读取已提交赢家；没有内存幂等缓存或无界重试。
@@ -400,12 +400,18 @@ S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；该版本
 
 - `PostgresExecutionLock`给合成消费者提供session advisory lock：以固定命名空间、ownerId/taskType/taskId的SHA-256前64位作为有符号bigint键，UUID统一小写。对账事务使用同键的pg_try_advisory_xact_lock；消费者先拿session锁再领取任务，对账先拿transaction锁再以FOR UPDATE SKIP LOCKED读任务。锁冲突直接延后，不等待或抢占。哈希碰撞最多造成无关任务延迟，不授予并发执行。
 - session连接来自原3连接池并在执行期间保留，事务另借连接；当前每个consumer命令最多执行一个任务。退出时显式解锁，连接错误/未知锁结果销毁该连接；锁连接丢失触发AbortSignal，不ACK。扩展进程内并发前必须重新核算池预算。T7已将锁生命周期接到合成LangGraph及saver收束，线程切换由领取事务完成；业务数据库写入仍由generation/fence约束。
-- 默认每轮每类最多10个候选，用UUID游标分页并回绕，跳过锁住或校验失败的任务不会一直挡住后续任务。只查询可信owner下过期RUNNING，以及updatedAt超过120秒、retryAt已到的QUEUED/RETRY_WAIT。每个候选在事务中重新判断终态、取消标志、代次、租约及输入Schema，不用扫描时的旧值直接写入。
+- 默认每轮每类最多10个候选，用UUID游标分页并回绕，跳过锁住或校验失败的任务不会一直挡住后续任务。查询可信owner下过期RUNNING、updatedAt超过120秒且retryAt已到的QUEUED/RETRY_WAIT，以及T8新增的非终态取消请求。每个候选在事务中重新判断终态、取消标志、代次、租约及输入Schema，不用扫描时的旧值直接写入。
 - 过期且无执行锁的RUNNING在一个事务内结束旧attempt、累计elapsedMs、将旧代次RUNNING收据标DONE，递增generation/fence/recoveryCount，置QUEUED/RECOVERY_QUEUED并写新messageId Outbox和进度事件。原taskId、快照、调用/token/费用预算和graph thread字段不变；晚到旧消息/旧token分别由旧代次与fence拒绝。两个对账实例竞争同一候选只会安排一次恢复。
 - 长期QUEUED/RETRY_WAIT缺调度Outbox，或当前代次事件已confirm且超过120秒仍无执行时，才安排新的恢复代次。当前代次未发布事件继续使用T3发布租约/退避/次数；failedAt事件仅报告delivery-failed，不清零重发预算或换新事件绕过限制。未发布事件扫描包含dead及Quarantine来源，由原发布器处理；活跃发布租约不抢占，过期租约由原领取逻辑恢复。进度汇总包含pending/due/failed及最老事件时间。
 - recoveryCount默认最多3次，不因重启清零；已有恢复消息仍待发布时等待原投递，不因次数达到上限提前判失败。再次需要恢复却超限，或输入执行次数/总期限已耗尽，则复用T5事务写FAILED/dead。没有首attempt的任务只受恢复次数约束，不臆造执行起点；已开始的任务保持首次attempt总期限。缺少原投递/收据时dead.originalMessageId为空，不生成伪造的消费收据。
 - 定时watch立即执行一轮，完成后间隔10秒再执行，轮次不重叠；每轮60秒期限，后续操作停止，已开始的SQL仍受原连接/语句/事务上限约束。连续3轮数据库/修复错误退出并报告安全错误。每个候选失败保留error汇总，继续同页其他候选；发布错误沿用Outbox持久预算。once/watch都由显式命令启动，不新增Docker服务，不默认为API/空Worker引入依赖。
-- T6不读取或修正官方Checkpoint，不通过缺失终态推测业务成功；表中Checkpoint结束后的幂等finalize仍属于未来真实产物/业务图接入。取消请求只跳过并保留状态，不提前实现取消API。
+- 对账不读取或修正官方Checkpoint，不通过缺失终态推测业务成功；表中Checkpoint结束后的幂等finalize仍属于未来真实产物/业务图接入。T8扩展扫描所有非终态取消请求，并按下述安全边界持久终结。
+
+#### S1.4-T8 当前取消边界
+
+API在owner限定的行锁事务中只保存cancelRequested；非终态重复请求返回202，终态返回409，完成与取消按同一任务行锁串行决定先后。消费者领取时持有session锁，若已有取消请求则直接终结，不新建attempt；运行中取消使心跳/节点/产物/完成条件失败，实际处理器收束后当前领取身份才可提交CANCELLED。收束未知时保留无停止证据，按T7规则销毁锁连接；稍后无锁对账可通过增加fence隔离业务写入并取消任务，但不会伪造executionStoppedAt。
+
+对账先取同键transaction advisory lock，持锁执行返回lock-held。取消请求优先于有效租约、未来retryAt、恢复/失败预算；取消不发新执行消息或dead事件。终结事务增加fence、清除租约及retryAt、结束attempt记账、把现有RUNNING收据标DONE，并追加唯一seq取消事件，保留已有完成计数和历史产物。数据库失败全部回滚，未持久终结不能ACK；迟到旧执行受取消标志/fence/终态约束。既有Outbox消息不删除，后续发布/重投由终态消费者ACK。CANCELLED不等于未知旧进程物理退出，资源删除仍需独立停止确认。
 
 ## 7. 召回、RAG与索引一致性
 
@@ -452,6 +458,10 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 报告保留所有精判候选的判断与分数，不能只保存Top10，否则调权无法让第11名进入榜单。重算的范围仍是原CandidateSet，若要找新岗位必须重新召回。至少测试权重归一化、未知覆盖率、硬门槛、空要求、负权重/NaN拒绝、重复ID、同分排序和重算无模型调用。
 
 ## 9. API调用链、进度与错误
+
+S1.4-T8已实现 `GET /api/v1/tasks/:taskId` 和 `POST /api/v1/tasks/:taskId/cancel`，字段及状态码见[HTTP API](api.md)。TaskApiModule仅显式启用时加载；开发身份来自IdentityPort，拒绝生产环境/公网监听，不接受请求owner。查询使用同一Repeatable Read事务读取owner限定的任务和最新事件，返回任务stage、实际计数（未知total=null）、累计attempt、重试时间和安全错误；不返回输入/fence/图线程。当前合成任务没有报告，真实业务API仍按下表规划。
+
+S1.4-T9由独立脚本使用 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI 3.1，复用health/错误/task-api运行时Zod Schema；扩展只在生成进程初始化，不进入API模块树。提交产物和CI过期检查防止Schema与文档漂移；跨字段数值关系、owner及状态机仍由运行时/事务检查，生成文档不等于交付生产认证或所有规划接口。
 
 下表路径均位于 `/api/v1` 之下（例如 `POST /api/v1/analyses`）；地址、错误码、幂等、分页、轮询与SSE的通用约定见[接口契约规范](api-contract.md)。
 
