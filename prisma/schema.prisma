@@ -19,3 +19,216 @@ model DiagnosticRecord {
   @@index([runId])
   @@map("s12_diagnostic_record")
 }
+
+enum AnalysisTaskStatus {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum JobIndexTaskStatus {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum TaskType {
+  ANALYSIS
+  JOB_INDEX
+}
+
+enum ReceiptStatus {
+  RUNNING
+  DONE
+}
+
+model Owner {
+  id String @id @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  analysisTasks AnalysisTask[]
+  jobIndexTasks JobIndexTask[]
+  outboxEvents OutboxEvent[]
+
+  @@map("owner")
+}
+
+// S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.
+model AnalysisTask {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  resumeVersionId String @map("resume_version_id") @db.Uuid
+  activeGraphThreadId String @map("active_graph_thread_id") @db.Uuid
+  graphGeneration Int @default(1) @map("graph_generation")
+  reportId String? @map("report_id") @db.Uuid
+  inputSnapshot Json @map("input_snapshot") @db.JsonB
+  status AnalysisTaskStatus @default(QUEUED)
+  stage String @default("QUEUED") @db.VarChar(64)
+  generation Int @default(1)
+  fenceToken BigInt @default(0) @map("fence_token")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until")
+  heartbeatAt DateTime? @map("heartbeat_at")
+  cancelRequested Boolean @default(false) @map("cancel_requested")
+  errorCode String? @map("error_code") @db.VarChar(64)
+  budgetUsage Json @map("budget_usage") @db.JsonB
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  requestHash String @map("request_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  attempts TaskAttempt[]
+  events TaskEvent[]
+  receipts ConsumerReceipt[]
+
+  @@unique([ownerId, idempotencyKey])
+  @@unique([ownerId, id])
+  @@index([ownerId, status, createdAt])
+  @@index([status, leaseUntil])
+  @@map("analysis_task")
+}
+
+// S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.
+model JobIndexTask {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  jobVersionId String @map("job_version_id") @db.Uuid
+  embeddingVersion String @map("embedding_version") @db.VarChar(64)
+  indexVersion String @map("index_version") @db.VarChar(64)
+  inputSnapshot Json @map("input_snapshot") @db.JsonB
+  status JobIndexTaskStatus @default(QUEUED)
+  stage String @default("QUEUED") @db.VarChar(64)
+  generation Int @default(1)
+  fenceToken BigInt @default(0) @map("fence_token")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until")
+  heartbeatAt DateTime? @map("heartbeat_at")
+  cancelRequested Boolean @default(false) @map("cancel_requested")
+  errorCode String? @map("error_code") @db.VarChar(64)
+  budgetUsage Json @map("budget_usage") @db.JsonB
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  requestHash String @map("request_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  attempts TaskAttempt[]
+  events TaskEvent[]
+  receipts ConsumerReceipt[]
+
+  @@unique([ownerId, idempotencyKey])
+  @@unique([ownerId, id])
+  @@index([ownerId, status, createdAt])
+  @@index([status, leaseUntil])
+  @@map("job_index_task")
+}
+
+// SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.
+model TaskAttempt {
+  attemptId String @id @map("attempt_id") @db.Uuid
+  generation Int
+  fenceToken BigInt @map("fence_token")
+  startedAt DateTime @default(now()) @map("started_at")
+  endedAt DateTime? @map("ended_at")
+  traceId String? @map("trace_id") @db.Char(32)
+  errorClass String? @map("error_class") @db.VarChar(64)
+  tokens BigInt @default(0)
+  costMicros BigInt @default(0) @map("cost_micros")
+  currency String @db.Char(3)
+  ownerId String @map("owner_id") @db.Uuid
+  taskType TaskType @map("task_type")
+  taskId String @map("task_id") @db.Uuid
+  analysisTaskId String? @map("analysis_task_id") @db.Uuid
+  jobIndexTaskId String? @map("job_index_task_id") @db.Uuid
+  analysisTask AnalysisTask? @relation(fields: [ownerId, analysisTaskId], references: [ownerId, id], onDelete: Restrict)
+  jobIndexTask JobIndexTask? @relation(fields: [ownerId, jobIndexTaskId], references: [ownerId, id], onDelete: Restrict)
+
+  @@index([ownerId, taskType, taskId, startedAt])
+  @@map("task_attempt")
+}
+
+// SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.
+model TaskEvent {
+  id String @id @db.Uuid
+  seq Int
+  stage String @db.VarChar(64)
+  counts Json @db.JsonB
+  safeMessage String @map("safe_message") @db.VarChar(256)
+  createdAt DateTime @default(now()) @map("created_at")
+  ownerId String @map("owner_id") @db.Uuid
+  taskType TaskType @map("task_type")
+  taskId String @map("task_id") @db.Uuid
+  analysisTaskId String? @map("analysis_task_id") @db.Uuid
+  jobIndexTaskId String? @map("job_index_task_id") @db.Uuid
+  analysisTask AnalysisTask? @relation(fields: [ownerId, analysisTaskId], references: [ownerId, id], onDelete: Restrict)
+  jobIndexTask JobIndexTask? @relation(fields: [ownerId, jobIndexTaskId], references: [ownerId, id], onDelete: Restrict)
+
+  @@unique([taskType, taskId, seq])
+  @@index([ownerId, taskType, taskId, seq])
+  @@map("task_event")
+}
+
+// SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.
+model ConsumerReceipt {
+  id String @id @db.Uuid
+  consumerName String @map("consumer_name") @db.VarChar(128)
+  messageId String @map("message_id") @db.Uuid
+  generation Int
+  status ReceiptStatus @default(RUNNING)
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until")
+  processedAt DateTime? @map("processed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  ownerId String @map("owner_id") @db.Uuid
+  taskType TaskType @map("task_type")
+  taskId String @map("task_id") @db.Uuid
+  analysisTaskId String? @map("analysis_task_id") @db.Uuid
+  jobIndexTaskId String? @map("job_index_task_id") @db.Uuid
+  analysisTask AnalysisTask? @relation(fields: [ownerId, analysisTaskId], references: [ownerId, id], onDelete: Restrict)
+  jobIndexTask JobIndexTask? @relation(fields: [ownerId, jobIndexTaskId], references: [ownerId, id], onDelete: Restrict)
+
+  @@unique([consumerName, messageId])
+  @@index([ownerId, taskType, taskId])
+  @@index([status, leaseUntil])
+  @@map("consumer_receipt")
+}
+
+// Generic aggregate identity, deliberately no analysis-only task FK.
+model OutboxEvent {
+  eventId String @id @map("event_id") @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  aggregateType String @map("aggregate_type") @db.VarChar(64)
+  aggregateId String @map("aggregate_id") @db.Uuid
+  eventType String @map("event_type") @db.VarChar(128)
+  payloadVersion Int @map("payload_version")
+  payload Json @db.JsonB
+  availableAt DateTime @default(now()) @map("available_at")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until")
+  publishAttempts Int @default(0) @map("publish_attempts")
+  publishedAt DateTime? @map("published_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([publishedAt, availableAt, leaseUntil])
+  @@index([ownerId, aggregateType, aggregateId])
+  @@map("outbox_event")
+}
+
+// Invalid deliveries may have no valid UUID messageId or trusted owner.
+model Quarantine {
+  id String @id @db.Uuid
+  messageId String? @map("message_id") @db.Uuid
+  messageHash String @map("message_hash") @db.Char(64)
+  errorCode String @map("error_code") @db.VarChar(64)
+  safeMetadata Json @map("safe_metadata") @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([messageHash, createdAt])
+  @@map("quarantine")
+}
