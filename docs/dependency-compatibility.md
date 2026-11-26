@@ -63,6 +63,16 @@
 
 ## 2. 容器基线
 
+### S2.1-T1 解析依赖复核（2026-11-27，未安装）
+
+[本次registry快照](research/parser-dependencies-2026-11-27.json)记录版本、发布时间、engines/peers、许可证与发布包integrity。pdfjs-dist 6.5.438（2026-11-01，Apache-2.0，Node >=22.13.0或>=24）、mammoth 1.13.0（2026-09-26，BSD-2-Clause，Node >=12）、yauzl 3.4.0（2026-06-07，MIT，Node >=12），均未声明peer，未标记deprecated；本机Node24.22.3满足声明。近期发布与未deprecated只是维护状态证据，不等于安全审计或运行验证。
+
+直接Node fetch registry失败ECONNRESET，改用pnpm registry查询及curl下载官方npm发布包成功；已阅读各包README/package.json及Mammoth/yauzl安全说明。发布包只解压到忽略目录data/parser-dependency-review供只读核查，不是已安装依赖。来源由快照内tarball及integrity固定，未以可变GitHub主分支作为版本依据。
+
+用途与成本：PDF.js负责PDF文本与真实位置，带可选@napi-rs/canvas（平台二进制成本，T5实验确认加载方式）；Mammoth负责DOCX正文/表格，整包JSZip读取带来内存成本，所以先用yauzl流式预检实际展开量。Mammoth默认禁止externalFileAccess，不净化生成HTML，且文档明确提示恶意文件可能消耗CPU/内存，必须隔离执行；如果使用transformDocument，其API被上游标为不稳定，升级需专项回归。yauzl须启用lazyEntries、strictFileNames与validateEntrySizes，但不校验CRC，应用需另行验证CRC及总量/压缩比/链接/嵌套包。三者都不能单独提供完整安全沙箱。
+
+替代方案：Python/MinerU或云端解析会新增服务/隐私边界，D11已排除；仅用JSZip不能提供本任务要求的流式资源预检；不另选解析方向。T1只冻结候选和边界，T4–T6安装时精确声明并同步锁文件，验证冻结安装、运行样本和传递依赖；目前不宣称解析可用。
+
 | 服务 | 镜像版本 | digest |
 |---|---|---|
 | PostgreSQL 16.15 | pgvector/pgvector:pg16 | sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a |

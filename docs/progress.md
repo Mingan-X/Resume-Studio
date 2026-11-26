@@ -8,6 +8,19 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.1-T1 文件、证据与处理契约（feature/s2.1-resume-evidence）
+
+完成T1契约与设计产出；S2.1仍进行中，尚无上传/解析业务路由。开始时工作区干净，fetch后HEAD与origin/develop相同（左右差异0/0），未操作master。已阅读AGENTS、CONTRIBUTING、路线图§5/§6、最新进度与相关需求/架构/契约。
+
+- 新增文件、版本响应、文本块、引用、ExtractedDocument及失败原因的严格Zod契约；UTF-16半开区间、NFC/换行顺序、块UUID/ordinal/哈希、owner/版本隔离规则见[文件与证据契约](resume-evidence.md)。PDF/DOCX位置字段仍暂定，待T5/T6样本实验。
+- 明确同步上传201、幂等409、大小413、解析422；同owner/key绑定原始字节sha256。只定义Schema，未注册未实现路由或修改OpenAPI。R2及架构PARSE/上传链同步为上传时解析、分析时读已存产物、S2.4执行语义EXTRACT。
+- 完成合成样本矩阵和资源限制实验方案的逐项人工式静态核对；尚未生成/运行解析文件样本，不把设计矩阵当质量实测。
+- registry复核pdfjs-dist6.5.438、mammoth1.13.0、yauzl3.4.0，保存精简元数据及integrity，读取官方发布包README/package.json。Node fetch首次ECONNRESET，pnpm查询/curl下载成功；初次读取误用eslint.config.mjs失败，随后读取实际eslint.config.js。未安装新依赖、未修改锁文件。包文档说明及安全边界已写入依赖说明。
+
+检查：typecheck通过；lint通过（零警告）；pnpm test共47项，46通过、1失败、0跳过，81.752秒。唯一失败为原process.test.ts有效配置API启动用例8238.8ms、Child api did not start，符合已接受L1的API冷启动8秒限制；其余用例及新增2项契约测试通过。没有调整超时、断言或以重复运行覆盖失败。6份文档50个本地文件链接有效；git diff --check通过。
+
+未执行：集成测试、迁移、冻结安装、解析样本与资源边界、Linux验证；T1无服务/迁移/依赖安装变更，解析专项属于T4–T6。真实模型、人工标注、目标服务器与L1/L2解除继续按路线图延后，不使用占位结果。T2/T3可按依赖顺序继续；阶段未完成，未合并或推送。
+
 ## 2026-11-27 决策确认与develop集成分支流程
 
 维护者一次确认全部待决策事项，并授权AI连续完成后续全部阶段，不逐阶段停下验收。只改文档。
