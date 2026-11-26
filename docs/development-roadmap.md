@@ -149,7 +149,7 @@ T7完成后将阶段状态改为“待验收”，由维护者重新验收。
 | D5 | 前端框架 | **已确定**：Vue 3 + TypeScript + Vite | 见[前端ADR-0001](https://github.com/Mingan-X/Resume-Studio-Frontend/blob/main/docs/decisions/0001-frontend-stack.md) | — |
 | D6 | 文件范围 | 文本层PDF与DOCX | OCR是否首版必须、费用与隐私；复杂版式质量样本 | S2.1 |
 | D7 | 评分与数据政策 | unknown单列、硬条件待核实、eligible进Top10；真实数据默认保留30天 | 目标岗位类型、权重、真实数据授权与保留时间 | S2.5、S3.2 |
-| D8 | OpenAPI生成方式 | `@asteasolutions/zod-to-openapi`（与Zod契约同源）；`@nestjs/swagger` 依赖class-validator DTO，与现有Zod边界不一致 | 2026-11-24 registry核对：前者9.1.0、peer `zod ^4.0.0`；接入时重新核对并真实编译 | S1.4-T9 |
+| D8 | OpenAPI生成方式 | **已确定：`@asteasolutions/zod-to-openapi`**（2026-11-26维护者确认，与Zod契约同源） | T9接入时重新核对版本、engines/peers并真实编译；本次确认不安装依赖或改变接口行为 | 选型阻塞已解除；实施仍属S1.4-T9 |
 | D9 | 认证方案 | 同源部署下的服务端会话（HttpOnly、Secure、SameSite Cookie）+ CSRF防护 | 部署形态、是否需要第三方登录、会话存储 | S3.2 |
 | D10 | 生产部署形态 | 单机Compose或托管容器平台 | 数据区域、备份、TLS、成本 | S3.3 |
 

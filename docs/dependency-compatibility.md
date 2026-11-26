@@ -89,7 +89,7 @@
 | 模型适配器 | @langchain/openai1.8.5 | Node>=22、core^1.5.0；包兼容不代表选择了提供商或验证了兼容端点行为 |
 | PDF解析 | pdfjs-dist6.5.438 | Node>=22.13；文本提取、双栏阅读顺序与容器原生依赖需样本验证 |
 | DOCX解析 | mammoth1.13.0 | 只取文字，不直接展示未经净化HTML；表格与证据定位需验证 |
-| OpenAPI生成（决策D8） | @asteasolutions/zod-to-openapi9.1.0 | 2026-11-24核对：peer `zod ^4.0.0`，与现有Zod契约同源；`@nestjs/swagger`12.1.2以class-validator DTO为主，与Zod边界不一致，暂不选。尚未安装或编译验证 |
+| OpenAPI生成（决策D8） | @asteasolutions/zod-to-openapi（工具已确认，安装版本待T9复核） | 2026-11-26维护者确认使用该工具；历史2026-11-24候选9.1.0/peer `zod ^4.0.0`不是本次已验证版本。T9重新核对并安装/编译；当前尚未安装 |
 
 Rubric、LLM服务商/具体模型、Embedding模型与维数仍待确定。不能因候选包存在而生成凭证或声称模型API已可用。
 
