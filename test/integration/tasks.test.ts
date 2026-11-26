@@ -83,7 +83,7 @@ await test('S1.4 real PostgreSQL task creation, ownership, concurrency and rollb
   const initialAnalysis = await service.createAnalysis(key, analysis);
   const initialJobIndex = await service.createJobIndex(key, jobIndex);
 
-  await t.test('S2.2 real snapshot persistence remains closed until the T2 business FK migration', async () => {
+  await t.test('S2.2 real snapshots without a published business version cannot bypass publication', async () => {
     const snapshot = jobIndexInputSnapshotSchema.parse({ ...jobIndexInput(), ownerId, kind: 'job-index' });
     const key = randomUUID(), before = await db.outboxEvent.count({ where: { ownerId } });
     await assert.rejects(module.get(TaskRepository).createJobIndex(key, snapshot));

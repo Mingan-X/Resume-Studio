@@ -145,6 +145,8 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 ## 尚未验证
 
+S2.2岗位与Rubric契约专项见 [job-contracts.test.ts](../test/job-contracts.test.ts)，真实PostgreSQL模型专项见 [jobs.test.ts](../test/integration/jobs.test.ts)：owner/版本关联、事务回滚、发布后UPDATE/INSERT/DELETE保护、发布与要求写入的锁等待、Rubric不可变及真实索引任务待执行。运行结果、失败与后续修复以[进度](progress.md)为准；存储专项不等于岗位HTTP或真实embedding验证。
+
 正式业务任务输入/所有权、真实报告/索引执行器、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布/消费、失败移交、对账及T7联合隔离已有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复与全量回归的逐次结果见进度记录。对应阶段见[开发计划](development-roadmap.md)。
 
 RabbitMQ重投与合成任务测试不能单独证明真实简历业务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；S1.4-T7另有上述实际暂停/迟到写入/线程隔离和索引目标保护证据，两者不混称真实业务验收。

@@ -8,6 +8,26 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T2清理补充核对
+
+完整回归结束后再次通过ownedQdrant核对本项目容器/服务/端口/卷归属，并只读getCollections：集合总数0。未删除其他集合或操作原生Qdrant。
+
+## 2026-11-27 S2.2-T2完成：JD/Rubric持久化与真实版本外键
+
+最终 `pnpm run typecheck`、`pnpm run lint`零警告通过；`pnpm test`70通过/0失败，9.472秒。`pnpm run build`后运行 `node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/jobs.test.js`：7通过/0失败，10.523秒，真实锁等待、不可变发布、owner/FK、事务回滚、Rubric及真实任务无处理器待执行/可取消均通过，精确清理完成。
+
+完整 `pnpm run test:integration`：107项105通过/2失败，531.412秒（data/s22-t2-integration.log）。唯一失败为Docker Qdrant createCollection原5000ms超时及父项；清理对账未报失败，依路线图按已接受L2记录，不能称全绿。其余含新增岗位专项和T1修复后的500ms deadline专项均通过。原生Qdrant对照未执行：T2不涉及向量实现，原生实例仅由维护者管理；不自行启停。迁移generate/validate/deploy两次/status结果见前条，未新增依赖。文档/相对链接与git diff检查通过。
+
+T2按任务提交，阶段仍进行中。T3草稿编辑服务/专项已在工作区准备，仅做无emit类型/Lint预检（通过），尚未编译运行或纳入T2提交；T2全量使用T2编译产物与迁移环境。真实模型/embedding、人工审核及目标服务器继续延后。
+
+## 2026-11-27 S2.2-T2迁移与持久化验证中
+
+T1已提交f853374，当前仍feature/s2.2-jd-rubric，未合并/推送。T2新增Job、JobVersion、独立JobRequirement及owner范围RubricVersion，read repository对持久化JSON重新进行Schema、引用和哈希校验。版本身份和已发布内容受触发器保护，要求写入锁住父版本以序列化发布窗口；real_job_version_id与owner复合外键独立于合成UUID，并由CHECK绑定快照kind/版本。
+
+已执行 `pnpm run db:generate`、`pnpm run db:validate`、核对ownedPostgres项目/端口/卷归属后执行 `pnpm run db:deploy`两次及 `pnpm run db:status`，全部通过，10条迁移且无待执行项。不删除旧数据/卷/配置，未更改已应用旧迁移。首次 `pnpm run typecheck` 失败于新测试把Prisma JsonValue直接重用为写入InputJsonValue；已用已校验document/weights/budgetUsage替代，不用类型断言。基础与集成结果待追加。
+
+T2只提供存储边界；草稿编辑服务、发布事务、正式Rubric导入和岗位HTTP仍按T3及后续任务实现。真实模型/embedding、人工审核/标注及目标服务器继续延后。
+
 ## 2026-11-27 S2.2-T1完成：岗位/Rubric契约与真实任务隔离
 
 最终检查：`pnpm run typecheck`、`pnpm run lint`零警告、`pnpm run openapi:check`通过；`pnpm test`70通过/0失败/0跳过，10.659秒；修复后的 `pnpm run test:integration`100通过/0失败/0跳过，510.052秒（data/s22-t1-integration-final.log）。Docker Qdrant创建2305.5ms通过原5000ms限制，各专项完成精确清理；未解除L1/L2，仍按S3.3在目标环境复验。相对文档文件链接与 `git diff --check` 通过。

@@ -124,6 +124,8 @@ S2.1规划在上传请求内同步解析并持久化文本；PARSE按可信owner
 
 ### 4.2 另一个工作流：JD入库/索引
 
+S2.2-T1/T2已接入[岗位/Rubric契约与持久化边界](jd-rubric.md)：JD证据复用引用校验，JobVersion发布内容及要求由数据库约束禁止原地修改；真实索引快照通过独立版本外键与旧合成任务兼容。下述发布业务链及真实索引执行仍按后续任务接入，完整运行证据见[进度](progress.md)。
+
 JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人工或业务规则确认硬门槛/权重 → 在同一PostgreSQL事务内发布不可变JobVersion、创建JobIndexTask并写OutboxEvent（`job.index.requested.v1`）→ Worker embedding → Qdrant幂等upsert → 提交索引任务终态与该版本的indexStatus=READY。
 
 首版采用独立的JobIndexTask，归属JobVersion及目标embeddingVersion/indexVersion；它与AnalysisTask共享Outbox发布器、消息交付、幂等收据、执行尝试、租约/fencing和对账机制，但不复用分析任务的报告、画像或PARTIAL业务含义。JobIndexTask只负责已确认版本的索引生命周期，JD草稿抽取不伪装成简历分析任务；是否异步化草稿抽取可在JobModule内部实现时明确。Task在下文表示两类任务的基础设施概念，不是要求新增统一业务表或Agent Runtime。
