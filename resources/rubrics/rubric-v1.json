@@ -1,0 +1,398 @@
+{
+  "schemaVersion": 1,
+  "version": "rubric-v1",
+  "provenance": "AI_DRAFT",
+  "reviewStatus": "PENDING_REVIEW",
+  "dimensions": [
+    {
+      "dimension": "technical_depth",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能说明一个实际使用的技术及其在任务中的用途。",
+          "evidenceThreshold": "引用须包含本人任务、具体技术和用途；仅列技术名词不足。",
+          "features": [
+            {
+              "featureId": "technical_depth.l1.v1",
+              "description": "技术与任务关联"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能独立解释常见技术问题的定位步骤及解决方案。",
+          "evidenceThreshold": "引用须包含问题现象、本人采取的排查或实现动作及结果；泛称熟练不足。",
+          "features": [
+            {
+              "featureId": "technical_depth.l2.v1",
+              "description": "问题定位与实现"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能比较可选技术方案并说明适用约束和取舍。",
+          "evidenceThreshold": "引用须包含至少两种可选方案或明确取舍、约束与本人决策贡献；堆叠工具不足。",
+          "features": [
+            {
+              "featureId": "technical_depth.l3.v1",
+              "description": "方案比较与取舍"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能处理复杂性能、并发或一致性问题，并用验证结果支持方案。",
+          "evidenceThreshold": "引用须包含复杂约束、关键机制、本人职责、验证方法和可核对结果；只写高并发不足。",
+          "features": [
+            {
+              "featureId": "technical_depth.l4.v1",
+              "description": "复杂机制与验证"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能形成可复用的技术方法或体系，并解释跨场景适用边界。",
+          "evidenceThreshold": "引用须包含本人主导的核心机制、在多个场景的应用、验证及局限；职级或技术头衔不足。",
+          "features": [
+            {
+              "featureId": "technical_depth.l5.v1",
+              "description": "可复用技术方法"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "engineering",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能按明确规范完成开发并使用基本版本管理或测试。",
+          "evidenceThreshold": "引用须包含实际交付任务、本人动作及至少一种质量实践；自称工程化不足。",
+          "features": [
+            {
+              "featureId": "engineering.l1.v1",
+              "description": "基本工程实践"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能在独立交付中持续执行测试、代码审查或自动化构建。",
+          "evidenceThreshold": "引用须包含本人负责的交付流程和可核对质量措施；仅列CI工具不足。",
+          "features": [
+            {
+              "featureId": "engineering.l2.v1",
+              "description": "独立质量交付"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能结合故障风险设计测试、可维护性和监控措施。",
+          "evidenceThreshold": "引用须包含风险或故障场景、本人设计措施及验证；没有故障记录不等于高可靠。",
+          "features": [
+            {
+              "featureId": "engineering.l3.v1",
+              "description": "风险驱动的质量设计"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能推动复杂系统的可靠交付、故障恢复和长期可维护性改进。",
+          "evidenceThreshold": "引用须包含跨模块边界、本人职责、恢复/回滚或兼容性设计及验证结果。",
+          "features": [
+            {
+              "featureId": "engineering.l4.v1",
+              "description": "可靠交付与恢复"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能建立并持续改进可被多个团队复用的工程标准与质量机制。",
+          "evidenceThreshold": "引用须包含标准内容、本人推动动作、多团队采纳和可核对改进；团队总成果不能全归个人。",
+          "features": [
+            {
+              "featureId": "engineering.l5.v1",
+              "description": "可复用工程机制"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "business_understanding",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能描述所做任务服务的用户或业务流程。",
+          "evidenceThreshold": "引用须把本人任务与具体用户/流程联系起来；公司名称不足。",
+          "features": [
+            {
+              "featureId": "business_understanding.l1.v1",
+              "description": "任务与业务关联"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能将明确业务需求转换为实现范围及验收条件。",
+          "evidenceThreshold": "引用须包含需求、本人拆解动作和验收依据；仅写参与需求分析不足。",
+          "features": [
+            {
+              "featureId": "business_understanding.l2.v1",
+              "description": "需求转化与验收"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能基于业务约束比较需求优先级或方案收益与成本。",
+          "evidenceThreshold": "引用须包含目标、约束、取舍及本人贡献；没有数据时不得臆造收益。",
+          "features": [
+            {
+              "featureId": "business_understanding.l3.v1",
+              "description": "业务约束与取舍"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能用反馈或指标检验业务假设，并迭代产品/技术方案。",
+          "evidenceThreshold": "引用须包含假设、本人干预、指标口径或反馈来源及迭代结果；相关性不能直接当因果。",
+          "features": [
+            {
+              "featureId": "business_understanding.l4.v1",
+              "description": "假设验证与迭代"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能跨业务环节建立持续决策机制并解释边界及长期影响。",
+          "evidenceThreshold": "引用须包含跨环节目标冲突、本人机制设计、多轮反馈与可核对影响；公司规模不足。",
+          "features": [
+            {
+              "featureId": "business_understanding.l5.v1",
+              "description": "跨环节业务决策"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "project_impact",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能指出自己完成的具体项目产物或子任务。",
+          "evidenceThreshold": "引用须包含本人贡献和明确产物；只有项目名称或团队规模不足。",
+          "features": [
+            {
+              "featureId": "project_impact.l1.v1",
+              "description": "可识别个人产物"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能独立负责模块并说明其直接使用对象或交付结果。",
+          "evidenceThreshold": "引用须包含本人职责边界、模块产物及使用/验收结果；团队结果需拆分个人部分。",
+          "features": [
+            {
+              "featureId": "project_impact.l2.v1",
+              "description": "模块交付影响"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能推动项目关键结果并提供有基线或口径的证据。",
+          "evidenceThreshold": "引用须包含本人动作、结果、比较基线或明确验证口径；孤立百分比不足。",
+          "features": [
+            {
+              "featureId": "project_impact.l3.v1",
+              "description": "有基线的关键结果"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能推动跨模块或跨团队落地，影响范围与个人归因可核对。",
+          "evidenceThreshold": "引用须包含影响对象、协作边界、本人关键贡献及结果；不得把团队全部成果归于个人。",
+          "features": [
+            {
+              "featureId": "project_impact.l4.v1",
+              "description": "跨边界可归因影响"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能形成持续被复用的项目成果，并有跨场景的长期效果证据。",
+          "evidenceThreshold": "引用须包含本人贡献、持续使用/复用的对象及时间或多轮效果；商业体量本身不证明等级。",
+          "features": [
+            {
+              "featureId": "project_impact.l5.v1",
+              "description": "持续复用的影响"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "collaboration",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能在明确分工下沟通进展、问题或交付信息。",
+          "evidenceThreshold": "引用须包含具体协作对象、本人沟通动作及内容；性格自评不足。",
+          "features": [
+            {
+              "featureId": "collaboration.l1.v1",
+              "description": "基本协作信息传递"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能通过文档、反馈或澄清使协作任务顺利交接。",
+          "evidenceThreshold": "引用须包含协作障碍、本人采取的文档/反馈措施及结果。",
+          "features": [
+            {
+              "featureId": "collaboration.l2.v1",
+              "description": "明确交接与反馈"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能协调跨角色差异并推动形成可执行的共识。",
+          "evidenceThreshold": "引用须包含不同角色/观点、本人协调动作和落地结果；担任接口人本身不足。",
+          "features": [
+            {
+              "featureId": "collaboration.l3.v1",
+              "description": "跨角色共识形成"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能在复杂依赖或冲突中推动决策、责任落实和反馈闭环。",
+          "evidenceThreshold": "引用须包含冲突或依赖、本人推动步骤、责任边界与后续验证；领导头衔不足。",
+          "features": [
+            {
+              "featureId": "collaboration.l4.v1",
+              "description": "复杂协作闭环"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能建立跨团队可复用的协作机制并证明其持续效果。",
+          "evidenceThreshold": "引用须包含机制设计、本人贡献、多个协作场景及效果证据；没写沟通经历应为unknown。",
+          "features": [
+            {
+              "featureId": "collaboration.l5.v1",
+              "description": "可复用协作机制"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimension": "growth",
+      "levels": [
+        {
+          "level": 1,
+          "score": 20,
+          "behavior": "能说明新知识或技能在一个实际任务中的初步应用。",
+          "evidenceThreshold": "引用须包含学习内容、本人应用动作及任务；课程名称或年龄不足。",
+          "features": [
+            {
+              "featureId": "growth.l1.v1",
+              "description": "学习后的实际应用"
+            }
+          ]
+        },
+        {
+          "level": 2,
+          "score": 40,
+          "behavior": "能根据明确反馈改进工作方法并展示改进结果。",
+          "evidenceThreshold": "引用须包含反馈来源、本人调整及前后结果；自称学习能力强不足。",
+          "features": [
+            {
+              "featureId": "growth.l2.v1",
+              "description": "反馈驱动改进"
+            }
+          ]
+        },
+        {
+          "level": 3,
+          "score": 60,
+          "behavior": "能在新场景中迁移方法，并说明遇到的限制与调整。",
+          "evidenceThreshold": "引用须包含新旧场景差异、本人迁移动作和验证；技能列表变长不足。",
+          "features": [
+            {
+              "featureId": "growth.l3.v1",
+              "description": "跨场景迁移"
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "score": 80,
+          "behavior": "能在责任或问题复杂度增加时建立系统学习与复盘方法。",
+          "evidenceThreshold": "引用须包含责任变化、具体挑战、本人学习/复盘措施及效果；工作年限本身不足。",
+          "features": [
+            {
+              "featureId": "growth.l4.v1",
+              "description": "复杂责任下的系统改进"
+            }
+          ]
+        },
+        {
+          "level": 5,
+          "score": 100,
+          "behavior": "能持续将学习成果转为可传播的方法，并有他人应用反馈。",
+          "evidenceThreshold": "引用须包含多次迭代、本人方法沉淀、他人采用及反馈；不得依据年龄、性别或学历推断潜力。",
+          "features": [
+            {
+              "featureId": "growth.l5.v1",
+              "description": "可传播的持续学习方法"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
