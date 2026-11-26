@@ -10,6 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "openapi:generate": "pnpm run build && node scripts/openapi.mjs",
+    "openapi:check": "pnpm run build && node scripts/openapi.mjs --check",
     "lint": "eslint . --max-warnings=0",
     "test": "pnpm run build && node --test dist/test/*.test.js",
     "start:api": "node --env-file-if-exists=.env dist/src/main-api.js",
@@ -72,6 +74,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
     "@eslint/js": "10.0.1",
     "@nestjs/testing": "12.6.0",
     "@types/node": "24.10.0",

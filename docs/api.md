@@ -4,6 +4,8 @@
 
 新接口实现后在本文补充：路径、参数、请求与响应示例、错误码、调用链和所属阶段。
 
+机器可读契约为[OpenAPI 3.1](openapi.json)，由 `pnpm run openapi:generate` 从相同运行时Zod Schema生成；`openapi:check`检测过期，禁止手改产物。未知查询字段、跨字段计数关系和取消事务规则见下文，不能只靠OpenAPI结构推断状态机。
+
 ## GET /health
 
 默认地址：`http://127.0.0.1:3000/health`。

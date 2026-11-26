@@ -7,8 +7,8 @@
 ## 1. 契约真源
 
 - 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误及任务查询/取消）
-- 由同一组Schema生成OpenAPI文档，作为前端生成类型和客户端的输入。工具选择见决策D8，交付任务为S1.4-T9。**规划**
-- OpenAPI产物生成之前，前端只对接 [api.md](api.md) 中已实现的接口，不按草案自行定义字段。
+- 由同一组Schema生成[OpenAPI 3.1产物](openapi.json)，作为前端生成类型和客户端的输入；D8采用 `@asteasolutions/zod-to-openapi`，S1.4-T9已实现生成及过期检查。生成器是开发依赖，不参与API请求处理。
+- 前端只对接 [api.md](api.md) 与产物中已实现的接口，不按草案自行定义字段；字段级Zod校验与跨字段/事务业务约束仍以运行时为准。
 
 ## 2. 地址与版本
 
@@ -122,6 +122,6 @@
 
 1. 修改 `src/contracts/` 中的Schema和对应实现与测试。
 2. 更新 [api.md](api.md)；涉及本文约定时同步更新本文。
-3. OpenAPI产物可用后重新生成并提交。
+3. 执行 `pnpm run openapi:generate` 并提交 `docs/openapi.json`；`pnpm run openapi:check`及CI检测缺失/过期产物，不自动覆盖。
 4. 破坏性变更在后端与前端路线图中各建任务，标明发布顺序。
 5. 在[开发进度](progress.md)记录变更。

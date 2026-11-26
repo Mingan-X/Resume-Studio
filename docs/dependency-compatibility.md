@@ -1,6 +1,6 @@
 # 依赖与兼容性
 
-版本与接入记录覆盖2026-11-23至2026-11-25。当前声明以[package.json](../package.json)、解析及补丁哈希以[pnpm-lock.yaml](../pnpm-lock.yaml)为准；本文区分已接入组合与未来候选。T6仅核对本地声明和既有验证记录，不把旧registry快照称为本次在线版本查询。
+版本与接入记录覆盖2026-11-23至2026-11-26。当前声明以[package.json](../package.json)、解析及补丁哈希以[pnpm-lock.yaml](../pnpm-lock.yaml)为准；本文区分已接入组合与未来候选。S1.4-T9仅为新增OpenAPI生成工具重新查询registry与官方包文档，其余依赖沿用既有验证记录。
 
 [registry元数据快照](research/dependency-metadata-2026-11-23.json)保存36个候选包的Node engines及peer字段、66项直接范围检查结果。范围检查不代表完整传递依赖、安全审计或运行验收；快照包含当时考虑过的未安装组件。
 
@@ -53,6 +53,14 @@
 
 资源限制：本机Docker总内存约5.8GiB，验证仅为合成诊断，不代表官方建议规模或生产容量。首次数据库迁移超出初始等待窗口后完成，未删卷；HOSTNAME显式0.0.0.0，宿主机只绑定127.0.0.1，worker等待web健康。
 
+### S1.4-T9 开发时OpenAPI生成依赖
+
+2026-11-26维护者确认D8后接入 `@asteasolutions/zod-to-openapi` 9.1.0（devDependency）。registry当次latest=9.1.0、发布时间2026-07-19、未标记deprecated，peer为zod ^4.0.0，与现有4.6.7兼容；包未声明engines，不据此假设任意Node版本均兼容，本机Node24.22.3真实生成/编译验证。直接读取registry和安装包内官方README/package.json；raw GitHub README本次下载失败，未将失败读取当作依据。
+
+锁文件仅新增该包及openapi3-ts4.6.2、yaml2.9.1解析，后者要求Node>=14.6；不升级现有Zod/运行依赖，不忽略peer冲突。精确安装及pnpm12冻结安装通过，生成与过期检测结果见progress。用途是从运行时Schema生成文档，成本为开发安装体积和生成/CI维护；API进程不加载该包或运行全局Zod扩展。替代方案为Zod内建JSON Schema再手工维护OpenAPI路径，或额外维护Nest装饰器/DTO；按D8选择现工具以保留一套校验真源，没有同时引入替代工具。
+
+生成器使用OpenAPI 3.1并固定输出顺序；先初始化扩展再动态导入Schema，修复ESM静态导入早于扩展的问题。OpenAPI能表达结构/枚举/格式，不能自动完整表达任意Zod refine或数据库状态机，相关规则保留在运行时和接口文档。该核对不是完整供应链安全审计。
+
 ## 2. 容器基线
 
 | 服务 | 镜像版本 | digest |
@@ -89,7 +97,6 @@
 | 模型适配器 | @langchain/openai1.8.5 | Node>=22、core^1.5.0；包兼容不代表选择了提供商或验证了兼容端点行为 |
 | PDF解析 | pdfjs-dist6.5.438 | Node>=22.13；文本提取、双栏阅读顺序与容器原生依赖需样本验证 |
 | DOCX解析 | mammoth1.13.0 | 只取文字，不直接展示未经净化HTML；表格与证据定位需验证 |
-| OpenAPI生成（决策D8） | @asteasolutions/zod-to-openapi（工具已确认，安装版本待T9复核） | 2026-11-26维护者确认使用该工具；历史2026-11-24候选9.1.0/peer `zod ^4.0.0`不是本次已验证版本。T9重新核对并安装/编译；当前尚未安装 |
 
 Rubric、LLM服务商/具体模型、Embedding模型与维数仍待确定。不能因候选包存在而生成凭证或声称模型API已可用。
 
@@ -103,7 +110,7 @@ Langfuse自托管包含web/worker、PostgreSQL、ClickHouse、Redis及对象存�
 
 保留的运行边界：Prisma CLI使用显式导出的prisma/build/index.js；Qdrant超时可能伴随服务端已创建资源，清理必须依据本轮唯一名称；SDK可能提示本地非HTTPS或后台版本探测超时，未关闭兼容性检查。不得通过放宽断言隐藏错误。
 
-尚未完成完整依赖安全审计、其他平台冷安装、生产TLS/权限、多节点故障、业务Outbox/幂等、真实业务工作流恢复和真实模型评测。新组件接入前复核官方版本与最小运行实验，不以旧元数据快照替代当前验证。
+尚未完成完整依赖安全审计、其他平台冷安装、生产TLS/权限、多节点故障、真实业务工作流恢复和真实模型评测。S1.4合成任务Outbox/幂等/恢复已有专项验证，不能替代真实业务验收。新组件接入前复核官方版本与最小运行实验，不以旧元数据快照替代当前验证。
 
 ## 5. 官方来源
 

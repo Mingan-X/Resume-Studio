@@ -8,6 +8,31 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T9 同源OpenAPI生成与过期检查（分支 feature/s1.4-task-foundation）
+
+D8按维护者已确认的@asteasolutions/zod-to-openapi实施；T8已单独提交8595adf，本项继续单独提交，T10统一汇总阶段状态。未改任务规划，不安装第二套生成工具，不向API引入文档生成运行依赖。
+
+- 重新查询npm registry并读取官方发布包README/package.json：9.1.0为当次latest，发布于2026-07-19，未deprecated，peer zod ^4.0.0与本仓库4.6.7相容；没有engines字段，本机Node24.22.3真实执行验证。官方raw GitHub README下载失败，改用已安装官方包内文档，不据失败请求声称取得资料。
+- 精确devDependency及锁文件只新增生成包、openapi3-ts4.6.2、yaml2.9.1；运行依赖和既有开发版本不变，strict peer/engine检查保留。官方包文档支持Zod扩展/registry/OpenApiGeneratorV31；生成脚本只在独立进程初始化扩展并动态读取编译后的同一contracts。
+- openapi:generate构建并写docs/openapi.json；openapi:check构建后比较确定性产物，缺失或过期返回非零且不重写。产物为OpenAPI3.1，仅health、任务查询、取消和共用错误，包含任务类型差异、nullable计数/重试/报告和严格结构，不生成规划路由。任意refine/事务状态机仍由运行时验证，文档明确其边界。
+- 新.github/workflows/check.yml执行冻结安装、本地诊断配置/Prisma生成、typecheck/Lint/基础测试/openapi:check。通过GitHub官方API核验checkout7.0.1、setup-node7.1.0、pnpm/action-setup6.1.1对应提交及action.yml输入，全部固定SHA；YAML解析与命令存在检查通过。未推送，因此未运行远端CI。
+- 更新API/契约/部署和依赖说明，生成产物作为前端后续对接输入。没有改前端代码/任务规划或对外发送消息。
+
+| 检查 | 实际结果 |
+|---|---|
+| 精确安装 | pnpm add -D @asteasolutions/zod-to-openapi@9.1.0成功，无peer冲突；未升级运行依赖 |
+| 冻结安装 | pnpm install --frozen-lockfile成功，锁文件无需重解；为本机已有依赖环境，不等于新机冷安装 |
+| 首次生成 | 失败：zodSchema.openapi is not a function。ESM静态导入在extendZodWithOpenApi之前构造了Schema |
+| 修复后生成/检查 | 改为先扩展再动态导入Schema，node scripts/openapi.mjs及--check均成功；API运行路径不加载扩展 |
+| 过期/缺失负向验证 | 两种临时副本均退出1并报告OPENAPI_STALE，未覆盖副本或正式产物；确定性与真实路由/状态/内部字段排除测试通过 |
+| 联合基础回归 | 首次44通过1失败（T8空URL校验，12.525秒），修复后45通过0失败（4.854秒）；OpenAPI两项两轮均通过，失败记录保留 |
+| 类型检查、Lint | 通过，零警告 |
+| 正式openapi:check命令 | pnpm run openapi:check成功（含构建），产物与运行时Schema一致 |
+| CI本地配置验证 | YAML可解析，openapi:check已注册，所有Action为40位SHA；官方action.yml所需node-version/version输入存在，运行时node24 |
+| 全量集成 | 同批Docker85通过2失败，新增任务/契约检查通过，已知Qdrant失败保留；原生对照结果见T10汇总 |
+
+未执行/限制：远端GitHub Actions、新机/其他平台冷安装、完整依赖安全审计、前端生成客户端和浏览器联调。CI不启动真实服务，不能替代集成验收；OpenAPI不完整表达跨字段/状态机规则，不能当成生产认证交付。本地提交，不推送、不合并。
+
 ## 2026-11-26 S1.4-T8 任务查询与安全取消（分支 feature/s1.4-task-foundation）
 
 维护者授权T8–T10一起开发，任务编号、范围、依赖与验收不改，按任务分开本地提交。T8从干净的b25bfd8继续，未丢弃既有T1–T7成果；实现与专项通过，联合全量的默认DockerQdrant仍失败，阶段不标记已完成。T9生成与T10汇总记录分别追加。

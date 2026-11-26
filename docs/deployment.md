@@ -181,6 +181,20 @@ POST取消仅保存请求并返回202。继续运行 `tasks:consume analysis`、
 
 回退前停止API、消费者及watch并核对待取消任务；旧T7消费者/对账器没有完成取消的路径，回退不会自动撤销已保存的取消请求。保留任务、事件、收据与Checkpoint，不重置flag或清空队列。取消终态仅表示业务写入被隔离，不代替旧进程实际退出或资源删除授权。
 
+### S1.4-T9 OpenAPI生成与CI
+
+开发依赖 `@asteasolutions/zod-to-openapi` 固定9.1.0，使用同一组运行时Zod Schema生成OpenAPI 3.1，提交产物为 `docs/openapi.json`。生成脚本先安装其Zod扩展，再动态导入Schema，扩展只存在于生成进程；API/Worker不导入该开发依赖。
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm run openapi:generate
+pnpm run openapi:check
+```
+
+生成命令会构建并写入产物；检查命令构建后逐字节比较规范化换行的结果，缺失或过期时退出1，不覆盖文件。文档生成不需要数据库或其他服务；首次编译仍需按初始化步骤生成Prisma客户端。当前只描述health、任务查询及取消，不提前生成规划接口。严格未知查询参数、跨字段计数关系及状态迁移约束仍由运行时Zod/事务实现，不能把OpenAPI结构描述当成全部业务规则。
+
+[CI工作流](../.github/workflows/check.yml)执行冻结安装、生成本地诊断配置/Prisma客户端、类型检查、Lint、基础测试与openapi:check，Actions固定到核验过的官方提交。它不自动启动真实集成服务，也不替代本机真实回归；本次未推送，远端CI实际执行结果仍待后续推送验证。依赖变化、Schema和产物应一起提交，勿手工修改openapi.json。
+
 ## S1.3 诊断组件初始化
 
 ### S1.3 Checkpointer 初始化（独立于业务进程）
