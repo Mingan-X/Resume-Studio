@@ -10,6 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "openapi:generate": "pnpm run build && node scripts/openapi.mjs",
+    "openapi:check": "pnpm run build && node scripts/openapi.mjs --check",
     "lint": "eslint . --max-warnings=0",
     "test": "pnpm run build && node --test dist/test/*.test.js",
     "start:api": "node --env-file-if-exists=.env dist/src/main-api.js",
@@ -23,7 +25,13 @@
     "db:deploy": "node --env-file=infra/.env scripts/prisma.mjs deploy",
     "db:status": "node --env-file=infra/.env scripts/prisma.mjs status",
     "db:validate": "node --env-file=infra/.env scripts/prisma.mjs validate",
+    "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",
+    "outbox:publish": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js publish",
+    "tasks:consume": "node --env-file=infra/.env dist/src/infrastructure/consumer/cli.js",
+    "tasks:consume:graph": "node --env-file=infra/.env --env-file=infra/.env.checkpoint dist/src/infrastructure/consumer/cli.js analysis checkpoint",
+    "tasks:reconcile": "node --env-file=infra/.env dist/src/infrastructure/reconciliation/cli.js",
     "test:integration": "pnpm run build && node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/*.test.js",
+    "test:integration:native-qdrant": "pnpm run build && node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --env-file=infra/.env.qdrant-native --test --test-concurrency=1 dist/test/integration/*.test.js",
     "infra:persistence": "node --env-file=infra/.env dist/test/integration/persistence.fixture.js",
     "checkpoint:init": "node scripts/checkpoint-init.mjs",
     "checkpoint:provision": "node --env-file=infra/.env --env-file=infra/.env.checkpoint dist/src/infrastructure/checkpoint/cli.js provision",
@@ -66,6 +74,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "9.1.0",
     "@eslint/js": "10.0.1",
     "@nestjs/testing": "12.6.0",
     "@types/node": "24.10.0",

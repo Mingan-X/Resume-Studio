@@ -11,7 +11,7 @@
 | S1.1 | 工程基线 | 依赖锁定、ESM/装饰器编译、类型检查/Lint/测试、API与空Worker入口、Zod配置、统一HTTP错误、requestId日志 | — | — | 已完成 |
 | S1.2 | 基础设施诊断 | Compose项目隔离、PostgreSQL/Prisma诊断表与迁移、RabbitMQ confirm/return/ACK、Qdrant CRUD、重启持久化工具 | S1.1 | — | 已完成 |
 | S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4 已确定本地自托管 | 已完成（2026-11-25，附已知环境限制L1） |
-| S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8 | 未开始 |
+| S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8已落实 | 进行中 |
 | S2.1 | 简历文件与证据 | Storage、上传、PDF/DOCX解析、文本块与结构化简历 | S1.4 | D6 | 未开始 |
 | S2.2 | JD与Rubric | JD草稿/结构化/确认/不可变发布、JobIndexTask、六维Rubric版本 | S1.4 | D1、D2 | 未开始 |
 | S2.3 | 岗位召回 | 技能关键词、Qdrant索引、Dense Vector、RRF融合、CandidateSet | S2.2 | D3 | 未开始 |
@@ -62,7 +62,7 @@ S1.1与S1.2是同一次初始化提交交付的基线，没有独立历史分支
 | S1.3-T6 | 文档与进度 | T1–T5 | 依赖说明、架构、测试、部署文档与进度记录 | 文档只描述已验证行为；未执行项如实记录 |
 | S1.3-T7 | 验收遗留修复 | T1–T6 | 见下方“S1.3-T7 任务说明” | 见下方“S1.3-T7 任务说明” |
 
-2026-11-25重新验收：T1–T7.4通过；T7.5中构建后首次 `pnpm test` 的有效配置API启动用例超过8秒失败，判定为本机机械硬盘冷启动造成的环境限制。维护者决定接受S1.3并记录为已知环境限制L1，在部署服务器或硬件满足条件后重新验证（已加入S3.3验收要求）。验收记录、L1的判断依据与处理规则见[开发进度](progress.md)。D4采用同一resume-studio项目的observability profile，专属网络、账号和数据卷，显式服务列表独立启停。分支feature/s1.3-checkpoint-setup，未推送、未合并。
+2026-11-25重新验收：T1–T7.4通过；T7.5中构建后首次 `pnpm test` 的有效配置API启动用例超过8秒失败，判定为本机机械硬盘冷启动造成的环境限制。维护者决定接受S1.3并记录为已知环境限制L1，在部署服务器或硬件满足条件后重新验证（已加入S3.3验收要求）。验收记录、L1的判断依据与处理规则见[开发进度](progress.md)。D4采用同一resume-studio项目的observability profile，专属网络、账号和数据卷，显式服务列表独立启停。feature/s1.3-checkpoint-setup已推送；2026-11-25开始S1.4前fetch确认远端master通过PR #1合并，合并提交17d4002。
 
 ### S1.3 验收证据索引
 
@@ -115,6 +115,21 @@ T7完成后将阶段状态改为“待验收”，由维护者重新验收。
 | S1.4-T9 | OpenAPI契约生成 | T8、D8 | 由Zod契约生成OpenAPI文档的脚本与提交的产物 | 生成结果与运行时校验使用同一组Schema；CI可检测产物过期 |
 | S1.4-T10 | 文档与进度 | T1–T9 | 架构、API、测试文档与进度记录 | 同上 |
 
+2026-11-26：`feature/s1.4-task-foundation` 已实现T1–T10。按维护者授权一起开发T8–T10，仍分别提交：本地开发身份下查询真实任务阶段/计数、请求取消及安全边界终结；由 `@asteasolutions/zod-to-openapi` 生成同源OpenAPI并检测过期；同步架构、API、部署、测试与进度。T7真实旧Worker暂停/迟到saver写入隔离保持回归。默认Docker全量仍有Qdrant创建超时，不满足“完整回归通过”的完成定义，阶段保持“进行中”，不自行宣布验收通过；原生对照与全部实际结果见[开发进度](progress.md)。任务编号、范围、依赖、验收条件保持原样，无S2功能或新规划任务；未推送、未合并。
+
+当前S1.4交接索引（合成任务基础设施，不代表简历/岗位业务已交付）：
+
+| 任务 | 实现与验证入口 | 主要边界 |
+|---|---|---|
+| T1/T2 | [任务创建服务](../src/modules/tasks/task-creation.service.ts)、[模型](../prisma/schema.prisma)、[真实事务测试](../test/integration/tasks.test.ts) | 固定开发身份和合成版本ID，无创建HTTP/生产认证 |
+| T3 | [Outbox发布器](../src/infrastructure/outbox/outbox.publisher.ts)、[故障测试](../test/integration/outbox.test.ts) | 至少一次交付；独立publisher confirm与消费者ACK |
+| T4/T5 | [消费处理器](../src/infrastructure/consumer/task-delivery.handler.ts)、[重试测试](../test/integration/retry.test.ts) | 租约/fence、持久收据、跨尝试预算与隔离区；无真实模型副作用保证 |
+| T6 | [定时对账](../src/infrastructure/reconciliation/reconciliation.service.ts)、[锁与恢复测试](../test/integration/reconciliation.test.ts) | 显式once/watch、固定owner，持锁不抢占 |
+| T7 | [官方合成图](../src/infrastructure/checkpoint/task-handler.ts)、[真实暂停/恢复测试](../test/integration/checkpoint-fence.test.ts) | 未知旧执行换thread；确认停止才复用；合成索引目标替身 |
+| T8 | [HTTP契约](../src/contracts/task-api.ts)、[控制器](../src/modules/tasks/task.controller.ts)、[真实HTTP测试](../test/integration/task-api.test.ts) | 显式本地启用；202只保存请求，消费者/对账器安全终结 |
+| T9 | [生成脚本](../scripts/openapi.mjs)、[产物](openapi.json)、[过期检查](../test/openapi.test.ts)、[CI](../.github/workflows/check.yml) | 文档生成开发依赖；远端CI须推送后另验，不替代真实集成 |
+| T10 | [架构](architecture.md)、[接口](api.md)、[部署](deployment.md)、[测试](testing.md)、[进度](progress.md) | 保留失败/未执行项；阶段验收和后续S2启动由维护者确认 |
+
 ## 5. 后续阶段交付与验收
 
 以下阶段在开始时按第2节拆分任务。
@@ -147,7 +162,7 @@ T7完成后将阶段状态改为“待验收”，由维护者重新验收。
 | D5 | 前端框架 | **已确定**：Vue 3 + TypeScript + Vite | 见[前端ADR-0001](https://github.com/Mingan-X/Resume-Studio-Frontend/blob/main/docs/decisions/0001-frontend-stack.md) | — |
 | D6 | 文件范围 | 文本层PDF与DOCX | OCR是否首版必须、费用与隐私；复杂版式质量样本 | S2.1 |
 | D7 | 评分与数据政策 | unknown单列、硬条件待核实、eligible进Top10；真实数据默认保留30天 | 目标岗位类型、权重、真实数据授权与保留时间 | S2.5、S3.2 |
-| D8 | OpenAPI生成方式 | `@asteasolutions/zod-to-openapi`（与Zod契约同源）；`@nestjs/swagger` 依赖class-validator DTO，与现有Zod边界不一致 | 2026-11-24 registry核对：前者9.1.0、peer `zod ^4.0.0`；接入时重新核对并真实编译 | S1.4-T9 |
+| D8 | OpenAPI生成方式 | **已确定并在T9接入：`@asteasolutions/zod-to-openapi` 9.1.0**（2026-11-26，与Zod契约同源） | 已核对registry/官方包文档及peer，冻结安装、生成/过期检查通过；结果见progress | 已解除 |
 | D9 | 认证方案 | 同源部署下的服务端会话（HttpOnly、Secure、SameSite Cookie）+ CSRF防护 | 部署形态、是否需要第三方登录、会话存储 | S3.2 |
 | D10 | 生产部署形态 | 单机Compose或托管容器平台 | 数据区域、备份、TLS、成本 | S3.3 |
 

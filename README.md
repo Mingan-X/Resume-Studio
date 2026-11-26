@@ -12,7 +12,7 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1、S1.2、S1.3；简历上传、画像、岗位管理、召回、匹配和报告尚未实现。** 阶段状态见[开发计划](docs/development-roadmap.md)，验证记录见[开发进度](docs/progress.md)。
+**已完成 S1.1、S1.2、S1.3；S1.4 已实现T1–T10的任务基础设施、查询/取消API及OpenAPI生成，阶段验收状态与回归限制见[开发计划](docs/development-roadmap.md)和[开发进度](docs/progress.md)。简历上传、画像、岗位管理、召回、匹配和报告尚未实现。**
 
 S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败，重跑通过。该限制在部署服务器或硬件满足条件后重新验证，判断依据与处理规则见[开发进度](docs/progress.md)。
 
@@ -21,6 +21,14 @@ S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，�
 - NestJS API 与独立 Worker 入口；Worker 当前为空进程，不消费业务任务。
 - Zod 配置校验、健康检查、统一 HTTP 错误、服务端 requestId 和 JSON 日志。
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
+- 可替换的开发单用户身份；独立 AnalysisTask/JobIndexTask 及共享任务记录模型；冻结输入与 Outbox 同事务写入、按所有者及任务类型隔离的请求幂等。TasksModule的创建能力仍只在显式上下文使用，查询/取消由独立TaskApiModule提供，尚无任务创建HTTP接口。
+- Outbox短事务租约领取、confirm/mandatory/return检查、有限次数和总期限内的延迟重发；显式命令配置业务quorum队列/DLX并执行有界发布批次。
+- `tasks:consume analysis` / `tasks:consume job-index`手动ACK消费；持久收据、执行租约/心跳和fence保护合成完成记录，数据库故障不ACK。当前是显式有界会话，未接入常驻Worker或真实业务图。
+- `tasks:consume:graph`显式执行官方合成StateGraph；未知旧执行是否停止时切换恢复thread，确认停止后才复用原thread。NodeArtifact受业务fence保护；真实暂停/恢复子进程验证旧saver迟到写入隔离。JobIndexTask使用合成版本目标验证旧执行不能更新新版本状态。
+- 显式启用本地任务API后可按固定开发owner查询真实任务阶段/计数并请求取消；消费者或对账器在安全边界提交取消终态。任务HTTP创建、生产认证与常驻进程监督仍待后续阶段。
+- `openapi:generate` / `openapi:check`从同一组运行时Zod契约生成并检查[OpenAPI产物](docs/openapi.json)，CI能拒绝缺失或过期的文档；不增加API运行时生成依赖。
+- 可恢复失败在事务中安排延迟重试；次数/时间/调用预算跨尝试累计，耗尽或永久失败写FAILED与dead Outbox。非法消息同事务保存脱敏隔离记录和dead事件后才ACK。
+- `tasks:reconcile once|watch`扫描过期租约和长期未完成任务，检查执行锁后事务安排恢复，并调用既有Outbox发布器；保留发布失败预算，不抢占持锁执行，不操作Checkpoint。
 - RabbitMQ publisher confirm、mandatory return、手动 ACK、重投和重复消息集成测试。
 - Qdrant 合成向量 CRUD、维数校验与基础设施持久化验证工具。
 - 官方 PostgreSQL Checkpointer：独立数据库/schema、运行与初始化账号、受控 setup；合成子进程强制终止后的续跑与首 Checkpoint 缺失恢复测试。
@@ -37,8 +45,8 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 
 | 用途 | 当前已接入 | 规划接入 |
 |---|---|---|
-| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7 | OpenAPI生成（决策D8） |
-| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2 | 事务 Outbox、业务任务消费者 |
+| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 真实业务HTTP接口、生产认证 |
+| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；合成任务、事务Outbox、发布/消费/重试、隔离区、对账与Checkpoint联合隔离 | 真实业务产物与索引 |
 | AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x（合成图验证） | 业务工作流、模型适配 |
 | 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
@@ -67,11 +75,14 @@ pnpm run start:api
 pnpm run typecheck
 pnpm run lint
 pnpm test
+pnpm run openapi:check
 # 完成基础设施、Checkpoint初始化及本地Langfuse部署后执行：
 pnpm run test:integration
 ```
 
 覆盖范围与限制见[测试文档](docs/testing.md)。真实集成测试不以服务不可用为理由自动跳过。
+
+维护者授权的Windows原生Qdrant可通过[对照配置](docs/deployment.md#原生qdrant回归对照)运行同一套集成测试；默认命令仍使用项目Docker实例，两套结果分别记录，原生实例通过不代表Docker存储性能问题已修复。
 
 业务三服务使用 `pnpm run infra:up` / `pnpm run infra:stop`，Langfuse六服务使用 `pnpm run observability:up` / `pnpm run observability:stop`。两组属于同一Compose项目，各自使用明确的服务列表；初始化、凭证位置和卷迁移说明见[部署文档](docs/deployment.md#s13-本地-langfuse-与独立启停)。
 

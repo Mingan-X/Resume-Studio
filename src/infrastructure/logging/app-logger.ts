@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ConfigService } from '../../modules/config/config.module.js';
 import { requestContext } from './request-context.js';
+import { errorResponseSchema } from '../../contracts/http.js';
 
 // Allowlisted metadata only: no URL, body, headers, config values or raw exception.
 const eventSchema = z.object({
@@ -9,7 +10,7 @@ const eventSchema = z.object({
   requestId: z.uuid().optional(),
   statusCode: z.int().min(100).max(599).optional(),
   durationMs: z.number().nonnegative().optional(),
-  code: z.enum(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'HTTP_ERROR', 'INTERNAL_ERROR']).optional(),
+  code: errorResponseSchema.shape.code.optional(),
 }).strict();
 
 type LogEvent = z.infer<typeof eventSchema>;

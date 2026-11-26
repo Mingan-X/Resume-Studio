@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { taskApiConfigSchema } from './task-api-config.js';
 
 const environment = z.enum(['development', 'test', 'production']);
 const common = { APP_ENV: environment };
@@ -8,6 +9,11 @@ export const apiConfigSchema = z.object({
   role: z.literal('api'), // 角色字段，固定为 'api'
   HTTP_HOST: z.enum(['127.0.0.1', '0.0.0.0', '::1']).default('127.0.0.1'), // 默认主机地址
   HTTP_PORT: z.string().regex(/^\d+$/).transform(Number).pipe(z.int().min(1).max(65535)), // 默认端口号
+  tasks: taskApiConfigSchema.optional(),
+}).superRefine((config, ctx) => {
+  if (!config.tasks) return;
+  if (config.APP_ENV === 'production') ctx.addIssue({ code: 'custom', path: ['APP_ENV'], message: 'Development task identity only' });
+  if (!['127.0.0.1','::1'].includes(config.HTTP_HOST)) ctx.addIssue({ code: 'custom', path: ['HTTP_HOST'], message: 'Local task API only' });
 }).readonly();
 
 export const workerConfigSchema = z.object({
@@ -30,6 +36,9 @@ export class ConfigValidationError extends Error {
 export function loadConfig(role: 'api', env: NodeJS.ProcessEnv): ApiConfig;
 export function loadConfig(role: 'worker', env: NodeJS.ProcessEnv): WorkerConfig;
 export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): AppConfig {
+  if (role === 'api' && env.TASK_API_ENABLED !== undefined && !['true','false'].includes(env.TASK_API_ENABLED)) {
+    throw new ConfigValidationError(['TASK_API_ENABLED']);
+  }
   // Pick known fields; never carry unrelated secrets into the application config.
   const schema = role === 'api' ? apiConfigSchema : workerConfigSchema;
   const parsed = schema.safeParse({
@@ -37,10 +46,11 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
     APP_ENV: env.APP_ENV,
     HTTP_HOST: env.HTTP_HOST,
     HTTP_PORT: env.HTTP_PORT,
+    ...(role === 'api' && env.TASK_API_ENABLED === 'true' ? { tasks: { databaseUrl: env.DATABASE_URL } } : {}),
   });
   if (!parsed.success) {
     throw new ConfigValidationError(
-      [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))].sort(),
+      [...new Set(parsed.error.issues.map((issue) => issue.path[0] === 'tasks' ? 'DATABASE_URL' : String(issue.path[0])))].sort(),
     );
   }
   return parsed.data;

@@ -8,6 +8,377 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T10 文档交接与T8–T10联合回归（分支 feature/s1.4-task-foundation）
+
+状态：T1–T10代码与文档产出已齐备，但默认Docker全量仍有Qdrant超时，未满足路线图“完整回归通过”的完成定义；S1.4保持“进行中”，不自行标为已完成或维护者验收通过。T8–T10按授权一起开发并分开提交，T8=8595adf、T9=8b023cd，T10为本条记录和共享文档收尾；任务编号/依赖/验收不改。未推送、未合并。
+
+本项同步README、架构、测试和路线图交接索引，明确查询/取消的本地开发启用、无锁取消与持锁清理边界、未知旧进程停止证据、OpenAPI产物/CI范围和真实业务未实现项。API/接口契约/部署文档分别随T8/T9同步，依赖说明记录真实registry/官方发布包核验。前端仅只读查看现有规划，未修改其代码或路线图；接口文档与OpenAPI可作为维护者后续前端对接材料。
+
+本批完整验证汇总（runner耗时不含构建，父测试计数在内；每次失败均保留）：
+
+| 顺序/检查 | 实际结果 |
+|---|---|
+| 分支与基线 | feature/s1.4-task-foundation，从干净b25bfd8开始；AGENTS/CONTRIBUTING/路线图/契约/相关架构及现有实现已阅读，T1–T7保持 |
+| 初期编译 | 第一批实现通过；后补SQL故障测试时Prisma扩展客户端与事务端口类型不兼容，构建失败。改用既有测试的Nest provider注入方式后通过，未忽略类型检查 |
+| T8真实专项 | 14通过、0失败、0跳过，16.268秒（父10.264秒）；精确清理与连接池关闭通过 |
+| T9首次生成 | 失败，静态ESM导入早于Zod扩展；改为先初始化扩展再动态导入同源Schema后生成和检查成功 |
+| pnpm test第1次 | 44通过、1失败、0跳过，12.525秒；仅新增空数据库URL配置检查失败，new URL异常未归一化；OpenAPI负向检查和原API/Worker测试通过 |
+| pnpm test第2次 | 45通过、0失败、0跳过，4.854秒；修复配置异常转换后通过，原8/10秒入口限制不变，没有以重跑覆盖首轮失败 |
+| 依赖安装/冻结安装 | 精确安装生成工具成功，pnpm install --frozen-lockfile成功；仅新增开发生成包及其两项传递解析，运行依赖与既有版本不变 |
+| 最终typecheck、Lint | 通过，零警告；构建后无其他功能代码变化 |
+| db:status、db:validate | 通过，共7条历史迁移，无pending；本批无Schema/迁移改动，未执行reset或重复迁移 |
+| OpenAPI生成/正式check/负向用例 | 同源产物生成成功，pnpm run openapi:check通过；临时过期/缺失文件检查均按预期退出1且不重写，结构/路由/状态和内部字段排除检查通过 |
+| CI配置核对 | YAML可解析，openapi:check已注册；通过官方GitHub API核验Action提交与输入，固定40位SHA。仅本地配置验证，远端CI未执行 |
+| 非法任务配置真实进程 | 退出1、CONFIG_INVALID、stdout为空且无测试值泄漏；模块hook确认未加载Nest/bootstrap |
+| 默认Docker全量test:integration | 85通过、2失败、0跳过，474.248秒；T8父/子14项通过（父6.443秒），T7父/子5项通过（父25.876秒），其余任务/Checkpoint/Langfuse通过；仅Qdrant创建超时及父测试失败 |
+| Docker失败核对 | 本轮s12_7bd08a65_d89d_4913_83d2_2951a4826fa1，服务端PUT=6.982165秒、迟到200，精确DELETE=0.415540秒；只读集合残留0，原5秒请求/15秒清理限制和CRUD/维数断言不变 |
+| 原生Qdrant全量test:integration:native-qdrant | 87通过、0失败、0跳过，464.416秒；T8父/子14项通过（父8.120秒），T7父/子5项通过（父24.720秒），全部集成通过，原生集合创建1551.9ms |
+| 最终资源核对 | T8三轮manifest均cleaned=true；T7累计六轮manifest均cleaned=true。精确Owner/NodeArtifact/合成目标/Checkpoint残留0，业务与Checkpoint池关闭；Docker及原生Qdrant集合均0、待清理manifest=0；RabbitMQ仅4条正式队列/1条策略，ready/unacked与AMQP连接均0，九个项目服务healthy |
+| 文档、任务与提交检查 | 本批36个变更文件，9份Markdown中的157个本地链接/锚点有效；diff --check通过；T1–T10任务行逐字未改，原progress历史完整保留；凭证、data、dist、生成客户端未入库，前端未修改 |
+
+原生Qdrant本轮createCollection实测1551.9ms；其整个Qdrant子测试5942.480ms还包括进程归属核验、CRUD和精确清理，不混称创建延迟。原生成功不能覆盖Docker超时，也不能据单次样本确认长期性能或存储层具体根因。Docker仍使用原Compose实例/卷/认证；原生仅为用户授权的显式测试目标，未更改应用默认连接。没有调整超时、WAL、镜像、资源限制、tmpfs或迁盘；该失败不属于仅针对API冷启动的L1。
+
+未执行及原因：远端CI/推送/合并（本轮范围仅本地开发）；前端客户端生成和浏览器联调（前端实现不在本任务）；真实简历/JD/报告、任务创建HTTP、SSE、LLM/业务索引、生产认证与多owner调度、进程监督/多副本/长期负载、其他平台/新机冷安装、备份恢复及服务重启持久化（均非T8–T10范围）。没有新增S2任务或修改原阶段规划。
+
+交接：任务API通过TASK_API_ENABLED=true并加载项目数据库显式开启，只支持development/test和loopback；未运行消费者/对账器时取消仅持久待处理。CANCELLED不证明未知旧进程实际退出，清理资源仍需停止证据。docs/openapi.json是同源生成产物，修改契约后需重新生成并提交；不手改产物。下一步先由维护者审阅S1.4及默认DockerQdrant遗留，再决定验收/环境处理；后续业务阶段仍按原路线图S2.1/S2.2及其阻塞决策推进，本轮没有提前启动。
+
+## 2026-11-26 S1.4-T9 同源OpenAPI生成与过期检查（分支 feature/s1.4-task-foundation）
+
+D8按维护者已确认的@asteasolutions/zod-to-openapi实施；T8已单独提交8595adf，本项继续单独提交，T10统一汇总阶段状态。未改任务规划，不安装第二套生成工具，不向API引入文档生成运行依赖。
+
+- 重新查询npm registry并读取官方发布包README/package.json：9.1.0为当次latest，发布于2026-07-19，未deprecated，peer zod ^4.0.0与本仓库4.6.7相容；没有engines字段，本机Node24.22.3真实执行验证。官方raw GitHub README下载失败，改用已安装官方包内文档，不据失败请求声称取得资料。
+- 精确devDependency及锁文件只新增生成包、openapi3-ts4.6.2、yaml2.9.1；运行依赖和既有开发版本不变，strict peer/engine检查保留。官方包文档支持Zod扩展/registry/OpenApiGeneratorV31；生成脚本只在独立进程初始化扩展并动态读取编译后的同一contracts。
+- openapi:generate构建并写docs/openapi.json；openapi:check构建后比较确定性产物，缺失或过期返回非零且不重写。产物为OpenAPI3.1，仅health、任务查询、取消和共用错误，包含任务类型差异、nullable计数/重试/报告和严格结构，不生成规划路由。任意refine/事务状态机仍由运行时验证，文档明确其边界。
+- 新.github/workflows/check.yml执行冻结安装、本地诊断配置/Prisma生成、typecheck/Lint/基础测试/openapi:check。通过GitHub官方API核验checkout7.0.1、setup-node7.1.0、pnpm/action-setup6.1.1对应提交及action.yml输入，全部固定SHA；YAML解析与命令存在检查通过。未推送，因此未运行远端CI。
+- 更新API/契约/部署和依赖说明，生成产物作为前端后续对接输入。没有改前端代码/任务规划或对外发送消息。
+
+| 检查 | 实际结果 |
+|---|---|
+| 精确安装 | pnpm add -D @asteasolutions/zod-to-openapi@9.1.0成功，无peer冲突；未升级运行依赖 |
+| 冻结安装 | pnpm install --frozen-lockfile成功，锁文件无需重解；为本机已有依赖环境，不等于新机冷安装 |
+| 首次生成 | 失败：zodSchema.openapi is not a function。ESM静态导入在extendZodWithOpenApi之前构造了Schema |
+| 修复后生成/检查 | 改为先扩展再动态导入Schema，node scripts/openapi.mjs及--check均成功；API运行路径不加载扩展 |
+| 过期/缺失负向验证 | 两种临时副本均退出1并报告OPENAPI_STALE，未覆盖副本或正式产物；确定性与真实路由/状态/内部字段排除测试通过 |
+| 联合基础回归 | 首次44通过1失败（T8空URL校验，12.525秒），修复后45通过0失败（4.854秒）；OpenAPI两项两轮均通过，失败记录保留 |
+| 类型检查、Lint | 通过，零警告 |
+| 正式openapi:check命令 | pnpm run openapi:check成功（含构建），产物与运行时Schema一致 |
+| CI本地配置验证 | YAML可解析，openapi:check已注册，所有Action为40位SHA；官方action.yml所需node-version/version输入存在，运行时node24 |
+| 全量集成 | 同批Docker85通过2失败，新增任务/契约检查通过，已知Qdrant失败保留；原生对照结果见T10汇总 |
+
+未执行/限制：远端GitHub Actions、新机/其他平台冷安装、完整依赖安全审计、前端生成客户端和浏览器联调。CI不启动真实服务，不能替代集成验收；OpenAPI不完整表达跨字段/状态机规则，不能当成生产认证交付。本地提交，不推送、不合并。
+
+## 2026-11-26 S1.4-T8 任务查询与安全取消（分支 feature/s1.4-task-foundation）
+
+维护者授权T8–T10一起开发，任务编号、范围、依赖与验收不改，按任务分开本地提交。T8从干净的b25bfd8继续，未丢弃既有T1–T7成果；实现与专项通过，联合全量的默认DockerQdrant仍失败，阶段不标记已完成。T9生成与T10汇总记录分别追加。
+
+- 新task-api运行时Zod契约、TaskController/TaskQueryService/TaskQueryRepository及独立TaskApiModule。GET按可信IdentityPort限定owner，在同一Repeatable Read事务读取任务和最新事件，返回真实stage、已保存completed/planned（未知total=null）、累计attempt、retryAt、安全任务错误、reportId和cancelRequested；两类任务状态区分，JOB_INDEX无PARTIAL，不返回输入、owner、fence或图线程。
+- POST取消要求application/json空对象，无查询参数；行锁事务只保存cancelRequested并返回202，非终态重复请求仍202。所有终态返回409 INVALID_STATE；越权与不存在都404。完成与请求取消竞争同一任务行锁；数据库错误安全500，不返回伪成功。
+- 消费领取/对账在执行锁内完成取消：增加fence、清除租约/重试时间、结束attempt记账及RUNNING收据、写单调seq取消事件，不创建新attempt/dead消息或清空Outbox。运行中的处理器先在心跳/提交边界中止，实际清理收束后才由当前领取身份取消；未收束仍沿用T7未知停止规则。无锁取消优先于未来retryAt/租约期限，持锁时对账延后；终态及迟到旧token不能覆盖。原T6“取消暂时跳过”断言改为新取消行为，持锁/owner/行锁等断言保留。
+- TASK_API_ENABLED默认为关闭，只在显式true时动态导入任务模块；启用仅允许development/test、loopback监听和既有本机项目业务数据库。配置错误仍在Nest加载前失败，根.env示例补开关；API只依赖PostgreSQL，消费者/图/观测不自动启动。生产身份/创建HTTP仍未交付。复用原数据库字段，无迁移或新Docker服务。
+- 同步接口文档与契约；前端目录只读核对发现尚无src实现，api-integration.md已有INVALID_STATE及未知code兼容规则。本次为新增接口，无破坏性规划调整；未修改前端、未对外发消息，契约交接通过本分支API文档完成。
+
+| 检查 | 实际结果 |
+|---|---|
+| 初期类型检查/构建 | 首批实现通过；补充故障测试后Prisma扩展客户端不满足TransactionDatabase回调类型，构建失败；改为现有测试的Nest provider注入方式后构建通过，未加类型断言或忽略检查 |
+| T8专项真实HTTP/PostgreSQL/子进程 | 14通过、0失败、0跳过，16.268秒（父10.264秒）。覆盖两类查询/重复取消/重试取消/完成竞争、owner和请求校验、只读DB、真实SQL错误回滚、实际Worker清理期间持锁后CANCELLED/DONE；精确清理及池关闭通过 |
+| 联合工作区pnpm test第1次 | 44通过、1失败、0跳过，12.525秒；新增任务配置用例失败，空URL在refine中触发new URL异常，未转换成ConfigValidationError。原API/Worker限制不变，OpenAPI检查通过 |
+| 配置修复后pnpm test第2次 | 45通过、0失败、0跳过，4.854秒；URL解析异常安全转为校验失败，未放松端点/账号限制 |
+| typecheck、Lint | 通过，零警告；本轮新旧API原8秒/10秒限制不变 |
+| db:status、db:validate | 通过；7条历史迁移均已应用，Schema有效，本任务无新迁移，未重复执行无变化的部署 |
+| 非法任务配置入口实际模块探测 | 缺失/非法DATABASE_URL时退出1、stdout为空、CONFIG_INVALID且不泄露测试值；module hook证明未加载Nest/bootstrap |
+| 默认Docker完整test:integration | 85通过、2失败、0跳过，474.248秒；T8父/子14项全部通过（父6.443秒），T1–T7/Checkpoint/Langfuse均通过；失败仅Qdrant创建超时及父测试 |
+| Docker失败/残留诊断 | 本轮s12_7bd08a65_d89d_4913_83d2_2951a4826fa1服务端PUT=6.982165秒（迟到200），精确DELETE=0.415540秒，集合残留0。保留原5秒限制，不把失败归入API冷启动L1 |
+| 原生对照及最终联合检查 | 结果统一见随后T10批次汇总，不用替代实例结果覆盖Docker失败 |
+
+未执行：真实业务报告/索引/模型、任务创建HTTP、SSE、生产认证、多主机/长期负载、取消后外部副作用撤回、资源删除、常驻进程监督及远端CI。CANCELLED表示业务写入被隔离，不证明任意未知旧进程已退出；没有消费者/对账器时202可能保持待处理。部署须统一更新消费者/对账器；回退保留flag/记录，旧T7代码不能自动完成新取消请求。没有修改服务、存储、超时或重置资源；未推送、未合并。
+
+## 2026-11-26 S1.4-T7 Checkpoint与业务fence联合隔离（分支 feature/s1.4-task-foundation）
+
+状态：T7实现及真实故障专项通过；默认Docker全量仍有Qdrant创建超时，S1.4保持“进行中”，未标记维护者验收通过。按维护者授权使用原生Qdrant另跑同一套完整集成，其结果与Docker分别记录。任务规划不改，T8–T10未实施；D8决定已单独保存为1a4ebe9，T7实现、对照工具与本记录按T7本地提交，未推送、未合并。
+
+实现与范围：
+
+- 在T6的session advisory lock基础上增加TaskAttempt.executionStoppedAt；实际处理器及其资源收束后才记录停止。中止后最多观察5秒，仍未结束则销毁锁连接，不提供虚假的停止证据。confirmWorkerExit只允许可信调用方绑定的子进程已实际退出；发送kill、锁丢失、心跳超时或AbortSignal均不能替代确认。
+- 新领取时读取上一attempt：无法确认旧执行停止，则与租约/fence更新同事务递增graphGeneration并分配新activeGraphThreadId；确认停止才保留thread。新增SQL trigger约束图代次单调及thread一同变化。对账仍只恢复调度，不读取或复制官方Checkpoint表。
+- 新NodeArtifact按owner/type/task、节点、冻结输入哈希、componentVersion/schemaVersion组成唯一operationKey；读写核验当前租约/fence/generation、期限/取消及适用的图身份，复用已提交合法产物。SyntheticIndexTarget仅作为合成目标，发布同时匹配执行权和jobVersionId/embeddingVersion/indexVersion；没有提前实现Job/JobVersion、报告或Qdrant业务索引。
+- CheckpointTaskHandler使用官方StateGraph/PostgresSaver和sync持久化；有Checkpoint时验证用户状态投影并invoke(null)，缺失时使用冻结输入。两个顺序合成节点产生3和9，完成前核对业务产物，不能仅凭Checkpoint状态标成功。跟踪saver put/putWrites与产物操作，退出时拒绝新写入、等待在途操作和独立池关闭，再允许停止证据成立。
+- ConsumerModule支持显式图处理器装配，新增tasks:consume:graph；原普通合成消费模式保留，API/空Worker没有自动装配图或对账器，无新Docker服务。新增迁移202611260004只管理业务表/约束，官方Checkpoint表继续由独立setup管理。
+- T7故障测试真实暂停本轮旧Node子进程（Windows NtSuspendProcess/NtResumeProcess）、过期其租约、终止其实际PostgreSQL锁连接，待新子进程在新thread完成再恢复旧进程。官方saver实际迟到写入旧thread，新Checkpoint ID/状态保持不变；旧执行独立尝试的产物/终态写入被拒绝。另测确认退出后的同thread恢复/首Checkpoint缺失重启，以及两个实际索引子进程的新版本目标保护。
+- 根据用户提供的D:\qdrant-x86_64-pc-windows-msvc，新增显式test:integration:native-qdrant对照入口与被忽略的本地配置；应用和默认测试仍使用原Docker约束。原生目标核对授权exe真实路径、6333监听PID/启动时间及文件大小/修改时间，清理前复核同一进程。清理manifest记录目标类别/地址和原生进程身份，避免误认成Docker资源；不含API Key。所有原5秒Qdrant请求、CRUD/维数断言和15秒清理对账均保留。
+- 同步README、架构、部署、测试与路线图状态说明；未改任务编号/依赖/验收，未改依赖或锁文件。图使用原业务池3连接（其中1条执行锁）及独立Checkpoint池最多3连接，未在事务中等待外部服务。
+
+逐次检查（测试耗时为runner报告，不含构建；父测试计入数量）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 前置与原生只读探测 | 从T6提交d21dc9f继续；读取AGENTS/CONTRIBUTING/路线图/架构及历史失败诊断。原九服务保持运行。原生exe路径符合用户授权，HTTP 6333、gRPC 6334，readyz返回200；版本1.20.2，commit=23065a0bf6857c3e5da45f6c8939cc746cc0580e，本次无需API Key |
+| 原生基础设施专项第1次 | 0通过、1失败，21.406秒；Windows PowerShell归属脚本的Get-FileHash不可用，未进入集合创建；没有用测试跳过代替归属检查 |
+| 原生基础设施专项第2次 | 4通过、0失败、0跳过，29.795秒（父17.801秒）；改为Node文件元数据+真实路径/进程身份核对后通过。Qdrant子用例9.606秒包含核验、CRUD及清理，不能称为集合创建延迟 |
+| db:generate、PostgreSQL归属核对、首次db:deploy | 通过，应用202611260004；保留旧迁移、业务数据和独立Checkpoint表 |
+| 初期编译/执行 | fixture额外execute实参和循环ReturnType定义导致编译失败；改为正确调用及明确Worker类型后通过。一次在编译未成功时尝试执行专项，因缺少编译文件未执行测试；不计为通过 |
+| 初期Lint | 先后发现finally直接throw和AggregateError缺少cause；调整错误/收束流程并保留原错误cause，后续通过，未禁用规则 |
+| T7真实故障专项第1次 | 2通过、3失败、0跳过，32.765秒（父27.849秒）；迟到saver写入未发生、同thread续跑失败，另两个子场景通过；本轮精确记录和thread均已清理 |
+| T7真实故障专项第2次 | 5通过、0失败、0跳过，30.114秒（父28.732秒）；修复在途写入收束和用户状态投影后通过 |
+| pnpm test第1次 | 42通过、0失败、0跳过，9.657秒；原API/Worker超时和断言保留，L1未复现 |
+| 审阅补充及typecheck/Lint | 增加合成完成前两个业务产物校验；新版本索引执行改为真实子进程。类型检查和Lint通过；后面的两次全量覆盖这些修订 |
+| 重复db:deploy、db:status、db:validate、schema diff | 无pending，共7条迁移已应用；validate通过，Prisma结构diff无差异。CHECK/trigger仍由实际集成断言验证，未以schema diff替代 |
+| 默认Docker完整test:integration | 71通过、2失败、0跳过，490.382秒；失败仅为Qdrant创建超时及其父测试。T7父/子5项全部通过（父27.814秒），其余Checkpoint、Langfuse、T1–T6均通过 |
+| Docker失败后的只读核对 | 本轮集合s12_1a049a64_bcf7_4530_9705_bf6ecba52cfd服务端PUT=8.335798秒、迟到返回200，随后精确DELETE=0.723453秒；集合总数及s12_*残留均0，待清理manifest=0 |
+| 清理目标元数据补充 | 审阅发现原清理manifest默认指向Docker，新增target字段区分原生进程并保持旧manifest兼容；归属拒绝测试断言“不删除并保留正确实例证据”。默认全量运行于此元数据补充之前，后续基础测试及原生全量覆盖最终修改 |
+| pnpm test第2次（最终代码） | 42通过、0失败、0跳过，5.290秒；含停止前等待执行收束和两种目标清理记录断言，未放宽任何原限制 |
+| tasks:consume:graph装配/空会话 | 已确认正式队列为空后运行；真实Nest装配成功，60秒期限后received=0、acknowledged=0、reason=deadline，退出0。只证明命令装配/关闭，图执行证据来自真实子进程集成 |
+| 原生Qdrant完整test:integration:native-qdrant | 73通过、0失败、0跳过，536.536秒；同一套集成文件全部通过，T7父/子5项通过（父34.338秒）。Qdrant创建4581.3ms；原断言、兼容性检查及超时均保留，原Docker认证配置未改 |
+| 最终typecheck、Lint | 均通过，零警告；未新增依赖/关闭规则 |
+| 默认目标与原生目标只读复核 | 默认分支仍是docker、http://127.0.0.1:56333并通过Compose归属核验；原生仍是授权目录进程，集合总数及s12_*残留均0 |
+| 最终资源与文档检查 | 4轮T7 manifest均cleaned=true，精确Owner/NodeArtifact/合成索引目标/Checkpoint残留均0，双池关闭；Docker与原生集合均0、待清理manifest=0。RabbitMQ仅4条正式队列/1条策略，ready/unacked及连接均0，九服务healthy。26个变更文件及103个本地链接/锚点核对，diff检查通过；本地凭证、data、dist及生成客户端被忽略，任务表定义与依赖版本/锁文件未变 |
+
+首轮T7失败的原因与修复：仅等待graph.invoke或pool.end不足以确认延迟saver操作已结束，abort后调用可能已返回而屏障中的put尚未真正进入数据库，过早关闭池会取消应验证的迟到写入。现实现显式跟踪在途saver/产物操作并收束，再形成停止证据；最终测试确实观察到旧thread的迟到Checkpoint。同thread续跑的另一失败是把LangGraph内部channel_values整体当成严格用户Schema校验，现只提取/验证用户状态，保留任务与输入身份检查，没有放松业务输出Schema。后续通过不覆盖这两次实际失败。
+
+Qdrant对照结论：最终原生实例集合创建实测4581.3ms，处于原5秒限制内但余量有限；整段Qdrant子测试8378.965ms包含进程核验、CRUD和清理，二者不混用。Docker本轮创建8.336秒超时，原生本轮通过支持继续排查Docker/持久化路径差异，但单轮不能证明原生长期稳定，也不能确认物理磁盘、VHD、文件系统同步或其他I/O的具体占比。没有迁盘、修改WAL/镜像、关闭服务或改tmpfs；存储性能处理仍需独立安排。该失败不归入只适用于API冷启动的L1，不能以替代实例通过宣布默认Docker回归已修复。
+
+未执行及遗留：T8查询/取消API、T9 OpenAPI安装与生成、T10阶段整体收尾；真实报告/JobVersion/索引/LLM、常驻进程监督、跨owner调度、多副本/长期负载、生产硬件/TLS/备份恢复、其他操作系统、服务重启持久化及新机冻结安装（依赖未变）。没有运行S1.3-T7.5规定的旧阶段连续验收批次，本轮按S1.4-T7及授权对照范围执行。停止未知时可能重做未提交图内工作，不能保证外部模型调用恰好一次；全链路图观测仍未接入。默认DockerQdrant超时仍是已知未解决问题；S1.4后续仍按原规划T8、T9、T10继续，当前不推送、不合并。
+
+## 2026-11-26 S1.4-T9 前置决策D8确认（尚未实施T9）
+
+维护者明确选择 `@asteasolutions/zod-to-openapi`，由现有Zod契约生成OpenAPI。仅记录工具决定，不安装依赖、不改接口行为；T9实施时再核对当时版本/engines/peers并编译验证。任务编号、范围、依赖和分任务提交安排保持原规划。本轮另外授权开始T7，并授权对照测试维护者自行启动的原生Qdrant（D:\qdrant-x86_64-pc-windows-msvc）；其结果单独记录，不覆盖既有Docker回归历史。
+
+## 2026-11-26 S1.4-T6 定时对账与持锁执行保护（分支 feature/s1.4-task-foundation）
+
+状态：S1.4保持“进行中”。从干净的T5提交4fb15a2继续T6；范围为任务/Outbox定时扫描、恢复调度与不抢占持锁执行，未开展T7图恢复。T6专项通过，全量回归仍有既有Qdrant失败；本任务与记录整理为本地提交，未推送、未合并。
+
+实现：
+
+- 新ReconciliationModule/Store/Service与 `tasks:reconcile once|watch`；默认每类10条候选、UUID游标分页回绕，扫描过期RUNNING和超过120秒未完成的QUEUED/RETRY_WAIT，不漏掉因锁阻塞前面任务而排在后面的任务。修复事务逐条短执行，之后再调用既有Outbox发布器；输出pending/due/failed和最老事件时间。
+- 为T6“持锁不抢占”补齐最小消费执行锁：PostgresExecutionLock从原3连接池借专属session连接，键由固定命名空间及owner/type/task确定；消费者从拿锁到本次数据库处理结束保持它，对账使用同键transaction advisory lock再SKIP LOCKED锁任务。有效执行、行锁、取消、未来retryAt、终态和非本owner跳过；锁连接丢失Abort，不将带锁连接归还池。
+- 过期无锁RUNNING事务结束旧attempt并累计elapsedMs，可靠结束旧代次RUNNING收据、递增generation/fence/recoveryCount，置QUEUED并同事务创建新恢复messageId Outbox与TaskEvent。保留taskId、冻结输入、所有预算及graph线程字段；晚到旧token被拒绝。并发对账只恢复一次，SQL失败全部回滚。
+- 缺本代调度或已confirm但长期仍无执行的任务恢复调度；当前未发布或失败事件保留原T3退避/租约/预算，不重置，不靠创建新代次绕过failedAt。已有恢复消息仍待投递时，即使恢复次数达到上限也继续等待；真正再次需要恢复且recoveryCount达默认3次，或执行次数/总期限耗尽时复用T5 FAILED/dead事务。
+- watch立即执行、完成后间隔10秒，轮次不重叠；单轮60秒期限和既有数据库/发布期限，连续3轮数据库/修复错误停止。单任务异常分类汇总为error，不输出原始SQL/输入；新候选仍可继续。命令固定开发owner，未接入跨owner调度或API/空Worker自动启动。
+- 新迁移202611260003仅加recoveryCount非负列与扫描索引，未改旧迁移/Checkpoint库；无依赖或镜像变化。消费者fixture统一使用真实锁，纯单元测试使用明确标注的无锁测试端口。更新部署、测试、架构、README和路线图，注明不能混跑无锁旧消费者与新对账器。
+
+逐次验证（test runner耗时不含构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 开始状态/前置 | feature/s1.4-task-foundation干净，HEAD=4fb15a2；九个项目服务healthy；阅读AGENTS/CONTRIBUTING/路线图和相关架构/实现 |
+| db:generate及初期build | 通过，使用原Prisma与依赖；没有新增包 |
+| PostgreSQL归属及首次db:deploy | 通过，新增T6迁移；未reset或删除资源 |
+| 独立T6真实集成专项第1次 | 11通过、0失败、0跳过，40.014秒（父37.108秒）。含两类恢复+实际消费、并发对账、真实持锁子进程不抢占/强杀后恢复、锁连接终止、行锁/owner/取消隔离、原发布预算、缺投递/恢复上限、只读DB/SQL回滚；精确资源清理、池连接0 |
+| 首轮Lint | 通过，零警告 |
+| 审阅补充 | 修正恢复次数上限与尚待投递事件的顺序：本代仍pending时不提前FAILED，增加对应真实断言；不改既有限制 |
+| pnpm test第1次 | 41通过、0失败、0跳过，12.388秒；原API/Worker启动/关闭与8秒限制保留，L1未复现 |
+| typecheck、最终Lint | 通过，零警告 |
+| 第2次db:deploy、db:status | 无pending，共6条迁移已应用 |
+| db:validate、schema diff | 通过，无结构差异 |
+| tasks:reconcile once | 真实Nest装配成功，开发owner扫描为空，publications=[idle]、pending/due/failed=0，退出0 |
+| tasks:reconcile watch | 真实子进程连续2轮扫描，收到私有IPC shutdown后按与SIGINT/SIGTERM共用的stop路径退出0，无stderr；不等于Linux信号实测 |
+| 初步文档/变更检查 | 26文件、51个本地链接目标有效，git diff --check通过；依赖/锁文件无变化 |
+| 完整test:integration | 66通过、2失败、0跳过，471.452秒；T6父/子11项全部通过（父49.756秒），T1–T5、Checkpoint、Langfuse均通过；仅Qdrant创建超时及父测试失败 |
+| 收尾元数据修正及独立T6专项第2次 | 对账终结但没有原投递/收据时，不新建伪消费收据，dead.originalMessageId=null；新增断言。修正后build通过，T6 11通过、0失败、0跳过，41.913秒（父41.207秒），精确资源清理/池关闭通过；完整回归是在该元数据修正前开始，修正后只针对受影响的T6及基础/静态检查复验 |
+| pnpm test第2次（最终代码） | 41通过、0失败、0跳过，12.827秒；原API/Worker断言及限制不变 |
+| 最终typecheck、Lint | 通过，零警告 |
+| 最终资源核对 | 三轮T6 manifest均cleaned=true；RabbitMQ只保留4条正式队列和1条正式策略，ready/unacked均0，AMQP连接0；Qdrant s12_*残留0 |
+| 最终文件检查 | 28个修改/新增文件、97个本地链接目标有效，diff检查通过；凭证、data、dist及生成客户端均被忽略，依赖/锁文件未变 |
+
+边界与观察：首轮专项通过后审阅发现pending恢复事件达到恢复次数上限不应提前失败，已修正并纳入最终完整回归；这是本批实现边界调整，不是放宽验收。T6只恢复调度，未读取Checkpoint或推测SUCCEEDED；持锁子进程试验是合成执行，不把它当成T7旧图/线程/saver迟到写入验证。session锁占用原池一条连接，当前每个consumer命令最多一个活动任务，增加进程内并发前须重新核算池容量。
+
+完整回归仍有既有Qdrant集合创建超时：本轮 `s12_91ef2918_a7ac_48d2_a7fc_d61b1b584ddc` 服务端PUT耗时5.436763秒，超出未改的5秒客户端限制；随后精确DELETE成功（0.070312秒），只读核对s12_*残留0。Langfuse本轮通过。未修改Qdrant/API/观测超时，未关闭服务或改tmpfs；存储性能处理仍需单独安排，不能用T6专项通过覆盖全量失败。
+
+未执行/限制：T7 session锁与LangGraph/Checkpoint联合恢复及新thread切换、T8任务取消/查询API、T9 OpenAPI、真实报告/索引/LLM、跨owner授权、后台进程监督、多副本容错、长期负载/生产硬件、容器重启及新机冻结安装（依赖无变化）。锁断开无法证明任意旧图已停止，T6不提供图恢复保证；未自动重置failed Outbox，不新增人工恢复接口。现有API/空Worker入口仍未自动装配对账器，需要显式watch命令。未推送、未合并。
+
+## 2026-11-26 S1.4-T5 有界任务重试、dead事件与持久隔离区（分支 feature/s1.4-task-foundation）
+
+状态：T5实现与专项验证通过，完整回归仍有既有Qdrant失败，S1.4保持“进行中”。先按维护者授权将此前工作保存为4个本地提交：501544e（T1/T2）、485c004（T3）、8ede21c（T4）、aaea0ab（累计文档）；提交后工作区曾干净，再开始本任务。T5与本记录整理为单独本地提交，未推送、未合并，未以提交表示阶段验收通过。
+
+实现内容：
+
+- 显式失败分类；可恢复错误在同事务写RETRY_WAIT/retryAt、generation+1、结束attempt、原receipt DONE、TaskEvent和新messageId的延迟Outbox，提交后才ACK。首次退避24–30秒、后续96–120秒，任务retryAt另阻止提前消费，taskId/快照不变。
+- 永久失败、次数或时间预算耗尽写FAILED与最小dead Outbox后ACK；总期限覆盖重试等待。最后尝试中断后重投也持久终结，旧token不能覆盖新执行。原始异常不写数据库/消息；未知处理器异常映射EXECUTION_FAILED，预算/心跳/提交数据库错误不会误判为可ACK的业务异常。
+- 增加budget.reserve端口，调用前在真实事务内预留modelCalls/tokens/costMicros并累计attempt token/cost，跨尝试不归零；超额先拒绝。保守预留不自动退款，真实LLM/SDK尚未接入；外部适配器必须复用此端口，不能把模拟预算测试当成真实账单或外部副作用exactly-once保证。
+- Quarantine按可信消费owner/consumerName/dedupeKey唯一写入，与dead Outbox同事务；消息来源owner不可信。存消息哈希、可用UUID和白名单元数据，不存非法正文/原始信封/异常；并发和提交后重投由唯一约束吸收。未知/不可见任务、未来代次、messageId复用冲突也隔离；数据库不可写仍不ACK。
+- requested/dead契约均由Zod校验，Outbox核对事件/来源聚合，真实confirm+mandatory+return沿用T3。终端队列新增analysis.dead.v1/job.index.dead.v1绑定并保留原Broker DLX requested绑定。新迁移202611260002只追加retryAt和隔离区可信身份/去重字段，兼容旧诊断行，不改已应用历史迁移。无新依赖/账号/vhost/Docker服务。
+- 保留显式有界消费/发布命令，未增加T6对账/常驻调度或T7图锁；更新README、架构、部署回退说明、测试和路线图。
+
+逐次检查（test runner耗时不含构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| T1～T4提交前核对 | 仅本阶段53个文件；无凭证/运行数据/生成文件入暂存。T1已应用迁移末尾空行提示保留，未改校验和；T3/T4/文档暂存检查通过。既有验证结果写入commit正文 |
+| T5初始build、db:generate | 通过；生成Prisma客户端，未跟随CLI升级提示 |
+| PostgreSQL归属、db:deploy第1次 | 通过，新增T5迁移，未重置库 |
+| db:deploy第2次、db:status | 通过，无pending，5条迁移均已应用 |
+| T5真实专项第1次 | 5通过、7失败（含父测试），116.328秒；前5个失败分类/预算/期限场景通过，后续观察连接丢心跳导致断连、断言连锁失败及清理失败，见排查 |
+| 首轮Lint | 通过，零警告 |
+| 故障注入接口调整期间build | 3次失败：Prisma扩展客户端与普通客户端的泛型/重载签名不兼容；未用类型断言绕过，最终用仅交互事务的窄端口和真实事务代理注入SQL错误，后续构建通过 |
+| 首轮失败遗留精确清理 | 核对测试场景/时间/预算和16组Owner/task精确ID，归属检查通过后删除本轮4队列/策略及16主体关联测试数据，剩余Owner0；证据保存在忽略目录data/s15-runs |
+| T5真实专项第2次 | 12通过、0失败、0跳过，65.026秒；真实错误移交/隔离SQL回滚、只读数据库、三种handoff后SIGKILL均通过；本轮资源残留0 |
+| outbox:setup复验 | 通过；读回正式resume.dead两条新dead绑定及原requested绑定均存在，无purge |
+| typecheck、Lint修正后 | 均通过，零警告；最终代码复核也通过 |
+| pnpm test（追加dead return与并发隔离用例后构建） | 38通过、0失败、0跳过，28.376秒；原API/Worker限制保持，L1本轮未复现 |
+| db:validate、schema diff | 通过、无差异；5条迁移状态正常 |
+| 完整test:integration（最终代码） | 55通过、2失败、0跳过，466.737秒；T5父/子14项全部通过（父78.535秒），T1/T2、T3、T4、Checkpoint及Langfuse均通过；仅既有Qdrant创建超时及父测试失败 |
+| tasks:consume analysis（最终Nest装配） | 空队列运行60秒后received=0/acknowledged=0/reason=deadline，退出0；QuarantineStore注入正常 |
+| 最终RabbitMQ残留核查 | 只保留4条正式队列和1条正式策略，ready/unacked均0，AMQP连接0；本轮T3/T4/T5临时资源清理完成 |
+| Qdrant残留核查 | s12_*残留0，未覆盖原超时失败 |
+| 文件检查 | 初步22文件/50本地链接；补齐进度与路线图后24文件/96链接有效、无行尾空白；git diff --check通过，无依赖或锁文件变化，凭证/data/dist/生成产物未进入变更 |
+
+失败排查和修正：
+
+- 第1次专项在故障注入时临时编译Nest测试容器，观察AMQP连接在该段停顿中被broker关闭。服务端2026-11-26 05:17:02 UTC记录该连接 `missed heartbeats from client, timeout: 10s`；随后共用channel读取和清理失败，残留消息又干扰后续强杀断言。没有把这些失败记为通过。移除不必要的Nest装配，故障测试改为直接代理真实Prisma事务/INSERT（payloadVersion=0触发真实CHECK）；事务端口保留完整事务语义，未降低校验。
+- 原清理复用失败channel，已改为独立连接；每轮记录精确命名空间和成功创建的Owner ID到忽略目录manifest，清理成功后标记cleaned。第一次无事先manifest，依据本轮执行时间、16个场景产生的预算/任务状态和精确ID逐一核对后清理，未按前缀批量删业务数据；后续轮次manifest记录正常。
+- 完整回归仍出现既有Qdrant创建超时，服务端集合 `s12_05db51d7_be03_4f20_b8d6_4856e2f85c86` PUT耗时6.948138秒，超过未变的5秒限制；迟到200后精确DELETE成功（0.114784秒），s12_*残留0。处理方向仍是独立安排存储性能修复/目标硬件复验，不能扩大超时或改tmpfs掩盖。本批未改Qdrant、API启动测试或观测链路；Langfuse本轮通过，不抹除T4历史HTTP超时记录。
+
+未执行/限制：未实现T6定时对账、常驻Worker调度、T7 Checkpoint隔离、T8查询/取消API或T9 OpenAPI；未实现真实LLM/SDK错误映射与预留额度结算、隔离区重放/清理API、发布预算耗尽人工恢复和告警。未做多节点故障/长期负载、服务器/SSD、新机冻结安装（依赖未变）、容器重启实验。延迟重试仍需再次运行原Outbox发布批次；数据库持久移交不是立即可靠送达，T3发布失败达到上限时保留事件待处理。未推送、未合并。
+
+## 2026-11-26 S1.4-T1～T4 本地提交整理与T5启动
+
+维护者授权按规范保存现有工作后继续下一任务。本轮将T1/T2、T3、T4分别整理为本地提交，累计文档单独提交；保留各次失败与未执行项，未推送、未合并。前述“未提交”是各记录当时状态，不改写历史。T5范围仍严格按路线图：任务重试/失败分类、延迟Outbox、dead事件和Quarantine；不提前实施T6对账/T7 Checkpoint隔离。
+
+提交前复核：工作区均为本阶段既有变更，依赖/锁文件未变，凭证、运行数据与生成产物没有进入暂存区。沿用本会话已完成的T4最终检查：基础36/36、T4专项12/12；全量40通过3失败、Langfuse独立复验通过，未重新声称全量通过。暂存检查发现T1已应用迁移末尾多一空行；因数据库已记录该文件校验和，保留原迁移逐字节内容并如实记录该格式提示，不通过改历史迁移消除它。后续T3/T4暂存检查通过。未重新运行不涉及新代码的完整回归；T5实现后执行对应检查。
+
+## 2026-11-26 S1.4-T4 手动ACK消费者、执行收据、租约心跳与fence（分支 feature/s1.4-task-foundation）
+
+状态：S1.4继续“进行中”。T4实现与真实专项通过；完整回归仍失败，未标记阶段验收通过。保留原T1–T3所有未提交改动，本轮未提交、推送或合并。T5–T10仍未实施。
+
+完成内容：
+
+- ConsumerModule/TaskConsumer提供实际手动ACK消费路径及 `tasks:consume analysis|job-index` 显式入口。每个会话一个类型/队列、prefetch=1，默认最多10条/60秒；严格验证8KiB正文上限、JSON Schema、contentType、messageId、exchange/routingKey与taskType。身份从固定开发IdentityPort取得，消息不得指定owner。
+- TaskExecutionStore在owner限定的事务内锁任务，校验快照/代次，条件领取租约、递增bigint fenceToken、创建TaskAttempt和RUNNING ConsumerReceipt。每次用独立attemptId作为leaseOwner；有效执行重复返回deferred且不ACK，过期可接管，旧尝试记录LEASE_EXPIRED；原输入与taskId不变。
+- 终态/过期generation写DONE处置后ACK，不执行处理器；未来generation、未知/越权任务、同messageId改task/generation均拒绝。即便任务已终态，数据库不可写也不ACK。心跳事务同步更新任务和当前收据的同一数据库时间，失败中止执行；完成前收束已开始心跳。
+- 合成处理器校验输入哈希，只产生SYNTHETIC_COMPLETED完成事件；完成事件、任务SUCCEEDED、attempt结束及收据DONE在同事务提交，随后在原channel ACK。数据库写入失败整体回滚；token/attempt/generation/有效租约/RUNNING/未取消条件同时保护产物与终态。此处SUCCEEDED仅代表合成单元完成，不伪装有真实报告或岗位索引。
+- 新迁移202611260001增加两个任务表执行保护trigger，拒绝fence/generation回退与终态复活。未改旧迁移、数据表或官方Checkpoint；没有新增依赖和锁文件改动。租约/总期限和最大尝试预算从冻结输入及首次attempt计算，跨接管保留；T5失败分类/重试移交尚未实现，预算耗尽时保留未ACK消息并停止本次消费。
+- 断连/异常/停机/无效消息关闭会话，不立即nack/requeue热循环；迟到处理结果不能绕过fence提交。新增真实PostgreSQL+RabbitMQ测试及提交后ACK前强杀子进程；更新README、架构、部署、测试、路线图与本记录。
+
+本机环境与恢复：Windows、Node24.22.3、pnpm12.23.0。开始时Docker Desktop未运行，首次PostgreSQL归属检查失败，迁移未执行。默认安装路径不存在；通过注册表找到 `E:\DockerDesktop` 后后台启动，等待引擎可用，按本项目显式服务列表执行infra:up和observability:up，最终九服务均健康。未修改Docker配置、迁移数据盘、重置数据库、删除卷或停观测来换取通过。操作/清理仍核对项目/服务/端口/卷归属。
+
+逐次检查（test runner耗时不含外层构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 初期build第1、2次 | 均失败：任务类型映射返回值被拓宽为string；显式标注ANALYSIS/JOB_INDEX返回类型修正 |
+| 初期build第3次 | 失败：单元测试构造的精简消息不满足amqplib完整MessageProperties；将解码函数输入收窄为实际需要的字段，无类型断言 |
+| 后续build及consumer单元专项 | 通过；单元专项3通过、0失败，5.055秒 |
+| 集成用例加入后build | 失败：测试模块context变量遮蔽工厂函数；改名testingModule后构建及Lint通过 |
+| 首次PostgreSQL归属检查/迁移准备 | 失败，Docker引擎未运行；未执行迁移。安装位置核对及引擎恢复后归属复验通过 |
+| 第1次pnpm test | 35通过、1失败、0跳过，124.832秒；失败为原API启动超过8秒（8.043秒），恰逢Docker/WSL冷启动；新增用例均通过 |
+| typecheck、Lint | 修正类型/测试错误后通过，Lint零警告；最终代码复核再次通过 |
+| infra:up、observability:up | 通过，沿用原业务与观测服务/数据；冷启动等待后九服务全部healthy |
+| 第1次db:deploy | 归属检查通过后成功应用T4迁移，现共4条迁移 |
+| 第2次db:deploy、db:status | 无pending；4条迁移均已应用 |
+| db:validate、Prisma schema diff | 通过，无结构差异；trigger由迁移和真实数据库断言验证，不只依赖schema diff |
+| 独立T4真实集成专项 | 12通过、0失败、0跳过，88.626秒（父用例66.554秒）；两类任务去重、并发领取/消费、心跳丢失、只读DB、真实SQL回滚、提交后强杀、停机/非法消息均通过；本轮记录/队列/策略清理完成，数据库池连接0 |
+| 第2次pnpm test | 36通过、0失败、0跳过，12.240秒；原API/Worker启动关闭断言及8秒限制不变 |
+| 完整test:integration | 40通过、3失败、0跳过，352.721秒；T4全部12项再次通过（父用例53.358秒），T3全部10项通过（父235.062秒，DLX恢复181.981秒），T1/T2与Checkpoint通过；失败为Qdrant创建超时及父测试、Langfuse HTTP超时 |
+| Langfuse独立专项复验 | 1通过、0失败、0跳过，11.293秒（用例9.506秒）；按原HTTP超时/断言，无源码/配置调整；不覆盖完整回归中的失败 |
+| pnpm run tasks:consume analysis | Nest实际装配/CLI运行成功；当时共享分析队列为空，60秒会话返回received=0、acknowledged=0、reason=deadline，退出0 |
+| Qdrant只读残留检查 | 本轮s12_*残留0，原超时失败仍保留 |
+| RabbitMQ最终只读检查 | 仅4条正式resume队列，ready/unacked均0；本轮T3/T4临时队列清理，AMQP连接0 |
+| 文件与文档检查 | 53个变更/新增文件无行尾空白，最终108个本地链接目标有效；git diff --check通过；依赖声明/锁文件无改动 |
+
+失败原因及后续方案：
+
+- API首次有效配置启动超8秒，第二次原限制通过；本次未改API/Worker入口、process.test或超时，与已接受的L1冷启动模式一致。本轮Docker冷启动及模块加载明显慢，不能将单次结果扩大为已定位所有硬件原因；继续在目标服务器/SSD环境按S3.3要求解除L1，不放宽原断言。
+- Qdrant本轮集合 `s12_845b5175_9dac_4cc5_bac5_6b71f0019080`，服务端PUT耗时5.458566秒，超过原5秒客户端限制。迟到创建后精确DELETE成功（0.102053秒），只读核对残留0；未触及其他集合。与[原存储排查](research/failure-diagnosis-2026-11-25.md)现象一致，后续仍需独立安排存储性能处理或目标硬件复验，不把它归入仅针对API的L1。
+- Langfuse完整回归用例17.081秒时抛HTTP TimeoutError；源码中HTTP单次限制为5秒，九服务当时均healthy。单独复验后全部span持久化/关联/脱敏断言通过。既有异常没有给出请求位置，服务日志未提供足够的请求时序，因此不能断言具体是project查询、observations读回或trace删除，也不能确认冷启动是唯一根因。T4未改观测链路；后续需在独立诊断中采集不含认证/原文的请求阶段与耗时，区分服务健康、API实际就绪、存储响应和清理阶段后处理。保留首次失败，不扩大HTTP超时或关闭兼容检查；不声称该失败运行的trace已完成删除，也不按时间范围批量删trace。
+
+未执行/边界：未实现T5重试/错误分类/隔离区、T6对账、T7图锁与Checkpoint联合fence、T8取消/查询API或T9 OpenAPI；未实现常驻Worker接线、跨owner消费授权、真实报告/索引处理、模型调用、跨进程trace、告警与人工恢复入口。T4租约接管仅覆盖受fence保护的合成数据库写入，不能证明旧LangGraph已停止或Checkpoint不会被迟到写入。未运行新机冻结安装（无依赖变化）、容器重启持久化、多节点故障、Linux信号或生产负载/认证测试。全量回归仍未通过，不宣布S1.4完成或验收通过；没有提交/推送/合并。
+
+## 2026-11-25 S1.4-T3 Outbox发布器与quorum业务拓扑（分支 feature/s1.4-task-foundation）
+
+状态：S1.4进行中。保留T1/T2全部未提交工作，在同一阶段分支实现T3；尚未提交、推送或合并。正式消费者、任务执行租约/fence、业务重试与对账仍为T4以后范围。本轮完整回归仍有既有Qdrant超时，不能据T3专项通过宣布阶段验收通过。
+
+完成内容：
+
+- OutboxStore使用单条短事务CTE、FOR UPDATE SKIP LOCKED按owner领取到期事件；每次独立租约令牌，数据库条件更新拒绝过期或旧领取者的成功/失败标记。默认租约15秒，无数据库事务包围RabbitMQ网络调用。
+- 确认发布器使用persistent、mandatory及confirm channel，return先于ACK时判失败，NACK/断连/超时均不标published；每个尝试独立correlationId和连接，重复投递保留messageId。5秒统一截止覆盖握手/通道RPC/confirm，AbortSignal销毁本次socket；publish(false)仅等待确认，不冒充成功。
+- 新迁移202611250002增加failedAt/lastErrorCode、结果互斥约束和索引；保留已应用T1迁移。默认最多8次、自createdAt起1小时，指数退避1秒起、30秒上限及50%–100%抖动，写availableAt后释放租约。最后一次尝试中断后也不能无限重新领取；非法事件持久停止，失败事件和任务均保留。领取后总期限已过时不发起网络调用，批次取消明确报告stopped。
+- `outbox:setup`受控建立resume.tasks/resume.dead及分析/索引的主/终端quorum队列；精确策略启用at-least-once DLX、reject-publish、delivery-limit=5、15分钟consumer timeout，核验实际队列与生效策略。只扩展已有vhost账号的精确资源权限；重复infra:provision保留该授权，不加管理tag或新服务。
+- `outbox:publish`显式执行默认开发owner的一个批次（最多10条/60秒），失败或停止返回非零；未接入定时调度或正式Worker消费者。增加真实RabbitMQ/TCP故障代理、真实发布子进程强杀及仅测试使用的ConsumerReceipt去重事务。
+- 同步README、架构、部署、测试与路线图；未新增依赖、未修改锁文件、Qdrant实现或既有超时，未启动新Docker项目。
+
+环境与来源：本机Windows、Node24.22.3、pnpm12.23.0；PostgreSQL/RabbitMQ/Qdrant与Langfuse保持运行。T3管理和清理前核验Compose项目/服务/端口/卷；正式拓扑保留，测试只操作事前确认不存在的精确s12.t3.UUID资源及本轮Owner。查阅RabbitMQ官方confirms/quorum文档与本地amqplib2.4.1源码；官方网页读取成功，raw GitHub源码下载失败，未用无法获取的源码声称验证。实际rabbit配置读取确认dead_letter_worker_publisher_confirm_timeout=180000ms、consumer_prefetch=32。
+
+逐次检查（test runner耗时不含构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 第1次build | 失败：amqplib类型未列出Node socket signal；核对其把选项转交net.connect的实现后使用推导的socketOptions对象，未加类型断言或改依赖 |
+| 第2次build | 失败：测试通道callback可选/返回类型及EventEmitter的this类型不匹配；收窄确认函数所需端口并修正测试callback |
+| 后续build | 通过；包括专项、两次pnpm test及全量集成的构建 |
+| db:generate、db:validate | 通过，客户端重新生成，Prisma schema合法 |
+| 第1次db:deploy | 通过，新增T3迁移；应用前PostgreSQL归属验证通过 |
+| 第2次db:deploy、db:status、schema diff | 无pending，3条迁移已应用；数据库与Prisma无结构差异，CHECK仍另由SQL维护 |
+| 第1次outbox:setup | 通过，实际建立业务队列、DLX策略和精确权限 |
+| node --test dist/test/outbox.test.js | 5通过、0失败、0跳过，8.379秒 |
+| 第1次T3真实集成专项 | 5通过、5失败（包含父测试），70.161秒；失败原因见下文；最终本轮资源已精确清理 |
+| 第1次lint | 失败：两个import应为type、一个测试变量未使用；修正后检查通过 |
+| 第2次T3真实集成专项 | 8通过、2失败（DLX及父测试），116.960秒；实际NACK、强杀重放和预算验证已通过；DLX等待窗口仍短于broker周期；最终本轮资源已清理 |
+| 第1次pnpm test | 32通过、0失败、0跳过，10.701秒 |
+| 第2次outbox:setup | 通过，核验已存在策略和实际队列；未清空消息 |
+| 本轮完整test:integration | 29通过、2失败、0跳过，313.820秒；T3父/子共10项全部通过（269.365秒，其中DLX恢复183.170秒）；T1/T2、Checkpoint、Langfuse均通过；仅原有Qdrant创建超时及其父测试失败 |
+| infra:provision复验 | 成功；操作前两服务完整归属验证，操作后读回精确T3权限仍保留 |
+| outbox:publish | 成功输出results=[idle]，退出0；当时开发owner没有待发事件 |
+| Qdrant只读残留检查 | s12_*数量0，清理保留原超时失败 |
+| 第2次pnpm test（末次边界修正后） | 33通过、0失败、0跳过，8.506秒；包含领取后过期不发网络、取消批次返回stopped；API启动L1未复现 |
+| typecheck/Lint修正后复验 | 均通过，Lint零警告；末次边界修正后的最终复核也通过 |
+| 第3次独立T3集成专项（最终代码） | 10通过、0失败、0跳过，243.579秒；父用例243.108秒，其中DLX恢复180.731秒；精确测试资源已清理，数据库池连接0 |
+| 最终RabbitMQ残留/连接核查 | 仅保留4条正式resume队列和1条正式策略，队列ready/unacked均0；s12.t3临时队列/策略0，AMQP连接0 |
+| 首轮文件/文档检查 | 42个变更/新增文件无行尾空白，105个本地文档链接目标存在；git diff --check通过 |
+| 最终文件/文档检查 | 42个变更/新增文件、106个本地链接目标有效，依赖声明和锁文件无改动；凭证、生成文件和临时诊断文件均被Git忽略 |
+
+失败排查与修正：
+
+- 第1次NACK用例把quorum队列配置长度=1误当成“第二条必NACK”；实际允许短暂超额，第二条被确认。改为最多五次探测并必须观测实际NACK，未放宽published判断。首轮未消费的合成消息又导致崩溃重放messageId和空队列断言失败；给该场景增加finally内精确清空本轮私有队列，后续真实强杀/收据去重均通过，正式队列不purge。
+- DLX前两次分别只等待5秒/40秒，不足以覆盖本机180秒内部重试周期；从运行broker读取配置后，改为190秒观察一个内部周期、父测试300秒。该测试是本批新增，未调整服务端配置或任何publish/API/Qdrant既有限制。恢复绑定后实际183.170秒收到相同messageId及rejected x-death，证明该故障窗口下消息被源quorum保留并恢复转发。
+- 完整回归的Qdrant集合为s12_1a30dd83_ed6b_46ba_adae_c4b7ad64a734，服务端PUT耗时5.189154秒，超出原5秒客户端预算；服务端迟到200后DELETE成功（0.284047秒），残留0。与[既有存储排查](research/failure-diagnosis-2026-11-25.md)现象一致；不把本次失败并入仅适用于API冷启动的L1，不把T3专项成功覆盖全量失败。处理方向仍是独立安排持久化存储性能修复或目标服务器/SSD复验，当前未迁盘、重置或改tmpfs。
+
+未执行/限制：未实现T4正式消费者/执行幂等及fence，T3消费去重仅测试fixture；未实现常驻调度、自动恢复耗尽事件、告警/查询API、跨owner发布授权、跨进程trace、业务重试dead事件、真实模型或真实版本数据。未验证多节点quorum容错、长期负载/积压、认证/生产部署、容器重启恢复或新机冻结安装（本批未改依赖）。每次发布新连接是低吞吐阶段的有界实现，不声称高吞吐。全量失败仍待处理；未推送/合并。
+
+## 2026-11-25 S1.4-T1/T2 开发身份、任务模型与事务幂等（分支 feature/s1.4-task-foundation）
+
+状态：S1.4进行中。T1/T2实现与专项检查通过，但全量集成连续两次在既有Qdrant集合创建处失败，未满足完整回归的完成定义，未标记维护者验收通过。T3–T10尚未实施。本轮没有提交、推送或合并。
+
+开始前已阅读AGENTS、CONTRIBUTING、路线图T1/T2、架构§4.4/§5/§6.1、接口契约、需求及S1.3验收记录。`git fetch origin`确认远端master为 `17d4002`（PR #1合并S1.3，包含 `6d45207`），工作区原为干净；从该提交创建新阶段分支，保留原S1.3提交和本地分支。此前验收记录中的“未推送/未合并”是当时状态，本条据远端更新补充，不改写历史验收记录。
+
+完成内容：
+
+- T1：IdentityModule默认固定开发Owner，通过IDENTITY/IdentityPort可替换；应用输入不接受ownerId，未知主体不能自动注册。Prisma新增Owner、AnalysisTask、JobIndexTask、TaskAttempt、TaskEvent、OutboxEvent、ConsumerReceipt、Quarantine及迁移；任务状态分表，PARTIAL只属于分析任务。共享记录用互斥任务外键、类型/ID一致性CHECK和owner复合外键；保留预算、代次、租约/fence及取消字段，未实现执行器。
+- T2：严格Zod合成契约，冻结owner/输入版本/预算/配置；应用服务协调仓储，同事务写任务、内嵌输入快照和通用Outbox。按owner及任务类型隔离UUID幂等键，SHA-256规范化完整请求；相同请求重放原taskId，不同请求抛IDEMPOTENCY_CONFLICT并映射HTTP 409。并发P2002回滚后读取已提交赢家。数据库trigger保护输入、版本及幂等绑定不可变。
+- TasksModule只显式装配数据库和身份，不将RabbitMQ/Qdrant/观测放入任务事务；尚未注册到API/空Worker。沿用本项目诊断数据库、账号和3连接池，不新增Docker服务，不触碰Checkpoint表或观测存储。没有新增依赖或改锁文件。
+- 新增身份/契约单测、真实PostgreSQL并发与故障测试、测试专用HTTP 409验证。更新README、架构、部署、测试、API/契约与路线图；数据映射和未实现边界见架构§6.1。
+
+环境：Windows、Node 24.22.3、pnpm 12.23.0；本项目Compose业务与观测服务保持运行。应用迁移和新集成清理前核验PostgreSQL项目/服务/端口/卷归属；Qdrant残留读取前独立验证其归属。
+
+逐次检查（耗时为test runner报告，不含外层构建；未给出耗时的命令不推测）：
+
+| 检查 | 实际结果 |
+|---|---|
+| `db:validate`、`db:generate` | 均成功，Prisma 7.10.1；未采用CLI提示的升级 |
+| 第1次 `typecheck` | 失败：新增409未进入日志白名单、引用了Zod未导出的JSONType。改为复用错误Schema、从z.json推导类型；随后第1次build成功 |
+| 生成迁移 | 以HEAD旧schema对新schema执行Prisma migrate diff --script，补充事务、CHECK及不可变trigger；无reset |
+| 第1次 `db:deploy` | 新增S1.4迁移成功，保留原S1.2迁移及数据 |
+| 第2次 `db:deploy` | 成功，无pending migration |
+| `db:status` | 成功，2条迁移均已应用 |
+| 第2次 `typecheck` | 失败：故障测试把Prisma读取的可空JsonValue直接用于create。改为先用快照和budgetUsage Schema验证，再构造写入；随后第2次build成功 |
+| 第1次 `lint` | 通过，零警告 |
+| `node --env-file=infra/.env --test dist/test/integration/tasks.test.js` | 11通过、0失败、0跳过；10.141秒；本轮owner/task/outbox/attempt/event/receipt/quarantine残留0，池关闭后连接0 |
+| 第1次 `pnpm test`（含build） | 27通过、0失败、0跳过；7.774秒；API启动L1本轮未复现 |
+| 第1次 `test:integration`（含build） | 19通过、2失败、0跳过；41.947秒。失败为既有Qdrant创建用例及父测试；Checkpoint、Langfuse、新任务专项全部通过；S1.4本轮记录残留0 |
+| 第3次 `typecheck`、第2次 `lint` | 均通过，Lint零警告 |
+| 第1次Qdrant残留检查 | `s12_*`残留0；对账清理保留原超时失败 |
+| 第2次 `test:integration`（含build） | 19通过、2失败、0跳过；38.838秒。同一Qdrant createCollection超时；其他用例含新增任务专项全部通过；S1.4本轮记录残留0 |
+| 数据库与Prisma schema diff（--exit-code） | 无差异，退出0；CHECK/trigger另外由真实数据库约束用例覆盖 |
+| 第2次Qdrant残留检查 | `s12_*`残留0 |
+| 首轮 `git diff --check` | 发现schema末尾新增空行；已移除；最终复核通过 |
+| 最终文件与文档检查 | 26个变更/新增文件无行尾空白，104个本地文档链接目标存在；凭证、dist、生成客户端及诊断临时文件均被Git忽略；无依赖/锁文件改动 |
+
+失败排查及处理方案：
+
+- 第1次Qdrant集合 `s12_abc70968_e711_4519_b343_57971baffea7`，服务端PUT耗时6.053957秒；第2次 `s12_aeededd5_1bd3_45dc_af6d_73c0b37722a0`，PUT耗时6.493391秒，均超过未改动的5秒客户端限制。服务端随后返回200；本轮对账分别精确DELETE成功，读回残留均0。说明创建迟到并非任务事务回滚/数据库幂等失败。
+- 本批未改Qdrant实现、镜像、超时、存储、兼容性检查或原测试。现象与[既有存储排查](research/failure-diagnosis-2026-11-25.md)一致，当前日志能确认服务端创建慢，不能单凭一次CPU/内存抽样确定物理磁盘/分页/文件系统的具体占比。没有把重复失败归入已接受的API启动L1，也没有通过重跑成功覆盖失败。
+- 后续处理应单独安排持久化存储性能修复：备份并核对项目卷、凭证和数据后，在服务器/SSD环境按原5秒限制复验，再运行完整回归。若必须支持机械盘，需另行定义并审查管理操作预算，不能直接提高统一超时换取通过。本批未迁盘、停观测服务、重置数据库或改tmpfs；完整回归失败作为当前遗留保留。
+
+未执行/限制：未执行新机冻结安装（无依赖变化）、容器重启持久化实验、生产认证/网络部署、真实简历/JD版本绑定、LLM、Outbox发布/消费/重试/fence/对账、任务查询取消HTTP、OpenAPI或跨进程trace。前者不是本批变更所需复验，后者属于后续任务。输入是明确合成版本，不能据此宣称真实业务资源所有权已验证；seq分配及状态迁移仍待执行流程实现。标准完整集成目前未通过，维护者验收和推送均未执行。
+
 ## 2026-11-25 S1.3 重新验收：通过，附已知环境限制（分支 feature/s1.3-checkpoint-setup）
 
 验收人：维护者委托的审查AI；最终决定由维护者作出。对象为提交 `2d34b9c`（master `dc6002d` 之后的6个提交），验收开始时工作区干净。本次只运行检查和阅读代码，未修改源码、测试、配置或依赖。

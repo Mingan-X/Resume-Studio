@@ -5,6 +5,7 @@ import type { ServerResponse } from 'node:http';
 import { errorResponseSchema } from '../../contracts/http.js';
 import { AppLogger } from '../logging/app-logger.js';
 import { RequestValidationError } from './zod-validation.pipe.js';
+import { IdempotencyConflictError, TaskNotFoundError, TaskInvalidStateError } from '../../modules/tasks/task-errors.js';
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
@@ -15,12 +16,18 @@ export class HttpErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<ServerResponse>();
-    const status = exception instanceof HttpException ? exception.getStatus() : 500;
-    const code = exception instanceof RequestValidationError ? 'VALIDATION_ERROR'
+    const status = exception instanceof IdempotencyConflictError ? exception.statusCode
+      : exception instanceof TaskNotFoundError ? 404 : exception instanceof TaskInvalidStateError ? 409
+      : exception instanceof HttpException ? exception.getStatus() : 500;
+    const code = exception instanceof IdempotencyConflictError ? exception.code
+      : exception instanceof TaskInvalidStateError ? 'INVALID_STATE'
+      : exception instanceof RequestValidationError ? 'VALIDATION_ERROR'
       : status === 400 ? 'BAD_REQUEST'
       : status === 404 ? 'NOT_FOUND'
       : status >= 500 ? 'INTERNAL_ERROR' : 'HTTP_ERROR';
-    const message = code === 'VALIDATION_ERROR' ? '请求参数无效'
+    const message = code === 'IDEMPOTENCY_CONFLICT' ? '该幂等键已用于不同的请求'
+      : code === 'INVALID_STATE' ? '任务已结束，无法取消'
+      : code === 'VALIDATION_ERROR' ? '请求参数无效'
       : code === 'BAD_REQUEST' ? '请求格式无效'
       : code === 'NOT_FOUND' ? '资源不存在'
       : code === 'INTERNAL_ERROR' ? '服务暂时无法处理请求' : '请求无法处理';

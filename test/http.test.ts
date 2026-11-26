@@ -7,12 +7,16 @@ import { ApiModule } from '../src/app-api.module.js';
 import { configureHttp } from '../src/bootstrap-api.js';
 import { loadConfig } from '../src/modules/config/app-config.js';
 import { errorResponseSchema, healthResponseSchema } from '../src/contracts/http.js';
+import { IdempotencyConflictError } from '../src/modules/tasks/task-errors.js';
 
 // This controller is registered only in the test module, never in the running API.
 @Controller('test-only')
 class FailureController {
   @Get('failure')
   fail(): never { throw new Error('private-marker SQL password'); }
+
+  @Post('conflict')
+  conflict(): never { throw new IdempotencyConflictError(); }
 
   @Post('body')
   body(): { ok: true } { return { ok: true }; }
@@ -63,6 +67,16 @@ await test('compiled ESM Nest HTTP chain validates input and returns safe correl
     assert.equal(body.code, 'BAD_REQUEST');
     assert.equal(body.requestId, response.headers.get('x-request-id'));
     assert.ok(!JSON.stringify(body).includes('private-marker'));
+  });
+
+  await t.test('task idempotency conflict maps to a safe HTTP 409', async () => {
+    const response = await fetch(`${url}/test-only/conflict`, { method: 'POST' });
+    assert.equal(response.status, 409);
+    const body = errorResponseSchema.parse(await response.json());
+    assert.equal(body.code, 'IDEMPOTENCY_CONFLICT');
+    assert.equal(body.retryable, false);
+    assert.equal(body.requestId, response.headers.get('x-request-id'));
+    assert.equal(body.message, '该幂等键已用于不同的请求');
   });
 
   await t.test('concurrent requests receive independent server-generated request IDs', async () => {

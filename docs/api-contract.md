@@ -6,16 +6,17 @@
 
 ## 1. 契约真源
 
-- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（仅health与错误响应）
-- 由同一组Schema生成OpenAPI文档，作为前端生成类型和客户端的输入。工具选择见决策D8，交付任务为S1.4-T9。**规划**
-- OpenAPI产物生成之前，前端只对接 [api.md](api.md) 中已实现的接口，不按草案自行定义字段。
+- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误及任务查询/取消）
+- 由同一组Schema生成[OpenAPI 3.1产物](openapi.json)，作为前端生成类型和客户端的输入；D8采用 `@asteasolutions/zod-to-openapi`，S1.4-T9已实现生成及过期检查。生成器是开发依赖，不参与API请求处理。
+- 前端只对接 [api.md](api.md) 与产物中已实现的接口，不按草案自行定义字段；字段级Zod校验与跨字段/事务业务约束仍以运行时为准。
 
 ## 2. 地址与版本
 
 | 路径 | 用途 | 状态 |
 |---|---|---|
 | `/health` | 进程存活检查，不表示依赖就绪 | 已实现 |
-| `/api/v1/...` | 全部业务接口 | 规划 |
+| `/api/v1/tasks/:taskId`、`/api/v1/tasks/:taskId/cancel` | 任务查询/取消 | S1.4-T8已实现，需显式启用本地开发模式 |
+| `/api/v1/...`其他路径 | 后续业务接口 | 规划 |
 
 - v1内只做向后兼容的变更：新增可选请求字段、新增响应字段、新增枚举值前先确认前端已能容忍未知值。
 - 删除字段、改名、改语义或改类型属于破坏性变更，必须新开版本路径，或在双方路线图中排期同步发布。
@@ -45,8 +46,8 @@
 | 头 | 方向 | 约定 | 状态 |
 |---|---|---|---|
 | `x-request-id` | 响应 | 服务端为每个请求生成UUID；忽略客户端提供的同名值；错误体中的requestId与之相同 | 已实现 |
-| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | 规划（S1.4-T2） |
-| `Content-Type` | 请求 | JSON接口为 `application/json`；上传为 `multipart/form-data` | 规划 |
+| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | S1.4-T2已实现应用服务及409错误映射；创建HTTP入口仍规划 |
+| `Content-Type` | 请求 | 取消接口要求 `application/json` 空对象；上传将用 `multipart/form-data` | 取消已实现；上传规划 |
 | `Cookie` / `X-CSRF-Token` | 请求 | 会话Cookie与CSRF令牌，具体方案见决策D9 | 规划（S3.2） |
 
 ## 6. 错误响应
@@ -72,13 +73,13 @@
 |---|---|---|---|
 | 400 | VALIDATION_ERROR | 请求不符合Schema | 已实现 |
 | 400 | BAD_REQUEST | 请求格式错误，如JSON解析失败 | 已实现 |
-| 404 | NOT_FOUND | 路由或资源不存在；越权访问他人资源也返回404，不暴露资源是否存在 | 已实现（路由）；资源部分规划 |
+| 404 | NOT_FOUND | 路由或资源不存在；越权访问他人资源也返回404，不暴露资源是否存在 | 已实现（路由及任务） |
 | 500及以上 | INTERNAL_ERROR | 安全的服务端错误 | 已实现 |
 | 其他 | HTTP_ERROR | 其他HTTP异常 | 已实现 |
 | 401 | UNAUTHENTICATED | 未登录或会话过期 | 规划（S3.2） |
 | 403 | FORBIDDEN | 已登录但无权执行该操作 | 规划（S3.2） |
-| 409 | IDEMPOTENCY_CONFLICT | 同一幂等键对应不同请求 | 规划（S1.4） |
-| 409 | INVALID_STATE | 资源当前状态不允许该操作，如取消已结束任务 | 规划（S1.4） |
+| 409 | IDEMPOTENCY_CONFLICT | 同一所有者及任务类型下，同幂等键对应不同请求 | 已实现应用服务与HTTP错误映射；任务HTTP入口规划 |
+| 409 | INVALID_STATE | 已结束任务不允许再请求取消 | 已实现（S1.4-T8） |
 | 413 | PAYLOAD_TOO_LARGE | 上传超出大小限制 | 规划（S2.1） |
 | 422 | UNSUPPORTED_FILE | 文件类型、签名或内容不受支持（含扫描PDF、加密文件） | 规划（S2.1） |
 | 429 | RATE_LIMITED | 请求过于频繁 | 规划 |
@@ -87,15 +88,17 @@
 
 ## 7. 异步任务
 
-分析与索引都是长任务，HTTP请求只负责创建和查询。**规划**（S1.4、S3.1）
+分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；创建HTTP与SSE仍规划。
 
 1. 创建：`POST` 返回 `202`，响应体含 `taskId` 与 `statusUrl`。
-2. 查询：`GET /api/v1/tasks/:taskId` 返回 `status`、`stage`、`progress: {completed, total}`（总量未知时 `total` 为null）、`attempt`、`nextRetryAt`、`error`（安全错误对象）、`reportId`。
+2. 查询：`GET /api/v1/tasks/:taskId` 返回 `taskId`、`taskType`（ANALYSIS/JOB_INDEX）、`status`、`stage`、`progress: {completed, total}`（总量未知时 `total` 为null）、累计领取次数 `attempt`、`nextRetryAt`、`error`（任务错误白名单及安全文案）、`reportId`、`cancelRequested`。不返回owner/输入/租约/fence/图线程。当前合成任务无报告。
 3. 状态枚举：AnalysisTask为 `QUEUED`、`RUNNING`、`RETRY_WAIT`、`SUCCEEDED`、`PARTIAL`、`FAILED`、`CANCELLED`；JobIndexTask没有 `PARTIAL`。定义见[架构 §6.2](architecture.md#62-分工与状态机)。
 4. 轮询：建议间隔2秒；到达终态后停止；请求失败时按指数退避，只在 `retryable` 为true时继续。
 5. SSE（S3.1）：`GET /api/v1/tasks/:taskId/events`，事件 `id` 为TaskEvent的单调 `seq`，断线后用 `Last-Event-ID` 补读。SSE只是持久化事件的传输方式，断线不影响任务。
-6. 取消：`POST /api/v1/tasks/:taskId/cancel` 只写入取消请求，任务在安全边界停止，最终状态以查询结果为准。
+6. 取消：`POST /api/v1/tasks/:taskId/cancel` 接收application/json空对象，无查询参数；202返回 `{taskId,cancelRequested:true}`，仅证明请求持久化。非终态重复请求仍202；终态（含已取消）返回409 INVALID_STATE。消费者/对账器在安全边界提交CANCELLED，最终状态以GET为准；没有运行执行/对账进程时会保持待处理。
 7. 进度只反映真实阶段和计数，不提供估算的等速百分比。
+
+开发身份只来自服务端IdentityPort，不能由请求字段/头选择owner。任务API默认关闭，启用时限制development/test及loopback监听，生产认证仍由S3.2交付。任务状态内的error.retryable表示该任务已安排可恢复重试；HTTP错误体的retryable仍按§6状态码规则，不据此重新创建任务。
 
 ## 8. 列表与分页
 
@@ -119,6 +122,6 @@
 
 1. 修改 `src/contracts/` 中的Schema和对应实现与测试。
 2. 更新 [api.md](api.md)；涉及本文约定时同步更新本文。
-3. OpenAPI产物可用后重新生成并提交。
+3. 执行 `pnpm run openapi:generate` 并提交 `docs/openapi.json`；`pnpm run openapi:check`及CI检测缺失/过期产物，不自动覆盖。
 4. 破坏性变更在后端与前端路线图中各建任务，标明发布顺序。
 5. 在[开发进度](progress.md)记录变更。

@@ -12,7 +12,7 @@ export class DatabaseService implements OnModuleDestroy {
   readonly client: PrismaClient;
   private healthy = true;
 
-  constructor(@Inject(INFRA_CONFIG) config: InfrastructureConfig) {
+  constructor(@Inject(INFRA_CONFIG) config: Pick<InfrastructureConfig, 'databaseUrl'>) {
     this.pool = new Pool({
       connectionString: config.databaseUrl,
       max: 3,

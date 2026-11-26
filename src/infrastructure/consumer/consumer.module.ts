@@ -1,0 +1,32 @@
+import { Module } from '@nestjs/common';
+import type { DynamicModule } from '@nestjs/common';
+import { IDENTITY, IdentityModule } from '../../modules/identity/identity.module.js';
+import type { IdentityPort } from '../../modules/identity/identity.module.js';
+import type { InfrastructureConfig } from '../config.js';
+import { DatabaseService } from '../database/database.service.js';
+import { INFRA_CONFIG } from '../tokens.js';
+import { taskTopology } from '../messaging/task-topology.js';
+import { consumerConfigSchema } from './config.js';
+import { TaskExecutionStore } from './task-execution.store.js';
+import { SyntheticCompletionHandler, TaskDeliveryHandler } from './task-delivery.handler.js';
+import type { SyntheticTaskHandler } from './task-delivery.handler.js';
+import { TaskConsumer } from './task.consumer.js';
+import { QuarantineStore } from './quarantine.store.js';
+import { PostgresExecutionLock } from './task-execution.lock.js';
+
+@Module({})
+export class ConsumerModule {
+  static register(config: Pick<InfrastructureConfig, 'databaseUrl' | 'rabbitmqUrl'>,
+    createHandler: (store: TaskExecutionStore) => SyntheticTaskHandler = () => new SyntheticCompletionHandler()): DynamicModule {
+    const execution = consumerConfigSchema.parse({});
+    return { module: ConsumerModule, imports: [IdentityModule], providers: [
+      { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService,
+      { provide: TaskExecutionStore, inject: [DatabaseService], useFactory: (db: DatabaseService) => new TaskExecutionStore(db, execution) },
+      { provide: TaskDeliveryHandler, inject: [TaskExecutionStore, IDENTITY, DatabaseService], useFactory: (store: TaskExecutionStore, identity: IdentityPort, db: DatabaseService) =>
+        new TaskDeliveryHandler(store, identity, createHandler(store), execution, new PostgresExecutionLock(db.pool)) },
+      { provide: QuarantineStore, inject: [DatabaseService, IDENTITY], useFactory: (db: DatabaseService, identity: IdentityPort) => new QuarantineStore(db, identity) },
+      { provide: TaskConsumer, inject: [TaskDeliveryHandler, QuarantineStore], useFactory: (handler: TaskDeliveryHandler, quarantine: QuarantineStore) =>
+        new TaskConsumer(config.rabbitmqUrl, taskTopology(), handler, quarantine) },
+    ], exports: [TaskConsumer] };
+  }
+}

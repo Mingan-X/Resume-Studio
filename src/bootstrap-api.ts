@@ -10,7 +10,8 @@ import { requestContext } from './infrastructure/logging/request-context.js';
 import { registerShutdown } from './lifecycle.js';
 
 export async function createApi(config: ApiConfig): Promise<INestApplication> {
-  const app = await NestFactory.create(ApiModule.register(config), {
+  const extra = config.tasks ? [(await import('./modules/tasks/task-api.module.js')).TaskApiModule.register(config.tasks)] : [];
+  const app = await NestFactory.create(ApiModule.register(config, extra), {
     logger: false, abortOnError: false,
   });
   configureHttp(app);

@@ -48,10 +48,18 @@ fi
 if ! rabbitmqctl -q list_vhosts name | grep -Fxq resume-studio-s12-test; then
   rabbitmqctl -q add_vhost resume-studio-s12-test >/dev/null
 fi
-rabbitmqctl -q set_permissions -p resume-studio-s12-test resume_studio_test '^s12\\.' '^s12\\.' '^s12\\.' >/dev/null
 rabbitmqctl -q set_user_tags resume_studio_test >/dev/null
 `;
   docker(['exec', '-i', c.rabbitContainer, 'sh', '-c', shell], c.rabbitPassword + '\n');
+  // Preserve the exact T3 grant when re-provisioning; never broaden other vhosts/users.
+  const current = z.array(z.object({ user: z.string(), configure: z.string(), read: z.string(), write: z.string() }))
+    .parse(JSON.parse(docker(['exec', c.rabbitContainer, 'rabbitmqctl', '-q', 'list_permissions',
+      '-p', 'resume-studio-s12-test', '--formatter', 'json']))).find(item => item.user === 'resume_studio_test');
+  const taskGrant = '^(s12\\.|resume\\.(tasks|dead|analysis\\.v1|job-index\\.v1|analysis\\.dead\\.v1|job-index\\.dead\\.v1)$)';
+  const grant = current && [current.configure, current.read, current.write].every(value => value === taskGrant)
+    ? taskGrant : '^s12\\.';
+  docker(['exec', c.rabbitContainer, 'rabbitmqctl', '-q', 'set_permissions', '-p', 'resume-studio-s12-test',
+    'resume_studio_test', grant, grant, grant]);
   console.log('Isolated test database/role and RabbitMQ vhost/user are ready; existing passwords were not rotated.');
 } catch {
   // Do not dump child_process exceptions: they may contain SQL or passwords.
