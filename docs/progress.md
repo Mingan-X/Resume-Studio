@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.1已合并推送，S2.2开始（feature/s2.2-jd-rubric）
+
+S2.1的10个任务提交已由b66131e以--no-ff合并到develop；origin/develop=b66131e，远端feature/s2.1-resume-evidence=9f9f639，均已推送。合并后工作区干净，本地已合并的S2.1分支按CONTRIBUTING用-d清理，远端阶段分支保留；master未切换/修改/推送。首次fetch发生GitHub SSL_ERROR_SYSCALL，第二次fetch成功后才合并，不以旧远端引用代替最新检查。
+
+从更新后的develop创建feature/s2.2-jd-rubric，阶段状态进行中；尚未交付S2.2代码。按用户明确授权新开会话继续S2.2至S3.3，沿用全部既定决策、每任务检查/提交、每阶段合并推送、延后表和停止条件，不额外请求确认。
+
+本机Windows/Node24.22.3/pnpm12.23.0，九个项目Docker服务已启动；原生Qdrant未运行且仅由用户手动管理。S2.1最终基础64/64、集成97/99仅Qdrant L2，集合及合成文件/业务记录无残留。后续真实模型/embedding/人工标注/目标服务器延后项不能伪造完成，具体见路线图。前端仓库未修改，契约以src/contracts及docs/api-contract.md为准。
+
 ## 2026-11-27 S2.1-T10 阶段回归与交接（待验收）
 
 S2.1-T1–T9实现、检查与按任务提交完成，T10同步README/架构/测试/API/契约/依赖/部署及进度。阶段改为待验收，按维护者授权用--no-ff合并develop并推送；不操作master。文本抽取不是语义结构化，ParsedResume仅契约/校验器，模型EXTRACT留S2.4。
