@@ -25,6 +25,7 @@
     "db:deploy": "node --env-file=infra/.env scripts/prisma.mjs deploy",
     "db:status": "node --env-file=infra/.env scripts/prisma.mjs status",
     "db:validate": "node --env-file=infra/.env scripts/prisma.mjs validate",
+    "storage:reclaim": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js",
     "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",
     "outbox:publish": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js publish",
     "tasks:consume": "node --env-file=infra/.env dist/src/infrastructure/consumer/cli.js",

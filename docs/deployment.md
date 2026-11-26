@@ -1,5 +1,13 @@
 # 本地部署
 
+## S2.1-T2 本地文件暂存与回收
+
+StoragePort与本地适配器已定义；上传装配仍待T8。STORAGE_ROOT须为专用绝对目录，首次初始化只接受空目录，写入项目/路径归属标记；后续必须匹配标记。目录须由运行账号独占，禁止其他主体修改。路径、junction/symlink及文件硬链接检查不构成对恶意本机管理员的防护。
+
+`pnpm run build` 后可由操作系统定时调用 `pnpm run storage:reclaim`。命令从本地未入库配置读取STORAGE_ROOT，核验本项目PostgreSQL容器/端口/卷归属，并查询真实FileAsset引用；T3表尚未部署时明确失败，不把缺表当作无引用。只回收超过24小时、无数据库引用、未提交且未被操作锁占用的暂存文件；数据库异常时停止。命令不清理files区、COMMITTING/COMMITTED清单或崩溃遗留锁，保留这些可核查状态供后续上传对账处理；不得根据名称前缀删除。
+
+文件提交先记录COMMITTING，再移动payload，最后记录COMMITTED。目录保留操作清单；进程终止/写失败时可据operationId检查结果，未知结果不得盲删。commit只提交文件，不代表数据库已提交；跨文件/数据库的补偿与恢复属于T8联调。即时discard只接受本次READY操作，拒绝删除已提交文件。Windows使用真实临时目录测试，Linux与突然断电后的目录元数据耐久性尚未验证。
+
 本配置用于本地开发与隔离集成测试，不是生产部署方案。API/Worker在主机运行；Compose项目 `resume-studio` 管理业务三服务及可选Langfuse六服务。基础配置可单独使用，观测配置作为同项目overlay加载。
 
 ## 环境与镜像
