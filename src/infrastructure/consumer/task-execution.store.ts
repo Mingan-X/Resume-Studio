@@ -9,7 +9,8 @@ import {
 import type { TaskType } from '../../contracts/tasks.js';
 import { ownerIdSchema } from '../../modules/identity/identity.module.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
-import { consumerName, syntheticCompletionSchema, ExecutionLeaseLostError, RejectedTaskDelivery } from './contracts.js';
+import { consumerName, syntheticCompletionSchema, syntheticNodeOutputSchema, ExecutionLeaseLostError, RejectedTaskDelivery } from './contracts.js';
+import type { SyntheticNodeOutput } from './contracts.js';
 import { TaskFailure, isRetryable, executionRetryDelay } from './failure.js';
 import type { TaskFailureCode } from './failure.js';
 import type { ClaimResult, ExecutionClaim } from './contracts.js';
@@ -22,6 +23,7 @@ const dbType = (type: TaskType): 'ANALYSIS' | 'JOB_INDEX' => type === 'analysis'
 const rowSchema = z.object({ id: z.uuid(), ownerId: z.uuid(), status: z.string(), generation: z.int(),
   fenceToken: z.bigint(), leaseOwner: z.uuid().nullable(), leaseUntil: z.date().nullable(),
   retryAt: z.date().nullable(), recoveryCount: z.int().nonnegative(), updatedAt: z.date(),
+  graphThreadId: z.uuid().nullable(), graphGeneration: z.int().positive().nullable(),
   cancelRequested: z.boolean(), inputSnapshot: z.unknown(), budgetUsage: z.unknown() });
 const timeRows = z.array(z.object({ now: z.date() })).length(1);
 const terminal = new Set(['SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED']);
@@ -34,7 +36,9 @@ async function lockTask(tx: Prisma.TransactionClient, ownerId: string, message: 
   return z.array(rowSchema).max(1).parse(await tx.$queryRaw(Prisma.sql`
     SELECT id, owner_id AS "ownerId", status, generation, fence_token AS "fenceToken", retry_at AS "retryAt",
       lease_owner AS "leaseOwner", lease_until AS "leaseUntil", cancel_requested AS "cancelRequested",
-      input_snapshot AS "inputSnapshot", budget_usage AS "budgetUsage", recovery_count AS "recoveryCount", updated_at AS "updatedAt"
+      input_snapshot AS "inputSnapshot", budget_usage AS "budgetUsage", recovery_count AS "recoveryCount", updated_at AS "updatedAt",
+      ${message.taskType === 'analysis' ? Prisma.sql`active_graph_thread_id AS "graphThreadId", graph_generation AS "graphGeneration"`
+        : Prisma.sql`NULL::uuid AS "graphThreadId", NULL::int AS "graphGeneration"`}
     FROM ${table(message.taskType)} WHERE owner_id = ${ownerId}::uuid AND id = ${message.taskId}::uuid
       FOR UPDATE ${skipLocked ? Prisma.sql`SKIP LOCKED` : Prisma.empty}`))[0];
 }
@@ -202,11 +206,18 @@ export class TaskExecutionStore {
         }
       }
       const attemptId = randomUUID(), fenceToken = task.fenceToken + 1n;
+      const lastAttempt = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: [{ startedAt: 'desc' }, { fenceToken: 'desc' }] });
+      const switchThread = message.taskType === 'analysis' && lastAttempt !== null && lastAttempt.executionStoppedAt === null;
+      const graph = message.taskType === 'analysis' ? {
+        threadId: switchThread ? randomUUID() : z.uuid().parse(task.graphThreadId),
+        generation: z.int().positive().parse(task.graphGeneration) + (switchThread ? 1 : 0),
+      } : undefined;
       const leaseUntil = new Date(Math.min(now.getTime() + this.config.leaseMs, deadline.getTime()));
       const updated = await tx.$executeRaw(Prisma.sql`
         UPDATE ${table(message.taskType)} SET status = 'RUNNING', stage = 'SYNTHETIC_RUNNING', retry_at = NULL,
           fence_token = fence_token + 1, lease_owner = ${attemptId}::uuid, lease_until = ${leaseUntil},
           heartbeat_at = ${now}, updated_at = ${now}, budget_usage = ${JSON.stringify(budgetUsageSchema.parse({ ...usage, attempts: usage.attempts + 1 }))}::jsonb
+          ${graph ? Prisma.sql`, active_graph_thread_id = ${graph.threadId}::uuid, graph_generation = ${graph.generation}` : Prisma.empty}
         WHERE owner_id = ${ownerId}::uuid AND id = ${task.id}::uuid AND generation = ${message.dispatchGeneration}
           AND fence_token = ${task.fenceToken} AND cancel_requested = false
           AND (status IN ('QUEUED', 'RETRY_WAIT') OR (status = 'RUNNING' AND (lease_until IS NULL OR lease_until <= ${now})))`);
@@ -217,7 +228,7 @@ export class TaskExecutionStore {
         data: { leaseOwner: attemptId, leaseUntil } });
       else await tx.consumerReceipt.create({ data: { ...reference, id: randomUUID(), consumerName: name,
         messageId: message.messageId, generation: message.dispatchGeneration, leaseOwner: attemptId, leaseUntil } });
-      return { kind: 'acquired', claim: { ownerId, consumerName: name, message, attemptId, fenceToken, startedAt: now, deadline, snapshot } };
+      return { kind: 'acquired', claim: { ownerId, consumerName: name, message, attemptId, fenceToken, startedAt: now, deadline, snapshot, ...(graph ? { graph } : {}) } };
     });
   }
 
@@ -240,6 +251,58 @@ export class TaskExecutionStore {
           AND consumer_receipt.lease_owner = ${claim.attemptId}::uuid AND consumer_receipt.status = 'RUNNING'
           AND task.id = consumer_receipt.task_id AND task.owner_id = consumer_receipt.owner_id`);
       if (receipt !== 1) throw new ExecutionLeaseLostError();
+    });
+  }
+
+  async markExecutionStopped(claim: ExecutionClaim): Promise<void> {
+    await this.database.client.$transaction(async tx => {
+      await tx.taskAttempt.updateMany({ where: { ownerId: claim.ownerId, taskId: claim.message.taskId,
+        taskType: dbType(claim.message.taskType), attemptId: claim.attemptId, fenceToken: claim.fenceToken, executionStoppedAt: null },
+      data: { executionStoppedAt: await databaseNow(tx) } });
+    });
+  }
+
+  private async requireAuthority(tx: Prisma.TransactionClient, claim: ExecutionClaim) {
+    const row = await lockTask(tx, claim.ownerId, claim.message), now = await databaseNow(tx);
+    if (!row || row.status !== 'RUNNING' || row.generation !== claim.message.dispatchGeneration || row.fenceToken !== claim.fenceToken
+      || row.leaseOwner !== claim.attemptId || !row.leaseUntil || row.leaseUntil <= now || claim.deadline <= now || row.cancelRequested
+      || (claim.graph && (row.graphThreadId !== claim.graph.threadId || row.graphGeneration !== claim.graph.generation))) throw new ExecutionLeaseLostError();
+    return row;
+  }
+
+  async nodeArtifact(claim: ExecutionClaim, node: SyntheticNodeOutput['node'], output?: unknown): Promise<SyntheticNodeOutput | null> {
+    const inputHash = requestHash(claim.snapshot), componentVersion = 's17-synthetic-v1';
+    const operationKey = requestHash({ ownerId: claim.ownerId, taskType: claim.message.taskType, taskId: claim.message.taskId,
+      node, inputHash, componentVersion, schemaVersion: 1 });
+    return this.database.client.$transaction(async tx => {
+      await this.requireAuthority(tx, claim);
+      const existing = await tx.nodeArtifact.findUnique({ where: { operationKey, ownerId: claim.ownerId } });
+      if (existing) {
+        const parsed = syntheticNodeOutputSchema.parse(existing.validatedOutput);
+        if (parsed.node !== node || parsed.inputHash !== inputHash) throw new Error('ARTIFACT_IDENTITY_MISMATCH');
+        return parsed;
+      }
+      if (output === undefined) return null;
+      const validatedOutput = syntheticNodeOutputSchema.parse(output);
+      if (validatedOutput.node !== node || validatedOutput.inputHash !== inputHash) throw new Error('ARTIFACT_INPUT_MISMATCH');
+      await tx.nodeArtifact.create({ data: { id: randomUUID(), operationKey, ownerId: claim.ownerId,
+        taskType: dbType(claim.message.taskType), taskId: claim.message.taskId,
+        analysisTaskId: claim.message.taskType === 'analysis' ? claim.message.taskId : null,
+        jobIndexTaskId: claim.message.taskType === 'job-index' ? claim.message.taskId : null,
+        node, inputHash, componentVersion, schemaVersion: 1, fenceToken: claim.fenceToken, validatedOutput } });
+      return validatedOutput;
+    });
+  }
+
+  async publishSyntheticIndex(claim: ExecutionClaim, target: string): Promise<void> {
+    if (claim.message.taskType !== 'job-index') throw new Error('INDEX_TASK_REQUIRED');
+    const snapshot = jobIndexInputSnapshotSchema.parse(claim.snapshot), id = z.uuid().parse(target);
+    await this.database.client.$transaction(async tx => {
+      await this.requireAuthority(tx, claim);
+      const result = await tx.syntheticIndexTarget.updateMany({ where: { id, ownerId: claim.ownerId,
+        jobVersionId: snapshot.jobVersionId, embeddingVersion: snapshot.embeddingVersion, indexVersion: snapshot.indexVersion },
+      data: { status: 'READY', completedByTaskId: claim.message.taskId } });
+      if (result.count !== 1) throw new ExecutionLeaseLostError();
     });
   }
 

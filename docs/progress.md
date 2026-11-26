@@ -8,6 +8,52 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T7 Checkpoint与业务fence联合隔离（分支 feature/s1.4-task-foundation）
+
+状态：T7实现及真实故障专项通过；默认Docker全量仍有Qdrant创建超时，S1.4保持“进行中”，未标记维护者验收通过。按维护者授权使用原生Qdrant另跑同一套完整集成，其结果与Docker分别记录。任务规划不改，T8–T10未实施；D8决定已单独保存为1a4ebe9，T7实现、对照工具与本记录按T7本地提交，未推送、未合并。
+
+实现与范围：
+
+- 在T6的session advisory lock基础上增加TaskAttempt.executionStoppedAt；实际处理器及其资源收束后才记录停止。中止后最多观察5秒，仍未结束则销毁锁连接，不提供虚假的停止证据。confirmWorkerExit只允许可信调用方绑定的子进程已实际退出；发送kill、锁丢失、心跳超时或AbortSignal均不能替代确认。
+- 新领取时读取上一attempt：无法确认旧执行停止，则与租约/fence更新同事务递增graphGeneration并分配新activeGraphThreadId；确认停止才保留thread。新增SQL trigger约束图代次单调及thread一同变化。对账仍只恢复调度，不读取或复制官方Checkpoint表。
+- 新NodeArtifact按owner/type/task、节点、冻结输入哈希、componentVersion/schemaVersion组成唯一operationKey；读写核验当前租约/fence/generation、期限/取消及适用的图身份，复用已提交合法产物。SyntheticIndexTarget仅作为合成目标，发布同时匹配执行权和jobVersionId/embeddingVersion/indexVersion；没有提前实现Job/JobVersion、报告或Qdrant业务索引。
+- CheckpointTaskHandler使用官方StateGraph/PostgresSaver和sync持久化；有Checkpoint时验证用户状态投影并invoke(null)，缺失时使用冻结输入。两个顺序合成节点产生3和9，完成前核对业务产物，不能仅凭Checkpoint状态标成功。跟踪saver put/putWrites与产物操作，退出时拒绝新写入、等待在途操作和独立池关闭，再允许停止证据成立。
+- ConsumerModule支持显式图处理器装配，新增tasks:consume:graph；原普通合成消费模式保留，API/空Worker没有自动装配图或对账器，无新Docker服务。新增迁移202611260004只管理业务表/约束，官方Checkpoint表继续由独立setup管理。
+- T7故障测试真实暂停本轮旧Node子进程（Windows NtSuspendProcess/NtResumeProcess）、过期其租约、终止其实际PostgreSQL锁连接，待新子进程在新thread完成再恢复旧进程。官方saver实际迟到写入旧thread，新Checkpoint ID/状态保持不变；旧执行独立尝试的产物/终态写入被拒绝。另测确认退出后的同thread恢复/首Checkpoint缺失重启，以及两个实际索引子进程的新版本目标保护。
+- 根据用户提供的D:\qdrant-x86_64-pc-windows-msvc，新增显式test:integration:native-qdrant对照入口与被忽略的本地配置；应用和默认测试仍使用原Docker约束。原生目标核对授权exe真实路径、6333监听PID/启动时间及文件大小/修改时间，清理前复核同一进程。清理manifest记录目标类别/地址和原生进程身份，避免误认成Docker资源；不含API Key。所有原5秒Qdrant请求、CRUD/维数断言和15秒清理对账均保留。
+- 同步README、架构、部署、测试与路线图状态说明；未改任务编号/依赖/验收，未改依赖或锁文件。图使用原业务池3连接（其中1条执行锁）及独立Checkpoint池最多3连接，未在事务中等待外部服务。
+
+逐次检查（测试耗时为runner报告，不含构建；父测试计入数量）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 前置与原生只读探测 | 从T6提交d21dc9f继续；读取AGENTS/CONTRIBUTING/路线图/架构及历史失败诊断。原九服务保持运行。原生exe路径符合用户授权，HTTP 6333、gRPC 6334，readyz返回200；版本1.20.2，commit=23065a0bf6857c3e5da45f6c8939cc746cc0580e，本次无需API Key |
+| 原生基础设施专项第1次 | 0通过、1失败，21.406秒；Windows PowerShell归属脚本的Get-FileHash不可用，未进入集合创建；没有用测试跳过代替归属检查 |
+| 原生基础设施专项第2次 | 4通过、0失败、0跳过，29.795秒（父17.801秒）；改为Node文件元数据+真实路径/进程身份核对后通过。Qdrant子用例9.606秒包含核验、CRUD及清理，不能称为集合创建延迟 |
+| db:generate、PostgreSQL归属核对、首次db:deploy | 通过，应用202611260004；保留旧迁移、业务数据和独立Checkpoint表 |
+| 初期编译/执行 | fixture额外execute实参和循环ReturnType定义导致编译失败；改为正确调用及明确Worker类型后通过。一次在编译未成功时尝试执行专项，因缺少编译文件未执行测试；不计为通过 |
+| 初期Lint | 先后发现finally直接throw和AggregateError缺少cause；调整错误/收束流程并保留原错误cause，后续通过，未禁用规则 |
+| T7真实故障专项第1次 | 2通过、3失败、0跳过，32.765秒（父27.849秒）；迟到saver写入未发生、同thread续跑失败，另两个子场景通过；本轮精确记录和thread均已清理 |
+| T7真实故障专项第2次 | 5通过、0失败、0跳过，30.114秒（父28.732秒）；修复在途写入收束和用户状态投影后通过 |
+| pnpm test第1次 | 42通过、0失败、0跳过，9.657秒；原API/Worker超时和断言保留，L1未复现 |
+| 审阅补充及typecheck/Lint | 增加合成完成前两个业务产物校验；新版本索引执行改为真实子进程。类型检查和Lint通过；后面的两次全量覆盖这些修订 |
+| 重复db:deploy、db:status、db:validate、schema diff | 无pending，共7条迁移已应用；validate通过，Prisma结构diff无差异。CHECK/trigger仍由实际集成断言验证，未以schema diff替代 |
+| 默认Docker完整test:integration | 71通过、2失败、0跳过，490.382秒；失败仅为Qdrant创建超时及其父测试。T7父/子5项全部通过（父27.814秒），其余Checkpoint、Langfuse、T1–T6均通过 |
+| Docker失败后的只读核对 | 本轮集合s12_1a049a64_bcf7_4530_9705_bf6ecba52cfd服务端PUT=8.335798秒、迟到返回200，随后精确DELETE=0.723453秒；集合总数及s12_*残留均0，待清理manifest=0 |
+| 清理目标元数据补充 | 审阅发现原清理manifest默认指向Docker，新增target字段区分原生进程并保持旧manifest兼容；归属拒绝测试断言“不删除并保留正确实例证据”。默认全量运行于此元数据补充之前，后续基础测试及原生全量覆盖最终修改 |
+| pnpm test第2次（最终代码） | 42通过、0失败、0跳过，5.290秒；含停止前等待执行收束和两种目标清理记录断言，未放宽任何原限制 |
+| tasks:consume:graph装配/空会话 | 已确认正式队列为空后运行；真实Nest装配成功，60秒期限后received=0、acknowledged=0、reason=deadline，退出0。只证明命令装配/关闭，图执行证据来自真实子进程集成 |
+| 原生Qdrant完整test:integration:native-qdrant | 73通过、0失败、0跳过，536.536秒；同一套集成文件全部通过，T7父/子5项通过（父34.338秒）。Qdrant创建4581.3ms；原断言、兼容性检查及超时均保留，原Docker认证配置未改 |
+| 最终typecheck、Lint | 均通过，零警告；未新增依赖/关闭规则 |
+| 默认目标与原生目标只读复核 | 默认分支仍是docker、http://127.0.0.1:56333并通过Compose归属核验；原生仍是授权目录进程，集合总数及s12_*残留均0 |
+| 最终资源与文档检查 | 4轮T7 manifest均cleaned=true，精确Owner/NodeArtifact/合成索引目标/Checkpoint残留均0，双池关闭；Docker与原生集合均0、待清理manifest=0。RabbitMQ仅4条正式队列/1条策略，ready/unacked及连接均0，九服务healthy。26个变更文件及103个本地链接/锚点核对，diff检查通过；本地凭证、data、dist及生成客户端被忽略，任务表定义与依赖版本/锁文件未变 |
+
+首轮T7失败的原因与修复：仅等待graph.invoke或pool.end不足以确认延迟saver操作已结束，abort后调用可能已返回而屏障中的put尚未真正进入数据库，过早关闭池会取消应验证的迟到写入。现实现显式跟踪在途saver/产物操作并收束，再形成停止证据；最终测试确实观察到旧thread的迟到Checkpoint。同thread续跑的另一失败是把LangGraph内部channel_values整体当成严格用户Schema校验，现只提取/验证用户状态，保留任务与输入身份检查，没有放松业务输出Schema。后续通过不覆盖这两次实际失败。
+
+Qdrant对照结论：最终原生实例集合创建实测4581.3ms，处于原5秒限制内但余量有限；整段Qdrant子测试8378.965ms包含进程核验、CRUD和清理，二者不混用。Docker本轮创建8.336秒超时，原生本轮通过支持继续排查Docker/持久化路径差异，但单轮不能证明原生长期稳定，也不能确认物理磁盘、VHD、文件系统同步或其他I/O的具体占比。没有迁盘、修改WAL/镜像、关闭服务或改tmpfs；存储性能处理仍需独立安排。该失败不归入只适用于API冷启动的L1，不能以替代实例通过宣布默认Docker回归已修复。
+
+未执行及遗留：T8查询/取消API、T9 OpenAPI安装与生成、T10阶段整体收尾；真实报告/JobVersion/索引/LLM、常驻进程监督、跨owner调度、多副本/长期负载、生产硬件/TLS/备份恢复、其他操作系统、服务重启持久化及新机冻结安装（依赖未变）。没有运行S1.3-T7.5规定的旧阶段连续验收批次，本轮按S1.4-T7及授权对照范围执行。停止未知时可能重做未提交图内工作，不能保证外部模型调用恰好一次；全链路图观测仍未接入。默认DockerQdrant超时仍是已知未解决问题；S1.4后续仍按原规划T8、T9、T10继续，当前不推送、不合并。
+
 ## 2026-11-26 S1.4-T9 前置决策D8确认（尚未实施T9）
 
 维护者明确选择 `@asteasolutions/zod-to-openapi`，由现有Zod契约生成OpenAPI。仅记录工具决定，不安装依赖、不改接口行为；T9实施时再核对当时版本/engines/peers并编译验证。任务编号、范围、依赖和分任务提交安排保持原规划。本轮另外授权开始T7，并授权对照测试维护者自行启动的原生Qdrant（D:\qdrant-x86_64-pc-windows-msvc）；其结果单独记录，不覆盖既有Docker回归历史。

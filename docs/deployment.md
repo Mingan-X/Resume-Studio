@@ -109,7 +109,7 @@ pnpm run tasks:consume job-index
 
 领取任务时同事务创建TaskAttempt和RUNNING收据、递增fenceToken；默认租约60秒、心跳10秒，租约不超过冻结输入期限。每次尝试还受10分钟执行上限限制；次数与总期限跨尝试保留，不因进程重启重置。参数与Schema见[consumer配置](../src/infrastructure/consumer/config.ts)。本阶段处理器只接受kind=synthetic的冻结输入，产出一条SYNTHETIC_COMPLETED事件，与任务SUCCEEDED、尝试结束和收据DONE同事务提交，之后才ACK；不会生成真实报告或岗位索引。
 
-有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交；这只验证合成数据库写入。尚未接入LangGraph/Checkpoint，因此不能推断旧图停止或同thread并发安全（T7）。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；T5已为预算耗尽和非法消息增加下述持久移交流程。
+有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交。普通模式只执行合成完成处理器；T7另提供下述显式Checkpoint图模式，停止证据与线程切换规则对领取路径统一生效。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；T5已为预算耗尽和非法消息增加下述持久移交流程。
 
 迁移 `202611260001_s14_task_execution_guard`增加数据库trigger，禁止任务fenceToken/generation回退及已终态任务变回其他状态；无需重建表或改旧迁移。回退应用时保留记录和约束，不重置任务/收据/队列。该trigger不替代应用fence条件，也不限制官方Checkpoint内部SQL。
 
@@ -117,7 +117,7 @@ pnpm run tasks:consume job-index
 
 更新后先 `pnpm run db:generate`、`pnpm run build`，按前述方法确认PostgreSQL归属后执行 `pnpm run db:deploy`，再执行 `pnpm run outbox:setup` 补齐两类dead路由绑定；旧requested及Broker DLX绑定保留，队列/策略不清空。迁移202611260002只新增任务retryAt和Quarantine可信消费主体/去重字段及约束，兼容历史无owner诊断行。
 
-使用原 `tasks:consume` 和 `outbox:publish` 命令。可恢复错误写RETRY_WAIT和延迟Outbox后ACK，实际到期后需再次运行发布批次及消费会话；没有常驻扫描器。次数、时间、token/成本/调用预算来自冻结输入，不因重试重置；错误分类和24–30秒/96–120秒退避见[架构§5.4](architecture.md#54-重试死信与长任务)。业务FAILED与dead发布成功是不同状态，查询数据库的任务errorCode和Outbox publishedAt/failedAt/lastErrorCode判断各自结果，不通过ACK或返回码宣称所有dead都已投递。
+使用原 `tasks:consume` 和 `outbox:publish` 命令。可恢复错误写RETRY_WAIT和延迟Outbox后ACK，实际到期后需再次运行发布批次及消费会话；也可显式启动下述T6 watch扫描发布。次数、时间、token/成本/调用预算来自冻结输入，不因重试重置；错误分类和24–30秒/96–120秒退避见[架构§5.4](architecture.md#54-重试死信与长任务)。业务FAILED与dead发布成功是不同状态，查询数据库的任务errorCode和Outbox publishedAt/failedAt/lastErrorCode判断各自结果，不通过ACK或返回码宣称所有dead都已投递。
 
 未知/畸形消息在同事务保存脱敏Quarantine和dead Outbox后ACK；数据库不可写或写dead事件失败时整个事务回滚、不ACK。只持久哈希、UUID及允许的元数据，不保存非法正文/原始异常，不能靠隔离记录恢复原报文。当前没有隔离区清理/重放API；禁止按前缀或全部Quarantine记录清库。
 
@@ -142,7 +142,24 @@ pnpm run tasks:reconcile watch
 
 消费者现在从原3连接池保留一条session advisory lock连接，正常事务继续使用池中其他连接。默认每个消费命令一个执行；不得自行增加同一上下文并发使锁连接占满池。对账使用transaction advisory lock，无长期专属连接。新旧消费者不能与对账器混跑：旧T5进程没有锁协议，可能使对账器误以为执行锁空闲；部署前停止旧消费会话，再统一更新T6消费者和对账器。
 
-迁移202611260003仅新增两类任务recoveryCount（非负、默认0）和owner/status/updatedAt索引；旧记录兼容，不清空数据。默认最多恢复调度3次，输入尝试次数/总期限仍累计。回退时先停止watch和消费者，保留字段、事件、任务及原卷；不改已应用迁移。Checkpoint schema/thread从未由本功能修改，T7另验收图恢复。
+迁移202611260003仅新增两类任务recoveryCount（非负、默认0）和owner/status/updatedAt索引；旧记录兼容，不清空数据。默认最多恢复调度3次，输入尝试次数/总期限仍累计。回退时先停止watch和消费者，保留字段、事件、任务及原卷；不改已应用迁移。对账器不改Checkpoint schema/thread，图恢复由T7消费路径处理。
+
+### S1.4-T7 合成图与执行隔离
+
+停止旧消费会话，按上文核验PostgreSQL归属，再生成客户端、构建并部署新增迁移 `202611260004_s14_checkpoint_fence`。该迁移只新增业务attempt停止证据、合成产物与合成索引目标表及图代次约束；不改官方Checkpoint表。Checkpoint运行配置和官方setup需按下一节事先完成。
+
+```powershell
+pnpm run db:generate
+pnpm run build
+pnpm run db:deploy
+pnpm run tasks:consume:graph
+```
+
+新命令加载 `infra/.env` 和 `infra/.env.checkpoint`，通过现有ConsumerModule/Nest装配analysis消费者与两节点官方StateGraph；沿用有界消费、手动ACK、固定开发owner及冻结输入预算。它不新增服务，也不自动启动API/空Worker的消费者。不要对同一队列同时运行普通合成完成模式和图模式；选择本次验证需要的模式。首次无Checkpoint时从冻结输入启动，已确认停止且有Checkpoint时使用原thread和null输入续跑；旧attempt无停止证据则领取事务切换新thread并递增graphGeneration，复用合法NodeArtifact。
+
+业务池仍最多3连接，其中1条在执行期持有session锁；图执行另使用最多3连接的Checkpoint池，同一进程预算最多6连接，测试父子进程分别计入总额。图处理器等待已开始的产物/saver写入及池关闭，消费者才记录executionStoppedAt并释放锁。中止后5秒内仍未收束，则销毁锁连接并保留“停止未知”，下次恢复使用新thread；这不等于强制终止旧进程。`confirmWorkerExit`仅供可信本地监督方绑定领取身份并确认自己的子进程实际退出，当前没有常驻监督服务。
+
+升级时统一更新消费者，不能混跑缺少停止/线程协议的旧代码。回退前停止图消费者与watch并确认没有活动执行；保留新增表、产物、attempt与Checkpoint，不自动down迁移、删线程或清卷。旧版本不具备新隔离保证，需要重新核对其能否恢复现存任务；不要用不兼容图版本直接续跑。真实报告、LLM与JobVersion/Qdrant索引不在此合成实现范围。
 
 ## S1.3 诊断组件初始化
 
@@ -162,7 +179,7 @@ pnpm run checkpoint:setup
 
 为隔离现有诊断业务库，provision撤销 `resume_studio_s12_test` 的PUBLIC CONNECT，保留其所有者 `resume_studio_test` 的连接权限；Checkpoint数据库也不允许业务账号连接。既有数据、诊断表、业务账号密码和迁移保持不变。新建角色/数据库带项目归属注释；同名但无归属标识的资源将被拒绝接管。
 
-`checkpoint:setup` 只在显式命令或集成测试中调用官方 `PostgresSaver.setup()`，使用专用session advisory lock串行化初始化；API与Worker不执行DDL，也未接入该模块。生产升级期间仍须安排受控迁移，不把本地setup当作无停机升级方案。
+`checkpoint:setup` 只在显式命令或集成测试中调用官方 `PostgresSaver.setup()`，使用专用session advisory lock串行化初始化；API/空Worker未自动接入，T7显式图消费者只使用运行账号，不执行DDL。生产升级期间仍须安排受控迁移，不把本地setup当作无停机升级方案。
 
 | 配置 | 约束 |
 |---|---|
@@ -229,6 +246,29 @@ pnpm run test:integration
 
 完整集成要求三份本地配置和九个服务就绪；每次实际执行结果见[最新进度](progress.md)。不要把Compose健康与集成测试通过混为一谈。
 
+### 原生Qdrant回归对照
+
+维护者于2026-11-26授权使用自行启动的 `D:\qdrant-x86_64-pc-windows-msvc\qdrant.exe`。默认 `test:integration` 仍验证项目Docker实例；显式对照命令只替换测试上下文的Qdrant连接，PostgreSQL、RabbitMQ、Checkpoint与Langfuse配置保持原样。它不是应用部署切换，不停止或搬迁任一服务/数据。
+
+在被忽略的 `infra/.env.qdrant-native` 配置以下非敏感字段（先确认文件不存在，已有配置不要覆盖）：
+
+```dotenv
+QDRANT_TEST_TARGET=native-windows
+QDRANT_NATIVE_ROOT=D:/qdrant-x86_64-pc-windows-msvc
+QDRANT_NATIVE_URL=http://127.0.0.1:6333
+```
+
+如实例启用认证，另在该文件设置 `QDRANT_NATIVE_API_KEY`，不提交或输出密钥；本次实例未开启API Key。准备好其他集成依赖后，依次运行，不同时执行两套全量：
+
+```powershell
+pnpm run test:integration
+pnpm run test:integration:native-qdrant
+```
+
+[原生目标验证](../test/support/native-qdrant.ts)仅支持Windows及明确的loopback端点，检查6333监听进程、解析后的授权exe路径、PID、启动时间和二进制大小/修改时间；操作前及精确删除前复核同一进程身份，变化则拒绝删除。该验证没有计算二进制哈希，不以目录名或端口单独认定归属。测试沿用原5秒请求超时、CRUD/维数断言和15秒清理对账，仅操作本轮预先确认不存在的UUID集合。待清理manifest增加目标类别/地址及原生进程身份，不含密钥；它不是后续自动删除授权。
+
+原生与Docker结果分开写入progress。原生通过只证明这台机器该实例的本轮对照成功，不能据此关闭默认Docker验证、标记Docker持久化延迟已修复或完成生产性能验收。
+
 ## API 与 Worker
 
 ```powershell
@@ -269,7 +309,7 @@ Ctrl+C触发应用关闭；关闭超过5秒退出失败。脚本/容器停止不
 
 诊断配置只接受本机地址、上述账号/数据库/vhost和专属端口55432/55672/56333；每轮临时资源附UUID。数据库池最大3连接，连接获取超时3秒、SQL超时5秒；Qdrant调用超时5秒，发布确认超时5秒。
 
-这些是当前诊断实现的配置，不是业务任务的生产级吞吐或时延保证。基础设施配置还要求 `DATABASE_URL`、`RABBITMQ_URL`、`QDRANT_URL`、`QDRANT_API_KEY` 和 `INFRA_TEST_SCOPE`；由infra/.env提供，不向日志打印。未来任务级重试、总执行期限和连接恢复仍是待实现能力。
+这些是当前诊断实现的配置，不是业务任务的生产级吞吐或时延保证。基础设施配置还要求 `DATABASE_URL`、`RABBITMQ_URL`、`QDRANT_URL`、`QDRANT_API_KEY` 和 `INFRA_TEST_SCOPE`；由infra/.env提供，不向日志打印。T5/T6已实现合成任务有界重试、总期限与对账；基础设施长期断线监督和生产负载仍待后续验证。原生Qdrant仅通过上文显式测试入口使用，不放宽应用配置校验。
 
 ## 停止与数据保留
 

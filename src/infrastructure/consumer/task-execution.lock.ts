@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { taskTypeSchema } from '../../contracts/tasks.js';
 import type { TaskType } from '../../contracts/tasks.js';
+import { ExecutionUnsettledError } from './contracts.js';
 
 // One stable key for the consumer session lock and the reconciler's transaction lock.
 // A hash collision only delays unrelated work; it cannot grant concurrent execution.
@@ -39,11 +40,11 @@ export class PostgresExecutionLock implements ExecutionLock {
       return result;
     } catch (error) {
       // A failed acquisition may have reached PostgreSQL. Discarding the connection releases any uncertain lock.
-      if (!acquired || lost.signal.aborted) discard = true;
+      if (!acquired || lost.signal.aborted || error instanceof ExecutionUnsettledError) discard = true;
       throw error;
     } finally {
       try {
-        if (acquired && !lost.signal.aborted) {
+        if (acquired && !lost.signal.aborted && !discard) {
           const response = await client.query('SELECT pg_advisory_unlock($1::bigint) AS unlocked', [key]);
           if (!z.array(z.object({ unlocked: z.boolean() })).length(1).parse(response.rows)[0]!.unlocked) discard = true;
         }

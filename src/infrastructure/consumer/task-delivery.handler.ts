@@ -3,7 +3,7 @@ import type { IdentityPort } from '../../modules/identity/identity.module.js';
 import { ownerIdSchema } from '../../modules/identity/identity.module.js';
 import { taskDispatchSchema } from '../../contracts/tasks.js';
 import type { TaskDispatch, UsageReservation } from '../../contracts/tasks.js';
-import { syntheticCompletionSchema, ExecutionLeaseLostError } from './contracts.js';
+import { syntheticCompletionSchema, ExecutionLeaseLostError, ExecutionUnsettledError } from './contracts.js';
 import { TaskFailure, classifyTaskFailure } from './failure.js';
 import type { ConsumerConfig } from './config.js';
 import type { ExecutionClaim, SyntheticCompletion } from './contracts.js';
@@ -22,7 +22,7 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 }
 
 export class TaskDeliveryHandler {
-  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage'>,
+  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped'>,
     private readonly identity: IdentityPort, private readonly handler: SyntheticTaskHandler,
     private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
@@ -66,17 +66,20 @@ export class TaskDeliveryHandler {
       removeAbort = () => abort.signal.removeEventListener('abort', fail);
       if (abort.signal.aborted) fail();
     });
+    let execution: Promise<SyntheticCompletion> | undefined;
+    let executionError: unknown, executionFailed = false;
     try {
       let output: SyntheticCompletion | undefined, failure: TaskFailure | undefined, budgetInfrastructureError: unknown;
       try {
-        output = syntheticCompletionSchema.parse(await Promise.race([this.handler.execute(claim, abort.signal, {
+        execution = Promise.resolve().then(() => this.handler.execute(claim, abort.signal, {
           reserve: async usage => {
             abort.signal.throwIfAborted();
             try { await this.store.reserveUsage(claim, usage); }
             catch (error) { if (!(error instanceof TaskFailure)) budgetInfrastructureError = error; throw error; }
             abort.signal.throwIfAborted();
           },
-        }), interrupted]));
+        }));
+        output = syntheticCompletionSchema.parse(await Promise.race([execution, interrupted]));
         if (output.inputHash !== requestHash(claim.snapshot)) throw new TaskFailure('OUTPUT_INVALID');
       } catch (error) {
         if (budgetInfrastructureError) throw budgetInfrastructureError;
@@ -90,11 +93,27 @@ export class TaskDeliveryHandler {
       if (failure) await this.store.fail(claim, failure);
       else { abort.signal.throwIfAborted(); await this.store.complete(claim, output); }
       signal.throwIfAborted();
-      return 'ack';
+    } catch (error) {
+      executionFailed = true; executionError = error;
     } finally {
       finished = true; clearTimeout(timer); clearTimeout(deadline);
       signal.removeEventListener('abort', stop); removeAbort(); stop();
       await heartbeat; // heartbeat DB work is bounded; no detached lease extension after completion
     }
+    // An AbortSignal race does not prove the graph or its saver has stopped. Keep the lock
+    // until actual handler cleanup settles; uncertain execution must use a new thread next time.
+    let settleTimer: NodeJS.Timeout | undefined;
+    let settled: boolean;
+    try {
+      settled = await Promise.race([
+        (execution ?? Promise.resolve()).then(() => true, () => true),
+        new Promise<false>(resolve => { settleTimer = setTimeout(() => resolve(false), 5_000); }),
+      ]);
+    } finally { clearTimeout(settleTimer); }
+    if (!settled) throw new ExecutionUnsettledError();
+    try { await this.store.markExecutionStopped(claim); }
+    catch (error) { if (executionFailed) throw new AggregateError([executionError, error], 'Execution and stopped-marker persistence failed', { cause: error }); throw error; }
+    if (executionFailed) throw executionError;
+    return 'ack';
   }
 }

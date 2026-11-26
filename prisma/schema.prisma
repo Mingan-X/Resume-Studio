@@ -56,6 +56,7 @@ model Owner {
   jobIndexTasks JobIndexTask[]
   outboxEvents OutboxEvent[]
   quarantines Quarantine[]
+  syntheticIndexTargets SyntheticIndexTarget[]
 
   @@map("owner")
 }
@@ -89,6 +90,7 @@ model AnalysisTask {
   attempts TaskAttempt[]
   events TaskEvent[]
   receipts ConsumerReceipt[]
+  artifacts NodeArtifact[]
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -126,6 +128,7 @@ model JobIndexTask {
   attempts TaskAttempt[]
   events TaskEvent[]
   receipts ConsumerReceipt[]
+  artifacts NodeArtifact[]
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -142,6 +145,7 @@ model TaskAttempt {
   fenceToken BigInt @map("fence_token")
   startedAt DateTime @default(now()) @map("started_at")
   endedAt DateTime? @map("ended_at")
+  executionStoppedAt DateTime? @map("execution_stopped_at")
   traceId String? @map("trace_id") @db.Char(32)
   errorClass String? @map("error_class") @db.VarChar(64)
   tokens BigInt @default(0)
@@ -247,4 +251,42 @@ model Quarantine {
   @@index([messageHash, createdAt])
   @@unique([ownerId, consumerName, dedupeKey])
   @@map("quarantine")
+}
+
+// T7 synthetic node outputs; schema/version/operation identity remains explicit.
+model NodeArtifact {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskType TaskType @map("task_type")
+  taskId String @map("task_id") @db.Uuid
+  analysisTaskId String? @map("analysis_task_id") @db.Uuid
+  jobIndexTaskId String? @map("job_index_task_id") @db.Uuid
+  analysisTask AnalysisTask? @relation(fields: [ownerId, analysisTaskId], references: [ownerId, id], onDelete: Restrict)
+  jobIndexTask JobIndexTask? @relation(fields: [ownerId, jobIndexTaskId], references: [ownerId, id], onDelete: Restrict)
+  operationKey String @unique @map("operation_key") @db.Char(64)
+  node String @db.VarChar(64)
+  inputHash String @map("input_hash") @db.Char(64)
+  componentVersion String @map("component_version") @db.VarChar(64)
+  schemaVersion Int @map("schema_version")
+  fenceToken BigInt @map("fence_token")
+  validatedOutput Json @map("validated_output") @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ownerId, taskType, taskId])
+  @@map("node_artifact")
+}
+
+// Explicit synthetic version target for T7. This is not a Job/JobVersion business implementation.
+model SyntheticIndexTarget {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  jobVersionId String @map("job_version_id") @db.Uuid
+  embeddingVersion String @map("embedding_version") @db.VarChar(64)
+  indexVersion String @map("index_version") @db.VarChar(64)
+  status String @default("PENDING") @db.VarChar(16)
+  completedByTaskId String? @map("completed_by_task_id") @db.Uuid
+
+  @@unique([ownerId, id])
+  @@map("synthetic_index_target")
 }

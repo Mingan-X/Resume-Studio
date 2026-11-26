@@ -5,8 +5,19 @@ import { z } from 'zod';
 import type { InfrastructureConfig } from '../../src/infrastructure/config.js';
 
 export const RECONCILIATION_MS = 15_000;
+export const cleanupTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('docker'), url: z.url().refine(value => {
+    const url = new URL(value);
+    return url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname) && url.port === '56333'
+      && !url.username && !url.password && !url.search && !url.hash && url.pathname === '/';
+  }) }).strict(),
+  z.object({ kind: z.literal('native-windows'), url: z.literal('http://127.0.0.1:6333'),
+    executable: z.string().min(1), pid: z.int().positive(), started: z.string().min(1),
+    size: z.int().positive(), mtimeMs: z.number().nonnegative() }).strict(),
+]);
 export const cleanupManifestSchema = z.object({
   schemaVersion: z.literal(1), project: z.literal('resume-studio'), service: z.literal('qdrant'),
+  target: cleanupTargetSchema.optional(), // Older manifests without target refer to the project Docker instance.
   runId: z.uuid(), collection: z.string(), status: z.literal('CLEANUP_PENDING'),
   reason: z.enum(['CREATE_UNCONFIRMED', 'DELETE_UNCONFIRMED', 'OWNERSHIP_UNVERIFIED']),
   recordedAt: z.iso.datetime(),
@@ -50,6 +61,7 @@ export async function reconcileCollection(options: {
   api: CollectionCleanupApi;
   verifyOwnership: (signal: AbortSignal) => Promise<void>;
   manifestDirectory?: string;
+  target?: z.infer<typeof cleanupTargetSchema>;
   // Tests shorten the observation window, never the real client's timeout.
   budgetMs?: number;
   pollMs?: number;
@@ -86,6 +98,7 @@ export async function reconcileCollection(options: {
 
   const directory = options.manifestDirectory ?? 'data/qdrant-cleanup';
   const manifest = cleanupManifestSchema.parse({ schemaVersion: 1, project: 'resume-studio', service: 'qdrant',
+    target: options.target ?? { kind: 'docker', url: 'http://127.0.0.1:56333' },
     runId, collection, status: 'CLEANUP_PENDING', reason, recordedAt: new Date().toISOString() });
   await mkdir(directory, { recursive: true });
   const path = join(directory, `${runId}.json`);

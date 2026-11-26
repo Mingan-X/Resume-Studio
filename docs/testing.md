@@ -1,6 +1,6 @@
 # 测试与验证
 
-当前测试使用 TypeScript 编译产物和 Node 内置 test runner，Nest testing用于创建应用上下文；没有额外的测试转换器。真实集成测试连接独立的本项目容器，不使用其他项目实例。
+当前测试使用 TypeScript 编译产物和 Node 内置 test runner，Nest testing用于创建应用上下文；没有额外的测试转换器。真实集成测试默认连接独立的本项目容器；维护者明确授权的原生Qdrant仅用于下述显式对照入口，不使用其他项目实例。
 
 ## 当前验收状态
 
@@ -23,6 +23,8 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 
 `pnpm test`编译后执行顶层测试文件，不要求外部服务；`test:integration`读取上述三份被忽略的配置并执行真实服务测试，服务不可用会失败而非跳过。
 
+`pnpm run test:integration:native-qdrant`额外读取 `infra/.env.qdrant-native`，只在该测试上下文中改用维护者授权的Windows原生Qdrant。准备方法见[原生Qdrant回归对照](deployment.md#原生qdrant回归对照)。它执行同一组集成文件、原5秒Qdrant超时和CRUD/维数断言；默认Docker结果与对照结果分别记入progress，两套不要同时运行。对照通过不代表原Docker路径修复。
+
 真实服务测试文件使用 `--test-concurrency=1` 顺序运行，以减少三组测试共享本机Docker资源时的竞争。并行执行曾出现Qdrant创建超过5秒，但串行后仍复发；专项排查还确认停止观测服务后仍可能超时，不能只归因于测试并发或Langfuse。只限制文件之间的调度，各用例的池并发、重投、强杀与超时断言不变；不将串行验收描述为同时满负载验证。
 
 ## 覆盖范围
@@ -43,12 +45,13 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 | test/integration/tasks.test.ts | 真实PostgreSQL两类任务及Outbox；幂等重放/409、确定性的并发插入竞争、owner隔离、写Outbox前后故障回滚、SQL不可变输入/外键/状态及唯一约束、精确清理和连接池关闭 |
 | test/outbox.test.ts | publish(false)等待confirm、return优先于ACK、nack/断连、握手超时关闭socket、独立correlationId、退避及事件契约/归属校验 |
 | test/integration/outbox.test.ts | 真实PostgreSQL SKIP LOCKED、并发发布/过期租约令牌隔离、RabbitMQ路由/return/overflow NACK、TCP丢confirm/断连恢复、确认后强杀重复发布、测试收据去重、预算持久化、quorum DLX无绑定后的留存与恢复 |
-| test/consumer.test.ts | 有界消息/路由/身份校验、心跳失败中止且拒绝迟到结果、终态和有效执行重复处置、完成事务先于ACK决定 |
+| test/consumer.test.ts | 有界消息/路由/身份校验、心跳失败中止且拒绝迟到结果、终态和有效执行重复处置、完成事务先于ACK决定；中止后等实际处理器收束才记录停止并释放锁 |
 | test/integration/consumer.test.ts | 两类任务重复消费、并发领取与真实双消费者、过期接管/旧token写入拒绝、心跳与收据同步、旧代次/终态、只读数据库不ACK、完成SQL故障回滚、提交后ACK前强杀重投、停机及非法消息保留 |
 | test/task-failure.test.ts | 明确错误分类、退避上下限、dead契约与聚合关系、原始异常/正文排除 |
 | test/integration/retry.test.ts | 两类任务延迟重试及耗尽dead、调用/token/费用跨尝试累计、执行/总期限、最后尝试中断、dead return、事务故障、隔离区并发去重与脱敏、三种持久移交后强杀重投 |
 | test/reconciliation.test.ts | 锁标识稳定性、游标跨过阻塞任务/回绕、修复后才发布、定时不重叠、停止与连续失败上限 |
 | test/integration/reconciliation.test.ts | 两类过期任务真实恢复消费、双对账竞争、持锁子进程不抢占/强杀后恢复、锁连接终止中止处理器、行锁/取消/owner隔离、原Outbox预算/过期发布租约、缺消息/旧确认未终态、恢复上限、只读DB与SQL回滚 |
+| test/integration/checkpoint-fence.test.ts | 真实旧Worker操作系统级暂停/恢复、终止实际锁连接、未知旧执行分配新thread、官方saver迟到写入隔离、旧token产物/终态拒绝；确认退出后同thread恢复/无Checkpoint重启；旧索引执行不能修改合成新版本目标 |
 
 任务集成用例注册独立TasksModule并替换身份provider，以本轮随机Owner隔离数据；不向API或Worker增加业务路由。并发测试在两次真实SELECT均返回不存在后释放屏障，强制触发唯一约束竞争。故障测试通过Prisma扩展在真实Outbox INSERT之前或之后抛错，执行的SQL仍在真实交互事务内，验证任务与Outbox均不残留，并用原key重试成功。HTTP测试只注册测试专用409路由，验证统一错误体、requestId和日志白名单。
 
@@ -72,11 +75,17 @@ T6使用同样的精确资源/独立清理连接方式，命名空间 `s12.t6.<U
 
 过期恢复事务故障通过真实Outbox CHECK错误注入，验证代次、fence、recoveryCount、旧attempt/receipt和事件同时回滚。当前代次事件未发布或已耗尽发布预算不能重建预算；可发布事件沿用T3的confirm/return/次数限制。T4/T5实际消费者fixture同步使用真实执行锁，纯单元测试才用明确标注的无锁端口。定时watch在真实Nest CLI另做两轮扫描/IPC关闭复验，记录在progress；不等于验证Linux信号、常驻负载或Checkpoint图并发。
 
+T7的 `checkpoint-fence-worker.fixture.ts`使用实际TaskDeliveryHandler、PostgresExecutionLock及官方StateGraph/PostgresSaver。先提交首节点业务产物，随后在官方saver写入前屏障处暂停；Windows辅助脚本对本次拥有的Node子进程调用NtSuspendProcess/NtResumeProcess，实际停止/恢复其执行。父进程仅过期本轮任务租约，先证实持锁时对账不抢占，再按唯一application_name及当前数据库用户找到真实锁连接并终止。新子进程领取恢复消息时切换thread、复用首产物并完成；最后恢复旧子进程并释放屏障，等待官方saver真正写入旧thread，核对新thread的Checkpoint ID/状态与业务产物完全不变。旧子进程另独立尝试产物和终态提交，不能只用AbortSignal中断来代替fence断言。
+
+确认停止用例先强杀并等待实际退出，再调用可信 `confirmWorkerExit`；活进程调用必须拒绝。同thread有Checkpoint时null输入续跑、无Checkpoint时冻结输入重启，最终合成值与已提交产物一致。JobIndexTask用两个实际子进程验证新版本SyntheticIndexTarget先完成后旧执行不能改写；同时验证即便旧输入重新取得有效租约，也不能把新版本目标设为READY。此目标为合成替身，不是已实现的JobVersion或Qdrant索引。
+
+T7 manifest位于 `data/s17-runs/<UUID>.json`，记录本轮Owner及全部新旧thread。清理先恢复/结束并等待所有本轮子进程，再复核PostgreSQL归属，逐个调用官方deleteThread并确认不存在，只删除这些Owner下的合成记录，最后验证业务/Checkpoint池均关闭。Windows暂停/恢复已实际执行；其他平台SIGSTOP/SIGCONT分支未验证。测试不停止共享服务、不清空数据库或按前缀删除线程。
+
 DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，观察源quorum队列保留并最终转发。RabbitMQ 4.4.0本地内部dead-letter publisher confirm timeout实测为180000ms，测试最长等待190秒覆盖一次内部重试，父用例最长300秒；该等待与外部publish的5秒截止分开。未修改服务端设置或原有Qdrant/API测试超时，因此完整集成通常需要数分钟。单节点quorum未验证多副本故障或DLX长期积压容量。
 
 `checkpoint-worker.fixture.ts`仅是测试子进程入口。合成输入独立保存在既有诊断表，图状态只保存UUID、数值和步骤；不含简历、模型请求或真实业务任务。中途终止用例先从PostgreSQL确认首节点状态已持久化，再强杀子进程，等待进程退出后以同thread和 `invoke(null, config)` 续跑，通过独立执行记录验证已完成节点没有重复运行。首次Checkpoint用例在官方saver首次put前设置测试屏障并强杀，确认thread不存在后从独立保存的输入启动。屏障不属于生产实现，也不证明任意外部副作用恰好一次。
 
-新测试清理前等待其子进程全部退出，再重新检查容器/端口/卷归属，只使用本轮随机UUID调用官方 `deleteThread` 和删除对应诊断记录。T7只为infrastructure.test.ts的Qdrant路径补齐归属与对账清理，持久化辅助工具的历史限制仍保留。合成子进程关闭LangSmith tracing，不使用LLM或外部观测。
+新测试清理前等待其子进程全部退出，再重新检查容器/端口/卷归属，只使用本轮随机UUID调用官方 `deleteThread` 和删除对应诊断记录。S1.3-T7为infrastructure.test.ts的Qdrant路径补齐归属与对账清理，持久化辅助工具的历史限制仍保留。合成子进程关闭LangSmith tracing，不使用LLM或外部观测。
 
 每次运行的测试总数、通过/失败数、耗时及残留检查统一记在[开发进度](progress.md)，不在本页维护副本。断言验证行为，不以源码文本匹配代替运行验证。
 
@@ -94,9 +103,9 @@ DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，�
 
 测试数据库/vhost使用固定诊断标识，临时记录、队列和collection附本轮UUID，清理只针对本轮创建资源。不要删除整个数据库、数据卷或全部前缀资源来通过测试。
 
-初始化与清理均应核实实例归属。T7的Qdrant集成测试在创建前及删除前验证Compose项目、qdrant服务、127.0.0.1:56333映射、storage挂载和卷标签；集合名由本轮UUID确定，拒绝任意名称。Checkpoint与Langfuse使用各自已有检查。旧persistence.fixture.ts仍只校验连接范围和manifest，未独立验证Docker标签或manifest来源，不应向未知实例执行其cleanup。
+初始化与清理均应核实实例归属。默认Qdrant集成测试在创建前及删除前验证Compose项目、qdrant服务、127.0.0.1:56333映射、storage挂载和卷标签；集合名由本轮UUID确定，拒绝任意名称。原生对照通过test/support/native-qdrant.ts验证授权exe路径、监听PID/启动时间及文件大小/修改时间，清理前再次核对且不接受进程替换；不把它冒充Compose标签验证。Checkpoint与Langfuse使用各自已有检查。旧persistence.fixture.ts仍只校验连接范围和manifest，未独立验证Docker标签或manifest来源，不应向未知实例执行其cleanup。
 
-Qdrant客户端创建超时保持5秒。T7在创建失败后独立进行最长15秒的清理对账，每次HTTP请求不超过5秒且受剩余期限约束；第一次exists=false仍继续等待，出现后检查归属并精确删除、确认消失。对账成功也不覆盖原创建失败，原测试仍失败。到期无法确认或归属不符时，在data/qdrant-cleanup/<runId>.json保留schemaVersion、project、service、runId、精确collection、原因及时间，并抛出QDRANT_CLEANUP_PENDING；不保存凭证。原始错误与清理错误同时发生时保留两者。
+Qdrant客户端创建超时保持5秒。创建失败后独立进行最长15秒的清理对账，每次HTTP请求不超过5秒且受剩余期限约束；第一次exists=false仍继续等待，出现后检查归属并精确删除、确认消失。对账成功也不覆盖原创建失败，原测试仍失败。到期无法确认或归属不符时，在data/qdrant-cleanup/<runId>.json保留schemaVersion、project、service、runId、精确collection、原因及时间，并抛出QDRANT_CLEANUP_PENDING；不保存凭证。新增target字段记录Docker/原生目标地址，原生还保存已核验的进程身份；project/service表示测试项目归属，不能代替target实例验证。旧manifest无target时只指原Docker实例。原始错误与清理错误同时发生时保留两者。
 
 manifest是待处理证据，不自动授权后续删除。后续操作必须核对文件内容、执行记录和目标实例归属，只处理该条精确名称，确认删除后才清除此manifest；禁止按s12前缀批量删除。创建在对账期限之外完成仍可能留存，因此保留manifest并明确失败，不承诺任意迟到创建都会在本次进程内清理。真实回归后只读统计s12_*残留，并把数量写入progress。
 
@@ -121,9 +130,9 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 ## 尚未验证
 
-正式业务任务输入/所有权、真实报告/索引执行器、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布/消费、失败移交及T6对账已有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复的实际运行结果见进度记录；旧执行fence与新恢复thread隔离仍由S1.4-T7验收。对应阶段见[开发计划](development-roadmap.md)。
+正式业务任务输入/所有权、真实报告/索引执行器、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布/消费、失败移交、对账及T7联合隔离已有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复与全量回归的逐次结果见进度记录。对应阶段见[开发计划](development-roadmap.md)。
 
-当前RabbitMQ重投测试不能证明业务任务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；旧Worker迟到写入、旧thread隔离和两类任务各自的终态保护在S1.4-T7中单独验收。
+RabbitMQ重投与合成任务测试不能单独证明真实简历业务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；S1.4-T7另有上述实际暂停/迟到写入/线程隔离和索引目标保护证据，两者不混称真实业务验收。
 
 ## 新增测试的约定
 

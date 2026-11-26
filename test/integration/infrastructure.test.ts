@@ -10,11 +10,12 @@ import { loadInfrastructureConfig } from '../../src/infrastructure/config.js';
 import { DatabaseService } from '../../src/infrastructure/database/database.service.js';
 import { RabbitmqService, PublishError, diagnosticMessageSchema } from '../../src/infrastructure/messaging/rabbitmq.service.js';
 import { VectorService } from '../../src/infrastructure/vector/vector.service.js';
-import { ownedQdrant } from '../../src/infrastructure/vector/ownership.js';
+import { qdrantTestTarget } from '../support/native-qdrant.js';
 import { collectionCleanupApi, collectionForRun, reconcileCollection } from '../support/qdrant-cleanup.js';
 
 // Required, never skip-on-missing: an integration run must actually contact the services.
-const config = loadInfrastructureConfig(process.env);
+const qdrantTarget = await qdrantTestTarget(loadInfrastructureConfig(process.env));
+const config = qdrantTarget.config;
 
 async function receiveOne(channel: Channel, queue: string): Promise<ConsumeMessage> {
   let tag: string | undefined;
@@ -137,7 +138,8 @@ await test('Real PostgreSQL, RabbitMQ and Qdrant diagnostics', { timeout: 45_000
   });
 
   await t.test('Qdrant upsert/query/delete and wrong dimensions return a recognizable error', async () => {
-    await ownedQdrant();
+    await qdrantTarget.verify();
+    t.diagnostic(`Qdrant target: ${qdrantTarget.kind}`);
     const collection = collectionForRun(runId);
     // Reserve this unique name before sending the create request. A timeout can still mean
     // the server committed creation, so cleanup cannot depend on the response succeeding.
@@ -146,8 +148,10 @@ await test('Real PostgreSQL, RabbitMQ and Qdrant diagnostics', { timeout: 45_000
     let operationFailed = false;
     let operationError: unknown;
     try {
+      const createStarted = performance.now();
       await vector.createCollection(collection, { vectors: { size: 3, distance: 'Cosine' } });
       createConfirmed = true;
+      t.diagnostic(`Qdrant ${qdrantTarget.kind} collection creation: ${(performance.now() - createStarted).toFixed(1)}ms`);
       await vector.upsert(collection, { wait: true, points: [
         { id: 1, vector: [1, 0, 0], payload: { runId, skill: 'synthetic-a' } },
         { id: 2, vector: [0, 1, 0], payload: { runId, skill: 'synthetic-b' } },
@@ -169,7 +173,8 @@ await test('Real PostgreSQL, RabbitMQ and Qdrant diagnostics', { timeout: 45_000
       operationError = error;
     }
     try {
-      await reconcileCollection({ runId, createConfirmed, api: collectionCleanupApi(config), verifyOwnership: ownedQdrant });
+      await reconcileCollection({ runId, createConfirmed, api: collectionCleanupApi(config), verifyOwnership: qdrantTarget.verify,
+        target: qdrantTarget.cleanupTarget });
     } catch (cleanupError) {
       if (operationFailed) throw new AggregateError([operationError, cleanupError],
         'Qdrant operation failed and cleanup is pending.', { cause: cleanupError });

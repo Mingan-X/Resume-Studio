@@ -7,10 +7,16 @@ export const syntheticCompletionSchema = z.object({
   inputHash: z.string().regex(/^[a-f0-9]{64}$/), completedUnits: z.literal(1),
 }).strict();
 export type SyntheticCompletion = z.infer<typeof syntheticCompletionSchema>;
+export const syntheticNodeOutputSchema = z.object({
+  schemaVersion: z.literal(1), kind: z.literal('synthetic'), node: z.enum(['first','second','index']),
+  inputHash: z.string().regex(/^[a-f0-9]{64}$/), value: z.int(),
+}).strict();
+export type SyntheticNodeOutput = z.infer<typeof syntheticNodeOutputSchema>;
 export type ExecutionClaim = {
   ownerId: string; consumerName: string; message: TaskDispatch;
   attemptId: string; fenceToken: bigint; startedAt: Date; deadline: Date;
   snapshot: AnalysisInputSnapshot | JobIndexInputSnapshot;
+  graph?: { threadId: string; generation: number };
 };
 export type ClaimResult = { kind: 'acquired'; claim: ExecutionClaim } | { kind: 'ack' | 'deferred' };
 
@@ -38,4 +44,8 @@ export function decodeTaskDelivery(delivery: { content: Buffer; properties: { co
 
 export class ExecutionLeaseLostError extends Error {
   constructor() { super('TASK_EXECUTION_LEASE_LOST'); }
+}
+
+export class ExecutionUnsettledError extends Error {
+  constructor() { super('TASK_EXECUTION_DID_NOT_SETTLE'); }
 }

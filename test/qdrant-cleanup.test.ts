@@ -95,6 +95,7 @@ await test('unconfirmed creation keeps a validated per-run manifest and fails af
     assert.equal(manifest.collection, collectionForRun(runId));
     assert.equal(manifest.reason, 'CREATE_UNCONFIRMED');
     assert.equal(manifest.status, 'CLEANUP_PENDING');
+    assert.deepEqual(manifest.target, { kind: 'docker', url: 'http://127.0.0.1:56333' });
     assert.equal(cleanupManifestSchema.safeParse({ ...manifest, collection: 's12_someone_else' }).success, false);
   } finally { await server.close(); await rm(directory, { recursive: true }); }
 });
@@ -103,13 +104,16 @@ await test('ownership rejection prevents deletion and leaves exact cleanup evide
   const directory = await mkdtemp(join(tmpdir(), 'resume-qdrant-owner-'));
   const runId = randomUUID();
   let deletes = 0;
+  const target = { kind: 'native-windows' as const, url: 'http://127.0.0.1:6333' as const,
+    executable: 'D:/synthetic-test/qdrant.exe', pid: 1234, started: '2026-11-26T00:00:00.000Z', size: 100, mtimeMs: 123456 };
   try {
     await assert.rejects(reconcileCollection({ runId, createConfirmed: true,
       api: { exists: async () => true, remove: async () => { deletes++; } },
-      verifyOwnership: async () => { throw new Error('Foreign instance.'); }, manifestDirectory: directory }), CleanupPendingError);
+      verifyOwnership: async () => { throw new Error('Foreign instance.'); }, manifestDirectory: directory, target }), CleanupPendingError);
     assert.equal(deletes, 0);
     const manifest = cleanupManifestSchema.parse(JSON.parse(await readFile(join(directory, `${runId}.json`), 'utf8')) as unknown);
     assert.equal(manifest.reason, 'OWNERSHIP_UNVERIFIED');
+    assert.deepEqual(manifest.target, target, 'Pending native cleanup must not be mistaken for Docker cleanup.');
   } finally { await rm(directory, { recursive: true }); }
 });
 

@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区及T6对账已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区、对账及T7合成图Checkpoint/fence联合隔离已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -14,7 +14,7 @@
 
 **Checkpoint**：工作流状态快照及待完成节点，用于崩溃后继续；不替代任务记录、报告、授权或队列。Prisma 管业务表，官方 PostgresSaver 管自己的表，二者独立事务。
 
-当前Prisma Schema已有诊断表、Owner、两类任务与attempt/event/receipt/outbox/quarantine模型；已实现合成任务与Outbox创建、发布以及T4执行租约/消费者。NodeArtifact、真实业务处理器及Checkpoint联合恢复仍属目标设计。官方Checkpoint表由独立setup建立，用于S1.3合成图测试。并发、超时、重试和租约参数尚未经过生产负载验证，Rubric等级、评分映射和权重等业务政策须单独审查。
+当前Prisma Schema已有诊断表、Owner、两类任务与attempt/event/receipt/outbox/quarantine模型，以及T7合成NodeArtifact和SyntheticIndexTarget；已实现合成任务创建、发布、消费、重试、对账及Checkpoint联合恢复。真实业务处理器仍属目标设计。官方Checkpoint表由独立setup建立，供合成图使用。并发、超时、重试和租约参数尚未经过生产负载验证，Rubric等级、评分映射和权重等业务政策须单独审查。
 
 ## 2. 整体架构
 
@@ -27,7 +27,7 @@
 | OutboxModule | 显式注册身份、数据库与消息发布适配器，`outbox:publish`执行有界批次 | 短事务领取/发布/条件标记；无常驻轮询，消费者由ConsumerModule提供 |
 | ConsumerModule | `tasks:consume`按任务类型运行有界手动ACK会话；身份、执行存储和合成处理器通过Nest装配 | TaskAttempt/ConsumerReceipt、租约心跳与fence保护合成完成事件；未接入业务图或常驻调度 |
 | ReconciliationModule | `tasks:reconcile once/watch`按owner分页扫描两类任务，事务修复后调用Outbox发布器 | 与消费者共享执行锁标识；只恢复调度或按预算失败，不凭空生成报告/Checkpoint终态 |
-| Checkpointer | `src/infrastructure/checkpoint/`提供受控provision/setup与独立pg池；图仅在测试fixture中 | 旧子进程确认退出后同thread续跑；无首Checkpoint时从独立输入启动，不包含fence |
+| Checkpointer | 独立provision/setup与pg池；`tasks:consume:graph`显式装配CheckpointTaskHandler合成图 | 未知旧执行切换thread；确认实际执行收束或子进程退出才同thread续跑；产物/终态由业务fence保护，尚无真实简历图 |
 | ObservabilityModule | `test/fixtures/observability-graph.ts`使用官方CallbackHandler及手工OTel span；独立集成测试注册Nest模块 | 合成输入与关联/脱敏验证；未验证跨API/Worker传播或真实LLM |
 | 本地服务 | 单一resume-studio项目，业务三服务在default网络，Langfuse六服务在observability网络 | 独立账号/卷、双向独立启停；运行结果见开发进度；本机存储性能仍有限制 |
 
@@ -230,7 +230,9 @@ RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.
 
 **不确定旧Worker是否停止时的保守恢复**：只有确认旧graph及其写入已停止（例如进程监督确认旧进程退出）才复用同thread续跑。如果锁连接已断，但无法确认旧执行停止，则事务递增graphGeneration并分配新activeGraphThreadId，在新thread用冻结输入和已提交NodeArtifact重入；旧执行的checkpoint只能写旧thread，业务写入被fence拒绝。不要把旧checkpoint内部表复制到新thread，也不要假设TTL/心跳能拦住迟到写入。该例外会损失尚未提交的图内进度，可能重复模型调用，但保证旧工作流不会污染新恢复状态；仍使用官方StateGraph/PostgresSaver，不实现自有运行时。
 
-上述隔离是待实现并验证的要求，不是现有能力。**官方Checkpointer内部SQL不会自动受到业务Fencing Token约束**：业务条件更新只能保护经过该检查的业务表写入，不能阻止旧saver向原thread写入。必须有真实PostgreSQL/Worker集成测试：暂停旧执行并使租约/锁连接失效，启动新执行后恢复旧执行，验证旧token不能提交NodeArtifact/报告/任务终态；无法确认旧执行停止时新执行使用新thread，旧Checkpoint迟到写入不能改变新activeGraphThreadId及其恢复结果；确认旧执行已结束时才用原thread续跑。另测JobIndexTask旧执行不得更新新版本的indexStatus。仅测试TTL、mock token或正常重启不能替代这些故障场景。
+S1.4-T7已在合成任务上实现并验证上述隔离。**官方Checkpointer内部SQL不会自动受到业务Fencing Token约束**：业务条件更新只能保护经过该检查的业务表写入，不能阻止旧saver向原thread写入。[真实故障测试](../test/integration/checkpoint-fence.test.ts)操作系统级暂停旧子进程、使本轮租约及实际锁连接失效，待新执行完成后恢复旧进程；官方saver实际写入旧thread，新thread状态保持不变，旧token的产物与终态写入被拒绝。另验证确认子进程退出后同thread恢复，以及JobIndexTask对合成新版本目标的保护。真实报告、JobVersion和Qdrant业务索引仍待后续阶段接入。
+
+TaskAttempt.executionStoppedAt只记录可信停止证据：TaskDeliveryHandler等待实际处理器及其资源收束，或本地监督调用方将私有IPC领取身份绑定到自己的子进程并确认exitCode/signalCode。锁失效、租约到期、发送kill或AbortSignal触发都不能单独写此证据。处理器中止后最多观察5秒清理；仍未收束则销毁锁连接、不记录停止，新领取保守切换thread。CheckpointTaskHandler跟踪已开始的saver put/putWrites和业务产物操作，禁止退出后的新写入并等待现有操作及池关闭，避免把graph.invoke返回误当成全部写入结束。这里没有交付常驻进程监督服务。
 
 ### 5.4 重试、死信与长任务
 
@@ -242,7 +244,7 @@ RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.
 
 心跳更新任务及当前收据采用同一事务、同一个数据库时间。心跳不重叠执行；失败会abort本次处理器，完成前等待已开始的心跳结束，禁止后台继续续租。执行受输入冻结预算、跨尝试首个startedAt推导的总期限及单次上限限制。当前只执行无外部副作用的合成处理器；处理结果与输入哈希核对后，在同事务写SYNTHETIC_COMPLETED TaskEvent、SUCCEEDED、TaskAttempt结束及ConsumerReceipt DONE，再在原channel ACK。合成状态没有报告/indexStatus语义，真实产物事务将随S2接入。
 
-数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。T6对账已接入合成执行锁；取消API、Checkpoint联动仍属T7/T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
+数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。T6对账已接入合成执行锁，T7扩展到官方合成图；取消API仍属T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
 
 **业务重试采用数据库延迟Outbox**：失败分类后，在事务中更新Task为RETRY_WAIT、递增dispatchGeneration、写入新的messageId与availableAt；提交后ACK原消息。发布器到期再投递。无需RabbitMQ延迟插件，也不会在TTL队列头部阻塞不同延迟消息。
 
@@ -328,7 +330,7 @@ erDiagram
 | ScoringPolicy | version、dimensionWeights、requirementWeightPolicy、verdictCoefficients、unknownPolicy、hardGatePolicy、rounding |
 | AnalysisTask | ownerId、resumeVersionId、inputSnapshot、status、stage、generation、activeGraphThreadId、graphGeneration、fenceToken、lease字段、errorCode、reportId、budgetUsage；unique(ownerId,idempotencyKey)并存requestHash |
 | JobIndexTask | ownerId、jobVersionId、embeddingVersion、indexVersion、inputSnapshot、status、generation、fenceToken、lease字段、errorCode、budgetUsage；幂等请求键和requestHash；独立索引业务状态 |
-| TaskAttempt | attemptId、taskType、taskId、generation、startedAt/endedAt、traceId、errorClass、token/cost；任务重试不覆盖历史 |
+| TaskAttempt | attemptId、taskType、taskId、generation、startedAt/endedAt、executionStoppedAt、traceId、errorClass、token/cost；结束记账与实际执行停止证据分开，任务重试不覆盖历史 |
 | TaskEvent | taskType、taskId、单调seq、stage、counts、safeMessage、createdAt；unique(taskType,taskId,seq)，进度可补读 |
 | ConsumerReceipt | consumerName+messageId唯一、taskType、taskId、generation、状态、processedAt；清理周期长于可能重放窗口 |
 | OutboxEvent | eventId、aggregateType、aggregateId、eventType、payloadVersion、payload、availableAt、lease、publishAttempts、publishedAt；通用事务事件、无需AnalysisTask外键；到期未发布索引 |
@@ -354,6 +356,12 @@ erDiagram
 
 约束与不可变trigger由[迁移SQL](../prisma/migrations/202611250001_s14_task_foundation/migration.sql)维护，Prisma Schema不完整表达CHECK/trigger。官方Checkpoint库/schema不受该迁移管理。
 
+#### S1.4-T7 已实现的产物与线程映射
+
+- [T7迁移](../prisma/migrations/202611260004_s14_checkpoint_fence/migration.sql)新增TaskAttempt.executionStoppedAt、NodeArtifact与合成SyntheticIndexTarget；旧attempt默认无停止证据。SQL trigger要求graphGeneration单调且与activeGraphThreadId一同切换。新领取在同一事务更新租约/fence和图身份；对账仅恢复调度，不提前选择thread。
+- NodeArtifact.operationKey为规范化SHA-256，覆盖ownerId、taskType/taskId、node、完整冻结输入哈希、componentVersion和schemaVersion。两类任务互斥复合外键约束owner/task一致；读写均先锁任务并核对当前租约、fence、generation、取消/期限和适用的图身份。命中时校验结构和输入身份，允许新尝试复用已提交的旧fence产物。当前只有顺序合成节点，分支、prompt/model版本扩展仍按§4.1在真实业务接入时补齐。
+- SyntheticIndexTarget只表示合成目标的jobVersionId/embeddingVersion/indexVersion及PENDING/READY；发布必须同时匹配当前执行权和全部目标版本。它用于T7真实进程故障断言，不代替S2.2的Job/JobVersion模型，也不产生Qdrant索引。
+
 ### 6.2 分工与状态机
 
 AnalysisTask状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`；暂时失败走`RUNNING → RETRY_WAIT → RUNNING`。JobIndexTask具有独立的`QUEUED/RUNNING/RETRY_WAIT/SUCCEEDED/FAILED/CANCELLED`生命周期，不套用画像/报告的PARTIAL语义；JobVersion.indexStatus仅反映对应目标版本是否可供索引查询。两类任务共享租约、交付和重试原语，状态迁移由各自业务校验。
@@ -364,7 +372,7 @@ cancelRequested为独立标志，运行中的取消在安全边界处理；终�
 
 数据库保存“用户请求已被接收、执行权、可查询进度、报告、重试计划”。Checkpointer保存“图状态、下一节点、pending writes”。Checkpoint表不由Prisma迁移/修改；S1.3已经使用独立数据库resume_studio_checkpoint和langgraph schema，通过显式命令运行官方setup并分离初始化/运行账号；生产API/Worker尚未接入。首次setup作为受控初始化执行，不让每个请求竞争建表。业务池和saver池分别设置上限，计入PostgreSQL总连接预算。
 
-S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；本次核对该版本pregel/loop实现包含每步等待Checkpoint写入。测试还从数据库实际确认首节点Checkpoint后再强杀进程，避免把IPC通知当成持久化完成。首次Checkpoint之前仍可能没有thread，测试以独立保存的合成输入恢复。真实业务仍需Task输入快照、幂等产物和S1.4执行隔离；不能由该合成用例推导任意外部副作用恰好一次。
+S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；该版本pregel/loop实现包含每步等待Checkpoint写入。测试还从数据库实际确认首节点Checkpoint后再强杀进程，避免把IPC通知当成持久化完成。T7将相同官方持久化方式接入任务执行权：无Checkpoint时使用任务冻结输入，有Checkpoint时校验用户状态投影后 `invoke(null)`；合成结果必须与两个已提交NodeArtifact一致，再由消费者持当前fence提交终态。真实业务仍需对应的版本化产物和完成条件；合成用例不证明任意外部副作用恰好一次。
 
 图恢复规则：检查任务终态 → 获取执行锁/租约并判断旧执行是否已停止。确认停止且有未完成Checkpoint时，使用原thread_id、`invoke(null, config)`续跑；确认停止但无Checkpoint时，从冻结输入启动并复用合法NodeArtifact。无法确认停止则分配新恢复thread，从冻结输入与已提交产物重入，不读取旧thread的迟到Checkpoint作为新状态。graph已结束但任务未终态时按已验证产物幂等finalize，仍校验当前fence。普通JobIndexTask恢复不依赖Checkpoint，以索引任务状态、输入快照及幂等upsert恢复。改变graph/schema版本的部署保留旧版本恢复能力或明确迁移/重新分析，不能拿不兼容新图恢复旧状态。
 
@@ -391,7 +399,7 @@ S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；本次核
 #### S1.4-T6 当前实现
 
 - `PostgresExecutionLock`给合成消费者提供session advisory lock：以固定命名空间、ownerId/taskType/taskId的SHA-256前64位作为有符号bigint键，UUID统一小写。对账事务使用同键的pg_try_advisory_xact_lock；消费者先拿session锁再领取任务，对账先拿transaction锁再以FOR UPDATE SKIP LOCKED读任务。锁冲突直接延后，不等待或抢占。哈希碰撞最多造成无关任务延迟，不授予并发执行。
-- session连接来自原3连接池并在执行期间保留，事务另借连接；当前每个consumer命令最多执行一个任务。退出时显式解锁，连接错误/未知锁结果销毁该连接；锁连接丢失触发AbortSignal，不ACK。扩展进程内并发前必须重新核算池预算。T6没有把这把锁接到LangGraph、saver或thread切换，不替代T7验证；合成数据库写入仍由generation/fence约束。
+- session连接来自原3连接池并在执行期间保留，事务另借连接；当前每个consumer命令最多执行一个任务。退出时显式解锁，连接错误/未知锁结果销毁该连接；锁连接丢失触发AbortSignal，不ACK。扩展进程内并发前必须重新核算池预算。T7已将锁生命周期接到合成LangGraph及saver收束，线程切换由领取事务完成；业务数据库写入仍由generation/fence约束。
 - 默认每轮每类最多10个候选，用UUID游标分页并回绕，跳过锁住或校验失败的任务不会一直挡住后续任务。只查询可信owner下过期RUNNING，以及updatedAt超过120秒、retryAt已到的QUEUED/RETRY_WAIT。每个候选在事务中重新判断终态、取消标志、代次、租约及输入Schema，不用扫描时的旧值直接写入。
 - 过期且无执行锁的RUNNING在一个事务内结束旧attempt、累计elapsedMs、将旧代次RUNNING收据标DONE，递增generation/fence/recoveryCount，置QUEUED/RECOVERY_QUEUED并写新messageId Outbox和进度事件。原taskId、快照、调用/token/费用预算和graph thread字段不变；晚到旧消息/旧token分别由旧代次与fence拒绝。两个对账实例竞争同一候选只会安排一次恢复。
 - 长期QUEUED/RETRY_WAIT缺调度Outbox，或当前代次事件已confirm且超过120秒仍无执行时，才安排新的恢复代次。当前代次未发布事件继续使用T3发布租约/退避/次数；failedAt事件仅报告delivery-failed，不清零重发预算或换新事件绕过限制。未发布事件扫描包含dead及Quarantine来源，由原发布器处理；活跃发布租约不抢占，过期租约由原领取逻辑恢复。进度汇总包含pending/due/failed及最老事件时间。
