@@ -67,3 +67,11 @@ IsolatedParser接收字节，不接受外部文件路径；子进程环境不传
 Windows父进程以tasklist按PID轮询RSS，Linux实现读取/proc（未实测）；轮询不重叠，监测错误失败关闭，监测工具也有3秒期限。总期限包含子进程启动与解析，忙循环由父进程SIGKILL终止并等待close及在途监测结束；RSS不是瞬时OS硬配额，CPU由进程总期限约束而非独立调度配额。JS堆通过--max-old-space-size限制。默认15秒/128MiB堆/256MiB RSS是合成实验起点，不是生产容量保证。解析器实例一次仅接纳一个执行，超额立即失败；API全局装配在T8验证。
 
 本机专项已实测网络/文件权限拒绝、不继承数据库凭证、非法JSON/输出文本超限拒绝、忙循环期限、请求中止、RSS/堆超限，以及拒绝后原PID确实退出。测试使用合成文件与独立测试worker，不证明尚未接入的PDF/DOCX解析质量；默认阈值的复杂样本和Linux验证仍待后续专项。
+
+## T5 PDF位置与质量边界
+
+PDF.js6.5.438 legacy构建仅用于文本抽取，接收Uint8Array，不接收URL；关闭字体回退、XFA、Wasm与worker fetch，未调用渲染或文档JavaScript。Node权限不允许加载canvas原生addon，legacy模块可能产生渲染相关警告，worker不把第三方日志混入JSON协议；文本专项在此限制下真实运行。
+
+PDF位置字段定稿为一基page与bounds=null。TextItem的transform是基线变换，width/height不等于可精确引用的字形矩形，因此不据此伪造框。按量化行高/横向位置稳定排序，每个非空TextItem形成独立文本块；同行间距超过30 PDF单位、旋转/非LTR等产生READING_ORDER_UNCERTAIN。双栏/表格文本不承诺语义阅读顺序，引用以保存块逐字核对。块的持久UUID及引用完整性在T7落库，不依据显示排序重新生成引用。
+
+合成ToUnicode字体样本覆盖中文、多页、项目列表、双栏/单行表格单元顺序；双栏明确警告。30页允许、31页拒绝；扫描图像页返回SCANNED_PDF，空白全文EMPTY_TEXT，混合无文本页保留PARTIAL_TEXT_LAYER；密码文件ENCRYPTED_FILE、损坏CORRUPT_FILE、文本超量TEXT_LIMIT。未使用系统字体或真实简历，不做OCR；其他复杂字体/版式仍受支持边界约束，不能用本次样本推断任意PDF质量。

@@ -73,6 +73,7 @@
 
 S2.1-T4已精确安装yauzl3.4.0及开发类型@types/yauzl3.4.0（MIT，无peer，未声明engines，需本机编译验证），传递依赖pend；锁文件同步，pnpm12.23.0冻结安装通过。用途为受限子进程内顺序读取ZIP流并核对实际展开量，CRC使用Node内置zlib.crc32，不增加CRC包；类型包无运行成本。PDF.js/Mammoth尚待T5/T6接入，完整运行验证以progress为准。
 
+S2.1-T5安装pdfjs-dist6.5.438与锁定的可选canvas1.2.1及win32-x64构件，冻结安装通过；使用官方建议的legacy构建。子进程未授权addon，未使用渲染，中文文本提取在无canvas能力下专项通过；不按上游警告建议删除node_modules/锁文件。可选二进制带来安装体积但不是生产文件读写权限。Node24.22.3/严格TypeScript编译与Lint通过，质量及限额结果见progress。
 
 
 替代方案：Python/MinerU或云端解析会新增服务/隐私边界，D11已排除；仅用JSZip不能提供本任务要求的流式资源预检；不另选解析方向。T1只冻结候选和边界，T4–T6安装时精确声明并同步锁文件，验证冻结安装、运行样本和传递依赖；目前不宣称解析可用。
