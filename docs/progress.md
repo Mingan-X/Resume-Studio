@@ -8,6 +8,52 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4 阶段验收：通过，附已知环境限制L2（分支 feature/s1.4-task-foundation）
+
+验收人：维护者委托的审查AI；最终决定由维护者作出。对象为提交 `5b02616`（master `17d4002` 之后的11个提交），验收开始时工作区干净。验收期间只运行检查和阅读代码，未修改源码、测试、配置或依赖；本条及状态文档更新在维护者决定后提交。
+
+环境：Windows，Node 24.22.3，pnpm 12.23.0；resume-studio项目九个容器保持运行；维护者自行启动的原生Qdrant在6333监听。
+
+本次实际执行：
+
+| 检查 | 结果 |
+|---|---|
+| `pnpm run typecheck`、`pnpm run lint` | 通过，零警告 |
+| `pnpm test` | 45通过、0失败、0跳过，5.5秒 |
+| `pnpm run openapi:check` | 通过，产物与运行时Schema一致 |
+| `db:status`、`db:validate` | 7条迁移均已应用，Schema有效 |
+| 远端CI | 通过GitHub API查询，5b02616的“Code and contracts”两次运行均success。分支此前已推送，T9–T10记录中的“未推送/远端CI未执行”自此更正 |
+| 默认Docker `pnpm run test:integration` | 85通过、2失败、0跳过，545.6秒；T1–T8、Checkpoint、Langfuse全部通过。失败为Qdrant子用例 `createCollection` 的QdrantClientTimeoutError（子用例6313ms）及其父测试 |
+| 原生 `pnpm run test:integration:native-qdrant` | 87通过、0失败、0跳过，542.0秒；原生集合创建2977.6ms |
+| 回归后资源 | Docker与原生Qdrant集合均为0；RabbitMQ 4条正式队列ready/unacked均0、连接0；s15–s18运行manifest均cleaned=true；工作区干净 |
+| 真实API进程冒烟 | TASK_API_ENABLED=true时随机UUID的GET/取消返回404，非法UUID、未知查询、非JSON及多余字段返回400；false时任务路由404；production、0.0.0.0及非法开关值以CONFIG_INVALID退出1；日志不含请求内容 |
+
+逐项结论：
+
+| 任务 | 结论 | 依据 |
+|---|---|---|
+| T1–T7 | 通过 | 本次两套全量中各专项均通过；代码复核取消/领取/对账均在执行锁与行锁内提交，fence条件更新拒绝旧token |
+| T8 | 通过 | 查询/取消只使用IdentityPort的owner，越权与不存在同为404；stage/计数来自同一Repeatable Read快照；真实Worker清理期间对账返回lock-held，清理后才写CANCELLED；完成与取消经行锁串行，之后旧token的完成和产物写入被拒绝 |
+| T9 | 通过 | 生成脚本先扩展Zod再动态导入编译后的同一contracts，API运行路径不加载生成工具；CI含openapi:check且远端通过，过期/缺失检测由本地负向测试证明 |
+| T10 | 通过 | 文档描述与实际行为一致；状态记录的推送情况已由本条更正 |
+| 完成定义第2条 | 未完全满足 | 默认Docker全量的Qdrant用例失败，原因见下 |
+
+维护者决定：接受S1.4，阶段状态改为“已完成”，以已知环境限制L2记录剩余失败，并推送本条记录。
+
+合并状态：fetch确认5b02616已由PR #2合并到远端master（合并提交736c8d5）。本条及状态文档在feature/s1.4-task-foundation上追加提交并推送；按CONTRIBUTING不直接提交master，需维护者另行合并。合并后按CONTRIBUTING清理已合并的本地分支。
+
+已知环境限制 L2（本机Docker Qdrant集合创建超时）：
+
+- 现象：默认Docker Qdrant的 `createCollection` 超过原5秒客户端限制，`infrastructure.test.ts` 的Qdrant子用例及其父测试失败。T7、T8及本次验收均复现；此前记录的服务端PUT实测为6.98–8.34秒并迟到返回200，精确清理后无残留。
+- 判断依据：S1.4代码不使用Qdrant；同一套集成测试改用原生Qdrant后全部通过（本次创建2977.6ms）。项目与Docker数据位于机械硬盘（见[专项排查](research/failure-diagnosis-2026-11-25.md)）。尚未确认物理磁盘、VHD、文件系统同步等因素各自的影响，判断基于对照结果与失败模式，不是逐次证实的根因。L2与只针对API冷启动的L1分开记录。
+- 不采取的处理：不调大请求或清理期限，不跳过或放宽CRUD/维数断言，不改用tmpfs、修改WAL/镜像或删除卷，不以原生对照的通过替代默认Docker结果。
+- 重新处理的时机：部署到服务器，或本机迁移到SSD、更换满足条件的硬件后，在新环境按S3.3要求连续回归并记录默认Docker Qdrant的集合创建耗时；仍超时则作为配置或代码问题重新定位。已加入[S3.3验收要求](development-roadmap.md#5-后续阶段交付与验收)。
+- 对后续开发的影响：本机默认Docker全量只有Qdrant集合创建超时及其父测试失败、集合无残留时，按L2记录，不视为新回归；其他用例失败按正常缺陷处理。涉及Qdrant的后续阶段（S2.3起）需另跑原生对照，或在满足条件的环境中验证。
+
+保留的非阻塞观察：`@prisma/adapter-pg` 把Date参数格式化为不带偏移的UTC文本。`lease_until <= ${now}` 等与timestamptz的比较，以及 `complete()` 中的 `${claim.startedAt}::timestamp`，都依赖PostgreSQL会话时区为UTC。当前容器为Etc/UTC，结果正确，但没有配置固定会话时区，也没有测试断言elapsedMs。后续在涉及部署配置的任务中固定会话时区或记入部署约束。
+
+未执行：重新安装依赖、新机冷安装、服务重启持久化实验、S1.3-T7.5式的连续多轮回归。两套集成测试写入的本轮合成数据已自动清理。
+
 ## 2026-11-26 S1.4-T10 文档交接与T8–T10联合回归（分支 feature/s1.4-task-foundation）
 
 状态：T1–T10代码与文档产出已齐备，但默认Docker全量仍有Qdrant超时，未满足路线图“完整回归通过”的完成定义；S1.4保持“进行中”，不自行标为已完成或维护者验收通过。T8–T10按授权一起开发并分开提交，T8=8595adf、T9=8b023cd，T10为本条记录和共享文档收尾；任务编号/依赖/验收不改。未推送、未合并。
