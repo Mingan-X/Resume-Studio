@@ -10,6 +10,9 @@ import { join, relative, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
 import { LocalStorage } from '../../src/infrastructure/storage/local-storage.js';
+import { IsolatedParser } from '../../src/infrastructure/parsing/isolation.js';
+import { extractedDocument } from '../../src/modules/resumes/evidence.js';
+import { syntheticPdf, syntheticZip, minimalDocxEntries } from '../support/document-fixtures.js';
 import { DatabaseService } from '../../src/infrastructure/database/database.service.js';
 import { loadInfrastructureConfig } from '../../src/infrastructure/config.js';
 import { ownedPostgres } from '../../src/infrastructure/checkpoint/ownership.js';
@@ -28,6 +31,7 @@ await test('S2.1 real database preserves resume identity, owner constraints, imm
       for (const ownerId of owners) {
         await db.$transaction(async tx => {
           await tx.resumeUpload.deleteMany({ where: { ownerId } });
+          await tx.extractedDocument.deleteMany({ where: { ownerId } });
           await tx.evidenceBlock.deleteMany({ where: { ownerId } });
           await tx.resumeVersion.deleteMany({ where: { ownerId } });
           await tx.resume.deleteMany({ where: { ownerId } });
@@ -104,5 +108,37 @@ await test('S2.1 real database preserves resume identity, owner constraints, imm
       assert.equal(relative(resolve(tmpdir()), resolve(root)).startsWith('..'), false);
       await rm(root, { recursive: true });
     }
+  });
+  await t.test('T7 real PDF/DOCX file and database artifacts stay separate across concurrent owners and validate exact references', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'resume-evidence-db-'));
+    try {
+      const storage = await LocalStorage.create(root);
+      const results = await Promise.all([
+        { owner: ownerId, bytes: syntheticPdf([{ text: '甲项目😀' }]), name: 'a.pdf', mime: 'application/pdf' },
+        { owner: otherOwner, bytes: syntheticZip(minimalDocxEntries()), name: 'b.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+      ].map(async source => {
+        const file = await storage.stage(Readable.from([source.bytes]));
+        const parsed = await new IsolatedParser().parse(source.bytes, source.name, source.mime);
+        const value = sample(source.owner), document = extractedDocument(value.resumeVersionId, file.sha256, parsed);
+        value.file = { ...value.file, storageKey: file.storageKey, sha256: file.sha256, size: file.size,
+          mime: source.mime === 'application/pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+        value.blocks = document.blocks; value.document = document;
+        await storage.commit(file); await repository.register(value);
+        assert.deepEqual(await storage.read(file.storageKey), source.bytes);
+        assert.deepEqual(await repository.document(source.owner, value.resumeVersionId), document);
+        const block = document.blocks[0]!;
+        const ref = { sourceType: 'RESUME', sourceVersionId: value.resumeVersionId, blockId: block.id, start: 0, end: block.text.length, quote: block.text };
+        assert.deepEqual(await repository.validateReference(source.owner, value.resumeVersionId, ref), ref);
+        await assert.rejects(repository.validateReference(source.owner, value.resumeVersionId, { ...ref, quote: '伪造引用' }));
+        await assert.rejects(db.extractedDocument.update({ where: { sourceVersionId: value.resumeVersionId }, data: { document: {} } }));
+        await assert.rejects(db.evidenceBlock.create({ data: { ...block, id: randomUUID(), ordinal: 999,
+          ownerId: source.owner, sourceVersionId: value.resumeVersionId } }));
+        return { source, value, ref };
+      }));
+      const [first, second] = results;
+      assert.ok(first && second);
+      assert.equal(await repository.document(first.source.owner, second.value.resumeVersionId), null);
+      await assert.rejects(repository.validateReference(first.source.owner, first.value.resumeVersionId, second.ref));
+    } finally { assert.equal(relative(resolve(tmpdir()), resolve(root)).startsWith('..'), false); await rm(root, { recursive: true }); }
   });
 });

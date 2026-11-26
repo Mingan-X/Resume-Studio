@@ -8,7 +8,7 @@
 - 每次新上传创建Resume与version=1；同owner、同Idempotency-Key绑定文件SHA-256，同key同字节返回原版本（201），不同字节409。不同key即使内容相同仍是独立简历。不增加追加版本接口。
 - 解析后文本按顺序将CRLF/CR转为LF、Unicode NFC归一化；不折叠空格、不trim正文。纯空白块不输出，全文无非空白块则失败。定位针对归一化后的持久化文本，不能再改变文本。
 - 引用采用JavaScript UTF-16 code unit的`[start,end)`区间；要求start/end不拆分代理对，quote必须逐字等于text.slice(start,end)。Schema先验证形状，T7再结合可信owner、sourceType、sourceVersionId和实际块验证授权及内容，不能仅靠模型给出的quote校验。
-- 文本块按解析顺序有连续零基ordinal；块ID在一次版本解析提交前生成UUID，并随不可变产物保存，读取和分析重试不得重建ID。textHash为归一化文本的UTF-8 SHA-256。parserVersion记录包版本及适配器版本；normalizationVersion固定text-v1。
+- 文本块按解析顺序有连续零基ordinal；块ID在一次版本解析提交前按T7规则生成稳定UUID，并随不可变产物保存，读取和分析重试不得重建ID。textHash为归一化文本的UTF-8 SHA-256。parserVersion记录包版本及适配器版本；normalizationVersion固定text-v1。
 - ExtractedDocument与原文件分开持久化，绑定文件哈希、简历版本、parserVersion与schemaVersion。版本、原文件和已提交文本不得原地替换。
 
 ## 位置字段（暂定）
@@ -81,3 +81,9 @@ PDF位置字段定稿为一基page与bounds=null。TextItem的transform是基线
 Mammoth1.13.0经过ZIP预检后才接收内存Buffer。使用文档化但标为不稳定的transformDocument hook，Zod校验文档节点并提取段落、软换行和表格行/单元格顺序；HTML不暴露给客户端，图片转换不读取图片数据，externalFileAccess=false。节点遍历深度限制64，全文受maxText限制。段落location为零基paragraph，表格附零基index/row/cell，不返回页码；空白段落跳过输出但保留原序号，不把图像当文本。
 
 首次实测发现Mammoth初始化使用ExternalPromise.__proto__，与额外的--disable-proto=throw冲突；移除该非任务要求开关，保留Node permission的文件/进程/addon/worker限制、网络禁止与资源约束，未修改上游依赖源码。解析器只解释文档数据，不执行文档脚本。复杂表格合并单元格只能按Mammoth抽取顺序定位，不承诺Word视觉布局；位置和文本以不可变块为准。
+
+## T7 产物与引用
+
+ExtractedDocument与原文件/文本块分表，上传repository可在同一事务写块及完整产物。块ID由版本UUID、parserVersion、ordinal和归一化文本的SHA-256派生UUIDv8，相同解析输入重放稳定；不是跨版本复用。保存前校验块哈希、顺序、产物与文件哈希一致。数据库复合外键绑定owner/版本/文件哈希；产物禁止UPDATE，存在完整产物后禁止追加文本块。读取JSONB重新经Zod与文本哈希校验。
+
+引用校验先按可信owner和version加载产物，再验证sourceType/version/block/start/end/quote；start/end是UTF-16半开区间，不可落在代理对中间。无效/越权引用失败，不返回另一owner产物。真实文件+数据库专项并发解析两份不同owner的PDF与DOCX并核对读回、伪造/跨版本拒绝和不可变约束；不读取全局最新简历。

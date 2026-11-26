@@ -100,6 +100,7 @@ model ResumeVersion {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   blocks EvidenceBlock[]
   uploads ResumeUpload[]
+  extractedDocument ExtractedDocument?
   @@unique([resumeId, version])
   @@unique([ownerId, id])
   @@unique([ownerId, id, fileHash])
@@ -129,6 +130,17 @@ model ResumeUpload {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   @@id([ownerId, idempotencyKey])
   @@map("resume_upload")
+}
+
+model ExtractedDocument {
+  sourceVersionId String @id @map("source_version_id") @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  fileHash String @map("file_hash") @db.Char(64)
+  resumeVersion ResumeVersion @relation(fields: [ownerId, sourceVersionId, fileHash], references: [ownerId, id, fileHash], onDelete: NoAction, onUpdate: NoAction)
+  document Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, sourceVersionId, fileHash])
+  @@map("extracted_document")
 }
 
 // S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.

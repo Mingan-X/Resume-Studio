@@ -8,6 +8,34 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.1-T7 引用与不可变产物完成补记
+
+T7新增引用单元测试与真实PDF/DOCX/存储/数据库6项专项均通过；迁移9条已应用，generate/validate、重复deploy/status通过。阶段最终基础检查typecheck、零警告lint、pnpm test64/64通过，openapi:check通过；T7全量中的原心跳测试竞争已按同快照与实际续租修正，专项17/17及阶段全量当前已通过相应组。历史失败不覆盖，最终全量计数随T10追加。
+
+引用及JSONB读写全部经Schema校验，稳定块ID及哈希可追溯；并发两份不同owner文件不串数据。未调用模型，不把ParsedResume契约误当已完成语义抽取。数据库版本/原文件不可原地替换，删除仍由后续S3.2生命周期处理。T7提交保留阶段进行中，不单独推送/合并。
+
+## 2026-11-27 S2.1-T9 ParsedResume契约与引用校验完成
+
+教育/工作/项目/技能的严格Zod契约包含schemaVersion、resumeVersionId和每项sourceRefs；nullable字段必须显式null，缺失集合为空数组，有内容条目缺引用拒绝。校验器复用T7的逐字区间、代理对、owner/版本/块检查；额外字段及totalScore拒绝。固定中文教育/多项目合成样例验证通过，没有调用模型或持久化语义抽取结果，EXTRACT仍由S2.4实现。
+
+本项执行typecheck、零警告lint与pnpm test通过；最终联合基础测试64/64通过、0跳过（9.569秒），包含契约专项。openapi:check通过（T9契约不注册语义抽取路由）。未执行真实模型/标注/语义质量评估：不属于T9且按路线图延后。工作区包含待提交T7/T8与T10文档，不改变其状态；T9可独立于HTTP提交。
+
+## 2026-11-27 S2.1-T8 HTTP专项修复与T9契约实现
+
+上传首次正常请求400已修正multipart parts计数；次轮HTTP3通过/2失败（含父），唯一行为失败为超限文件500而非413。根因是StoragePort超限后终止源流，multipart未同步结束，直到30秒传输deadline；现拒绝时终止parser并保留原始安全错误原因。复验HTTP+消费者专项17/17通过（73.662秒），含真实PDF/DOCX上传、幂等409、列表游标、owner404、422/413、文件提交/DB失败补偿、解析断连。心跳测试改为真实续租通知和同一快照后12/12通过，待阶段全量。
+
+新增storage:reconcile崩溃对账：过期manifest、确认uploaderPid已不存在、DB无引用三条件；未知/复用PID或旧清单保留，操作锁也带PID。测试真实fork后SIGKILL、确认exit、验证活进程/被引用文件保留及精确清理。最新typecheck/lint通过，pnpm test63/63（18.715秒）包含该崩溃专项与T9固定样例。
+
+T9已定义严格ParsedResume教育/工作/项目/技能Schema与每项sourceRefs，缺失为null/空数组；有内容条目无引用拒绝，复用T7拒绝伪造/跨owner/跨版本/越界引用及模型额外分数字段。只验证固定中文多项目合成样例，不调用模型、不持久化语义产物。后续追加最终检查和分任务提交；尚无阶段合并/推送。
+
+## 2026-11-27 S2.1-T7 产物与引用专项，T8接线记录
+
+T7增加ExtractedDocument表及不可变触发器、完成产物后禁止新增文本块；产物与版本/文件哈希复合外键绑定。引用校验覆盖owner/sourceType/version/block、UTF-16半开区间、逐字quote及代理对；块ID由输入版本/parser/ordinal/text稳定派生。generate/validate、deploy两次/status通过（9条迁移）；typecheck、lint通过；pnpm test61/61通过（25.801秒）；真实PDF/DOCX+存储+数据库专项6/6通过（6.857秒），并发不同owner数据不串，精确清理。
+
+T7完整集成93项：89通过、4失败、0跳过（589.030秒），T7全部通过；Qdrant创建超时及父项按L2候选，另有心跳用例/父项失败，actual acknowledged=1预期0。检查测试发现直接等待350ms猜测续租完成，并在两次独立查询间允许心跳更新，断言异常会被生产故障处理器当失败任务持久移交并ACK。最小修正改为等待真实续租通知、RepeatableRead同快照读取两表，再按原逻辑修改fence并验证无ACK；原生产逻辑和8秒会话上限不变，待专项/全量验证。不归入L1/L2。
+
+T8准备：busboy1.6.0/@types1.5.5精确声明与冻结安装通过，官方LICENSE/README已核查；同步上传、列表/详情、配置、OpenAPI已接线。首次typecheck因readonly Schema shape及可空filename失败，已修复；首次真实HTTP正常上传400而非201，定位到busboy partsLimit边界计数，改成保留终止边界空间且files=1/fields=0仍严格拒绝额外字段；原始文件10MiB限制仍由StoragePort流式执行。HTTP专项待复验，不把路由接线当验证完成。
+
 ## 2026-11-27 S2.1-T6 DOCX段落与表格文本完成
 
 Mammoth1.13.0在ZIP预检后接收Buffer，通过公开transformDocument hook和Zod节点校验抽取中文段落、软换行、表格行/单元格与段落序号。HTML不提供给客户端，图片不读取，禁止externalFileAccess；不虚构页码。正文缺失/损坏/空文本/加密/旧.doc及文本超限明确失败；节点深度受限，原始文件与文本保持分离。

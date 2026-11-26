@@ -169,16 +169,23 @@ await test('S1.4-T4 real consumer receipts, execution leases and fenced completi
 
   await t.test('heartbeat extends matching task and receipt, then ownership loss aborts work without ACK', async () => {
     const c = await context('analysis'); let renewals = 0;
+    let firstHeartbeat!: () => void;
+    const renewed = new Promise<void>(resolve => { firstHeartbeat = resolve; });
     class ObservedStore extends TaskExecutionStore {
       override async heartbeat(claim: Parameters<TaskExecutionStore['heartbeat']>[0]) {
-        await super.heartbeat(claim); renewals++;
+        await super.heartbeat(claim); renewals++; firstHeartbeat();
       }
     }
     const store = new ObservedStore(database, c.config);
     await publisher.publish(c.message);
     const outcome = await c.consumer({ execute: async (claim, signal) => {
-      await delay(350, undefined, { signal });
-      const task = await c.read(), receipt = await db.consumerReceipt.findFirstOrThrow({ where: { ownerId: c.ownerId } });
+        // Synchronize on an actual heartbeat instead of guessing its completion after 350ms.
+        // Both rows must come from one snapshot while later heartbeats continue updating them.
+        await Promise.race([renewed, delay(2000, undefined, { signal }).then(() => { throw new Error('Expected heartbeat'); })]);
+        const { task, receipt } = await db.$transaction(async tx => ({
+          task: await tx.analysisTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId: c.ownerId, id: c.taskId } } }),
+          receipt: await tx.consumerReceipt.findFirstOrThrow({ where: { ownerId: c.ownerId } }),
+        }), { isolationLevel: 'RepeatableRead' });
       assert.ok(task.heartbeatAt && task.heartbeatAt > claim.startedAt);
       assert.equal(task.leaseUntil?.getTime(), receipt.leaseUntil?.getTime());
       await db.analysisTask.update({ where: { ownerId_id: { ownerId: c.ownerId, id: c.taskId } }, data: { fenceToken: { increment: 1 } } });

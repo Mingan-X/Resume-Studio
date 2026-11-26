@@ -2,16 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { DatabaseService } from '../database/database.service.js';
 import { fileAssetSchema } from '../../contracts/resumes.js';
-import { evidenceBlockSchema } from '../../contracts/evidence.js';
+import { evidenceBlockSchema, extractedDocumentSchema } from '../../contracts/evidence.js';
+import { textHash, validateEvidence } from '../../modules/resumes/evidence.js';
 import { IdempotencyConflictError } from '../../modules/tasks/task-errors.js';
 import type { StorageReferencePort } from '../../modules/storage/storage.port.js';
 
 export const registerResumeSchema = z.object({
   ownerId: z.uuid(), idempotencyKey: z.uuid(), resumeId: z.uuid(), resumeVersionId: z.uuid(),
-  file: fileAssetSchema, blocks: z.array(evidenceBlockSchema),
+  file: fileAssetSchema, blocks: z.array(evidenceBlockSchema), document: extractedDocumentSchema.optional(),
 }).strict().refine(value => value.ownerId === value.file.ownerId)
   .refine(value => value.blocks.every((block, index) => block.ordinal === index)
-    && new Set(value.blocks.map(block => block.id)).size === value.blocks.length);
+    && new Set(value.blocks.map(block => block.id)).size === value.blocks.length)
+  .refine(value => value.blocks.every(block => textHash(block.text) === block.textHash))
+  .refine(value => !value.document || value.document.sourceVersionId === value.resumeVersionId
+    && value.document.fileHash === value.file.sha256 && JSON.stringify(value.document.blocks) === JSON.stringify(value.blocks));
 
 @Injectable()
 export class ResumeRepository implements StorageReferencePort {
@@ -36,6 +40,8 @@ export class ResumeRepository implements StorageReferencePort {
       await tx.evidenceBlock.createMany({ data: value.blocks.map(block => ({
         ...block, ownerId: value.ownerId, sourceVersionId: value.resumeVersionId,
       })) });
+      if (value.document) await tx.extractedDocument.create({ data: { ownerId: value.ownerId,
+        sourceVersionId: value.resumeVersionId, fileHash: value.file.sha256, document: value.document } });
       await tx.resumeUpload.create({ data: { ownerId: value.ownerId, idempotencyKey: value.idempotencyKey,
         fileHash: value.file.sha256, resumeVersionId: value.resumeVersionId } });
       return { resumeVersionId: value.resumeVersionId, replay: false };
@@ -57,4 +63,22 @@ export class ResumeRepository implements StorageReferencePort {
     // Global reference check is internal GC only, never an owner-facing read API.
     return await this.database.client.fileAsset.count({ where: { storageKey: key } }) !== 0;
   }
+
+  async document(ownerId: string, versionId: string) {
+    const row = await this.database.client.extractedDocument.findFirst({ where: {
+      ownerId: z.uuid().parse(ownerId), sourceVersionId: z.uuid().parse(versionId),
+    } });
+    if (!row) return null;
+    const document = extractedDocumentSchema.parse(row.document);
+    if (document.sourceVersionId !== row.sourceVersionId || document.fileHash !== row.fileHash
+      || document.blocks.some(block => textHash(block.text) !== block.textHash)) throw new Error('INVALID_DOCUMENT');
+    return document;
+  }
+
+  async validateReference(ownerId: string, versionId: string, ref: unknown) {
+    const document = await this.document(ownerId, versionId);
+    if (!document) throw new Error('INVALID_EVIDENCE');
+    return validateEvidence(ownerId, ownerId, document, ref);
+  }
+
 }
