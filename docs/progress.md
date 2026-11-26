@@ -8,6 +8,18 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T3完成：草稿编辑与发布版复制
+
+完整 `pnpm run test:integration`112项110通过/2失败，502.711秒（data/s22-t3-integration.log）；唯一Docker Qdrant createCollection原5000ms超时及父项按L2记录，其他通过。回归后ownedQdrant校验归属并只读查询集合总数0；各测试本轮合成记录/队列精确清理。基础70/70、类型/Lint与草稿专项5/5结果见前条；相对文档链接与git diff --check通过。T3按任务提交，阶段继续进行中，真实模型及人工/目标环境仍延后。
+
+T4发布事务与当前索引目标关系在工作区准备；尚未应用新增迁移、未纳入T3提交，T3全量保持T3编译产物/数据库环境。未修改前端、master或原生Qdrant。
+
+## 2026-11-27 S2.2-T3草稿编辑服务与专项通过
+
+T2已提交2089631。T3新增草稿创建/正文/元数据/要求增删改/权重服务，owner来自可信身份；编辑已发布版本创建新草稿，以岗位锁分配连续版本号，复制stableId与正文后重绑并逐字校验来源。正文改动不猜测引用新位置，失效则整笔回滚；所有编辑重置硬门槛及权重确认。发布、HTTP、真实模型仍未接入。
+
+已执行 `pnpm run typecheck`、`pnpm run lint`通过；`pnpm test`70通过/0失败，17.641秒。`node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/job-drafts.test.js`：5通过/0失败，3.548秒；覆盖owner防伪、要求编辑/伪造/越界/跨版本、正文引用失效回滚、并发从同一发布版生成新草稿及历史不变；本轮owner/岗位/版本/要求精确清理。完整回归待追加，阶段继续进行中。无新增依赖或迁移，无需冻结安装/迁移检查；真实模型、embedding与人工/目标服务器事项继续延后。
+
 ## 2026-11-27 S2.2-T2清理补充核对
 
 完整回归结束后再次通过ownedQdrant核对本项目容器/服务/端口/卷归属，并只读getCollections：集合总数0。未删除其他集合或操作原生Qdrant。

@@ -8,6 +8,8 @@ import { rubricVersionSchema } from '../../contracts/rubric.js';
 import { validateJobRequirements } from '../../modules/jobs/evidence.js';
 import { textHash } from '../../modules/resumes/evidence.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
+import { randomUUID } from 'node:crypto';
+import { editDraft } from '../../modules/jobs/drafts.js';
 
 function validateVersion(ownerId: string, raw: unknown) {
   const value = jobVersionSchema.parse(raw);
@@ -61,6 +63,33 @@ export class JobRepository {
   }
   async findVersion(owner: string, id: string) {
     return this.database.client.$transaction(tx => readJobVersion(tx, owner, id), { isolationLevel: 'RepeatableRead' });
+  }
+  async editDraft(owner: string, id: string, edit: unknown) {
+    const ownerId = z.uuid().parse(owner), versionId = z.uuid().parse(id);
+    return this.database.client.$transaction(async tx => {
+      const identity = await tx.jobVersion.findFirst({ where: { ownerId, id: versionId }, select: { jobId: true } });
+      if (!identity) throw new Error('JOB_NOT_FOUND');
+      // Lock the job before its versions so concurrent edits of published versions allocate unique numbers.
+      await tx.$queryRaw`SELECT id FROM job WHERE owner_id=${ownerId}::uuid AND id=${identity.jobId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM job_version WHERE owner_id=${ownerId}::uuid AND id=${versionId}::uuid FOR UPDATE`;
+      const original = await readJobVersion(tx, ownerId, versionId);
+      if (!original) throw new Error('JOB_NOT_FOUND');
+      const latest = await tx.jobVersion.findFirstOrThrow({ where: { ownerId, jobId: identity.jobId }, orderBy: { version: 'desc' }, select: { version: true } });
+      const updated = editDraft(original, edit, original.status === 'PUBLISHED'
+        ? { id: randomUUID(), version: latest.version + 1, createdAt: new Date().toISOString() }
+        : { id: original.id, version: original.version, createdAt: original.createdAt });
+      if (original.status === 'PUBLISHED') return insertDraftVersion(tx, ownerId, updated);
+      await tx.jobVersion.update({ where: { ownerId, id: versionId }, data: {
+        title: updated.title, city: updated.city, level: updated.level, skills: updated.skills,
+        document: updated.document, dimensionWeights: updated.dimensionWeights,
+        hardRequirementsConfirmed: false, weightsConfirmed: false,
+      } });
+      await tx.jobRequirement.deleteMany({ where: { ownerId, jobVersionId: versionId } });
+      await tx.jobRequirement.createMany({ data: updated.requirements.map((requirement, ordinal) => ({
+        ownerId, jobVersionId: versionId, stableId: requirement.stableId, ordinal, requirement,
+      })) });
+      return updated;
+    });
   }
   async insertRubric(owner: string, raw: unknown) {
     const ownerId = z.uuid().parse(owner), content = rubricVersionSchema.parse(raw), contentHash = requestHash(content);
