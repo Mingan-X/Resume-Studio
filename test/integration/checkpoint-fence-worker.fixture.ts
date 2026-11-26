@@ -24,9 +24,20 @@ export const fenceWorkerMessageSchema = z.discriminatedUnion('event', [
   z.object({ event: z.literal('late-checkpoint'), threadId: z.uuid() }),
   z.object({ event: z.literal('stale-writes'), artifactRejected: z.boolean(), terminalRejected: z.boolean(), indexRejected: z.boolean() }),
   z.object({ event: z.literal('finished'), result: z.enum(['ack','deferred','interrupted']) }),
-  z.object({ event: z.literal('failed') }),
+  z.object({ event: z.literal('failed'), phase: z.enum(['startup', 'delivery']),
+    category: z.enum(['database', 'lease', 'schema', 'other']), code: z.string().regex(/^(P\d{4}|[0-9A-Z]{5}|UNKNOWN)$/) }),
 ]);
 const send = (message: z.infer<typeof fenceWorkerMessageSchema>) => process.send?.(fenceWorkerMessageSchema.parse(message));
+function safeFailure(error: unknown, phase: 'startup' | 'delivery') {
+  const metadata = z.object({ code: z.string().optional(), name: z.string().optional() }).passthrough().safeParse(error);
+  const name = metadata.success ? metadata.data.name ?? '' : '';
+  const rawCode = metadata.success ? metadata.data.code : undefined;
+  const code = rawCode && /^(P\d{4}|[0-9A-Z]{5})$/.test(rawCode) ? rawCode : 'UNKNOWN';
+  const category = name.includes('Prisma') || name === 'DatabaseError' ? 'database'
+    : error instanceof Error && error.message === 'TASK_EXECUTION_LEASE_LOST' ? 'lease'
+    : name === 'ZodError' ? 'schema' : 'other';
+  send({ event: 'failed', phase, category, code });
+}
 
 async function run() {
   const ownerId = z.uuid().parse(process.env.S17_OWNER_ID), message = taskDispatchSchema.parse(JSON.parse(process.env.S17_MESSAGE ?? '') as unknown);
@@ -75,7 +86,8 @@ async function run() {
   } }, consumerConfigSchema.parse({}), new PostgresExecutionLock(database.pool));
   try {
     let result: 'ack' | 'deferred' | 'interrupted';
-    try { result = await handler.handle(message, abort.signal); } catch { result = 'interrupted'; }
+    try { result = await handler.handle(message, abort.signal); }
+    catch (error) { if (!current) safeFailure(error, 'delivery'); result = 'interrupted'; }
     // Independently try both stale business writes; do not mistake AbortSignal compliance for fencing.
     if (current && ['late-checkpoint','late-index'].includes(mode)) {
       const claim = current; let artifactRejected = false, terminalRejected = false, indexRejected = false;
@@ -94,5 +106,5 @@ async function run() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try { await run(); } catch { send({ event: 'failed' }); process.exitCode = 1; if (process.connected) process.disconnect(); }
+  try { await run(); } catch (error) { safeFailure(error, 'startup'); process.exitCode = 1; if (process.connected) process.disconnect(); }
 }

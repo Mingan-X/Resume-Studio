@@ -61,7 +61,10 @@ await test('S1.4-T7 real paused workers, official checkpoints and fenced artifac
         assert.equal(invalid, false);
         const found = events.find((item): item is Extract<WorkerMessage, { event: E }> => item.event === name);
         if (found) return found;
-        if (events.some(item => item.event === 'failed') || child.exitCode !== null || child.signalCode !== null) throw new Error(`Worker ended before ${name}`);
+        if (events.some(item => item.event === 'failed') || child.exitCode !== null || child.signalCode !== null) {
+          const diagnostics = events.filter(item => item.event === 'failed' || item.event === 'finished');
+          throw new Error(`Worker ended before ${name}: ${JSON.stringify(diagnostics)}`);
+        }
         await delay(20);
       }
       throw new Error(`Worker event timed out: ${name}`);

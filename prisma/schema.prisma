@@ -192,6 +192,7 @@ model JobIndexTask {
   jobVersionId String @map("job_version_id") @db.Uuid
   realJobVersionId String? @map("real_job_version_id") @db.Uuid
   realJobVersion JobVersion? @relation(fields: [ownerId, realJobVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  indexTargets JobIndexTarget[]
   embeddingVersion String @map("embedding_version") @db.VarChar(64)
   indexVersion String @map("index_version") @db.VarChar(64)
   inputSnapshot Json @map("input_snapshot") @db.JsonB
@@ -256,6 +257,7 @@ model JobVersion {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   requirements JobRequirement[]
   indexTasks JobIndexTask[]
+  indexTarget JobIndexTarget?
   @@unique([jobId, version])
   @@unique([ownerId, id])
   @@map("job_version")
@@ -283,6 +285,18 @@ model RubricVersion {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   @@id([ownerId, version])
   @@map("rubric_version")
+}
+
+model JobIndexTarget {
+  ownerId String @map("owner_id") @db.Uuid
+  jobVersionId String @id @map("job_version_id") @db.Uuid
+  jobVersion JobVersion @relation(fields: [ownerId, jobVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  taskId String @map("task_id") @db.Uuid
+  task JobIndexTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  embeddingVersion String @map("embedding_version") @db.VarChar(64)
+  indexVersion String @map("index_version") @db.VarChar(64)
+  @@unique([ownerId, jobVersionId])
+  @@map("job_index_target")
 }
 
 // SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.
