@@ -23,7 +23,9 @@ try {
     process.stdout.write(JSON.stringify(parserResponseSchema.parse({ ok: true, value })));
   } else {
     await preflightDocx(bytes, request.limits);
-    throw new ParseFailure('UNSUPPORTED_TYPE');
+    const { parseDocx } = await import('./docx.js');
+    const value = await parseDocx(bytes, request.limits);
+    process.stdout.write(JSON.stringify(parserResponseSchema.parse({ ok: true, value })));
   }
 } catch (error) {
   process.stdout.write(JSON.stringify(parserResponseSchema.parse({ ok: false,

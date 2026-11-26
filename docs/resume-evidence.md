@@ -75,3 +75,9 @@ PDF.js6.5.438 legacy构建仅用于文本抽取，接收Uint8Array，不接收UR
 PDF位置字段定稿为一基page与bounds=null。TextItem的transform是基线变换，width/height不等于可精确引用的字形矩形，因此不据此伪造框。按量化行高/横向位置稳定排序，每个非空TextItem形成独立文本块；同行间距超过30 PDF单位、旋转/非LTR等产生READING_ORDER_UNCERTAIN。双栏/表格文本不承诺语义阅读顺序，引用以保存块逐字核对。块的持久UUID及引用完整性在T7落库，不依据显示排序重新生成引用。
 
 合成ToUnicode字体样本覆盖中文、多页、项目列表、双栏/单行表格单元顺序；双栏明确警告。30页允许、31页拒绝；扫描图像页返回SCANNED_PDF，空白全文EMPTY_TEXT，混合无文本页保留PARTIAL_TEXT_LAYER；密码文件ENCRYPTED_FILE、损坏CORRUPT_FILE、文本超量TEXT_LIMIT。未使用系统字体或真实简历，不做OCR；其他复杂字体/版式仍受支持边界约束，不能用本次样本推断任意PDF质量。
+
+## T6 DOCX位置与解析边界
+
+Mammoth1.13.0经过ZIP预检后才接收内存Buffer。使用文档化但标为不稳定的transformDocument hook，Zod校验文档节点并提取段落、软换行和表格行/单元格顺序；HTML不暴露给客户端，图片转换不读取图片数据，externalFileAccess=false。节点遍历深度限制64，全文受maxText限制。段落location为零基paragraph，表格附零基index/row/cell，不返回页码；空白段落跳过输出但保留原序号，不把图像当文本。
+
+首次实测发现Mammoth初始化使用ExternalPromise.__proto__，与额外的--disable-proto=throw冲突；移除该非任务要求开关，保留Node permission的文件/进程/addon/worker限制、网络禁止与资源约束，未修改上游依赖源码。解析器只解释文档数据，不执行文档脚本。复杂表格合并单元格只能按Mammoth抽取顺序定位，不承诺Word视觉布局；位置和文本以不可变块为准。

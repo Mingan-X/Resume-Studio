@@ -75,6 +75,7 @@ S2.1-T4已精确安装yauzl3.4.0及开发类型@types/yauzl3.4.0（MIT，无peer
 
 S2.1-T5安装pdfjs-dist6.5.438与锁定的可选canvas1.2.1及win32-x64构件，冻结安装通过；使用官方建议的legacy构建。子进程未授权addon，未使用渲染，中文文本提取在无canvas能力下专项通过；不按上游警告建议删除node_modules/锁文件。可选二进制带来安装体积但不是生产文件读写权限。Node24.22.3/严格TypeScript编译与Lint通过，质量及限额结果见progress。
 
+S2.1-T6安装mammoth1.13.0并冻结锁文件，共新增22项解析依赖（JSZip/XML等），无需额外类型包；使用transformDocument的公开hook而非导入内部模块，升级必须重跑段落/表格样本。首轮隔离失败定位到上游lib/promises.js的ExternalPromise.__proto__赋值，与额外Node禁用原型开关冲突；移除该非需求开关而不更换解析器，不放开文件/网络/子进程权限，不修改包源码。首次失败与后续检查见progress；不据包支持承诺任意OOXML版式。
 
 替代方案：Python/MinerU或云端解析会新增服务/隐私边界，D11已排除；仅用JSZip不能提供本任务要求的流式资源预检；不另选解析方向。T1只冻结候选和边界，T4–T6安装时精确声明并同步锁文件，验证冻结安装、运行样本和传递依赖；目前不宣称解析可用。
 
