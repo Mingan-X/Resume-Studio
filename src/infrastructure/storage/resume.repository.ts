@@ -21,9 +21,10 @@ export const registerResumeSchema = z.object({
 export class ResumeRepository implements StorageReferencePort {
   constructor(private readonly database: DatabaseService) {}
 
-  async register(input: unknown): Promise<{ resumeVersionId: string; replay: boolean }> {
+  async register(input: unknown, signal?: AbortSignal): Promise<{ resumeVersionId: string; replay: boolean }> {
     const value = registerResumeSchema.parse(input);
     return this.database.client.$transaction(async tx => {
+      signal?.throwIfAborted();
       // Serializes one owner/key even before the idempotency row exists.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([value.ownerId, value.idempotencyKey])}, 21))::text`;
       const prior = await tx.resumeUpload.findUnique({ where: { ownerId_idempotencyKey: {
@@ -44,6 +45,7 @@ export class ResumeRepository implements StorageReferencePort {
         sourceVersionId: value.resumeVersionId, fileHash: value.file.sha256, document: value.document } });
       await tx.resumeUpload.create({ data: { ownerId: value.ownerId, idempotencyKey: value.idempotencyKey,
         fileHash: value.file.sha256, resumeVersionId: value.resumeVersionId } });
+      signal?.throwIfAborted();
       return { resumeVersionId: value.resumeVersionId, replay: false };
     });
   }
@@ -81,4 +83,20 @@ export class ResumeRepository implements StorageReferencePort {
     return validateEvidence(ownerId, ownerId, document, ref);
   }
 
+  async replay(ownerId: string, key: string, fileHash: string) {
+    const prior = await this.database.client.resumeUpload.findUnique({ where: { ownerId_idempotencyKey: {
+      ownerId: z.uuid().parse(ownerId), idempotencyKey: z.uuid().parse(key),
+    } } });
+    if (!prior) return null;
+    if (prior.fileHash !== fileHash) throw new IdempotencyConflictError();
+    return this.findVersion(ownerId, prior.resumeVersionId);
+  }
+
+  async list(ownerId: string, limit: number, cursor?: { createdAt: string; id: string }) {
+    return this.database.client.resume.findMany({ where: { ownerId: z.uuid().parse(ownerId),
+      ...(cursor ? { OR: [{ createdAt: { lt: new Date(cursor.createdAt) } },
+        { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } }] } : {}),
+    }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
+    include: { versions: { orderBy: { version: 'desc' }, take: 1 } } });
+  }
 }

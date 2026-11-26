@@ -8,6 +8,10 @@ StoragePort与本地适配器已定义；上传装配仍待T8。STORAGE_ROOT须�
 
 文件提交先记录COMMITTING，再移动payload，最后记录COMMITTED。目录保留操作清单；进程终止/写失败时可据operationId检查结果，未知结果不得盲删。commit只提交文件，不代表数据库已提交；跨文件/数据库的补偿与恢复属于T8联调。即时discard只接受本次READY操作，拒绝删除已提交文件。Windows使用真实临时目录测试，Linux与突然断电后的目录元数据耐久性尚未验证。
 
+简历路由由RESUME_API_ENABLED=true启用，同时设置DATABASE_URL与STORAGE_ROOT，先执行db:generate/db:deploy并build。固定开发身份仅允许development/test及127.0.0.1/::1，未配置时路由不注册。每API进程一个解析器，解析并发1，总期限15秒；上传传输30秒。node权限只允许读取本仓库dist/node_modules，部署时从仓库根目录启动；PDF/DOCX解析不需要网络或原生canvas权限。保留root所有权标记，不通过删除本地配置/存储目录修复启动问题。
+
+`pnpm run storage:reconcile`用于上传进程崩溃后的结果对账：仅处理超过24小时、清单记录的uploaderPid已不存在、真实数据库无引用的精确文件；未知旧进程状态、PID复用、旧版无PID清单、活进程或DB查询失败均保留。操作锁有PID标记，只有确认原进程退出才释放遗留锁。该命令可补偿COMMITTING/COMMITTED但未入库的原文件，不做前缀/全目录删除；一般storage:reclaim仍只处理暂存。CLI核验项目DB实例/卷，Windows真实崩溃子进程测试与其他平台限制见progress。
+
 本配置用于本地开发与隔离集成测试，不是生产部署方案。API/Worker在主机运行；Compose项目 `resume-studio` 管理业务三服务及可选Langfuse六服务。基础配置可单独使用，观测配置作为同项目overlay加载。
 
 ## 环境与镜像

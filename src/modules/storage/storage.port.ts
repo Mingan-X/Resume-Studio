@@ -14,6 +14,8 @@ export interface StoragePort {
   stage(input: Readable, signal?: AbortSignal): Promise<StagedFile>;
   commit(file: StagedFile): Promise<void>;
   read(storageKey: string): Promise<Buffer>;
+  readStaged(file: StagedFile): Promise<Buffer>;
+  compensate(file: StagedFile, references: StorageReferencePort): Promise<void>;
   discard(file: StagedFile): Promise<void>;
   inspect(operationId: string): Promise<unknown>;
   reclaim(before: Date, references: StorageReferencePort): Promise<{ removed: string[]; retained: string[] }>;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isAbsolute } from 'node:path';
 import { taskApiConfigSchema } from './task-api-config.js';
 
 const environment = z.enum(['development', 'test', 'production']);
@@ -10,8 +11,10 @@ export const apiConfigSchema = z.object({
   HTTP_HOST: z.enum(['127.0.0.1', '0.0.0.0', '::1']).default('127.0.0.1'), // 默认主机地址
   HTTP_PORT: z.string().regex(/^\d+$/).transform(Number).pipe(z.int().min(1).max(65535)), // 默认端口号
   tasks: taskApiConfigSchema.optional(),
+  resumes: z.object({ databaseUrl: taskApiConfigSchema.unwrap().shape.databaseUrl,
+    storageRoot: z.string().min(1).refine(isAbsolute) }).strict().optional(),
 }).superRefine((config, ctx) => {
-  if (!config.tasks) return;
+  if (!config.tasks && !config.resumes) return;
   if (config.APP_ENV === 'production') ctx.addIssue({ code: 'custom', path: ['APP_ENV'], message: 'Development task identity only' });
   if (!['127.0.0.1','::1'].includes(config.HTTP_HOST)) ctx.addIssue({ code: 'custom', path: ['HTTP_HOST'], message: 'Local task API only' });
 }).readonly();
@@ -39,6 +42,9 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
   if (role === 'api' && env.TASK_API_ENABLED !== undefined && !['true','false'].includes(env.TASK_API_ENABLED)) {
     throw new ConfigValidationError(['TASK_API_ENABLED']);
   }
+  if (role === 'api' && env.RESUME_API_ENABLED !== undefined && !['true','false'].includes(env.RESUME_API_ENABLED)) {
+    throw new ConfigValidationError(['RESUME_API_ENABLED']);
+  }
   // Pick known fields; never carry unrelated secrets into the application config.
   const schema = role === 'api' ? apiConfigSchema : workerConfigSchema;
   const parsed = schema.safeParse({
@@ -47,10 +53,12 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
     HTTP_HOST: env.HTTP_HOST,
     HTTP_PORT: env.HTTP_PORT,
     ...(role === 'api' && env.TASK_API_ENABLED === 'true' ? { tasks: { databaseUrl: env.DATABASE_URL } } : {}),
+    ...(role === 'api' && env.RESUME_API_ENABLED === 'true' ? { resumes: { databaseUrl: env.DATABASE_URL, storageRoot: env.STORAGE_ROOT } } : {}),
   });
   if (!parsed.success) {
     throw new ConfigValidationError(
-      [...new Set(parsed.error.issues.map((issue) => issue.path[0] === 'tasks' ? 'DATABASE_URL' : String(issue.path[0])))].sort(),
+      [...new Set(parsed.error.issues.map((issue) => issue.path[0] === 'tasks' ? 'DATABASE_URL'
+        : issue.path[0] === 'resumes' ? issue.path[1] === 'storageRoot' ? 'STORAGE_ROOT' : 'DATABASE_URL' : String(issue.path[0])))].sort(),
     );
   }
   return parsed.data;

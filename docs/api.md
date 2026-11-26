@@ -1,6 +1,20 @@
 # HTTP API
 
-S2.1-T1已定义文件/证据/上传与查询响应Schema及[实验方案](resume-evidence.md)，这些新路由尚未实现，未注册到OpenAPI。实现状态以各节说明为准。
+S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence.md)，上传/查询路由通过RESUME_API_ENABLED显式启用。
+
+## 简历上传与查询（S2.1）
+
+本地开发启用RESUME_API_ENABLED=true，并提供项目DATABASE_URL与专用绝对STORAGE_ROOT；production或非loopback拒绝启用。owner只来自IdentityPort，客户端不得指定。
+
+| 方法与路径 | 请求/响应 |
+|---|---|
+| POST /api/v1/resumes | multipart唯一file字段、UUID Idempotency-Key、无查询参数；流式暂存、同步隔离解析后201返回ResumeVersionResponse |
+| GET /api/v1/resumes | limit默认20、上限100，cursor不透明；createdAt DESC/id DESC；items及nextCursor |
+| GET /api/v1/resumes/:resumeId/versions/:versionId | 无查询参数；版本、文件sha256/mime/size、ExtractedDocument块与警告、createdAt；越权或不存在404 |
+
+同owner/key绑定原始字节sha256，同文件重放201返回原版本，不同文件409 IDEMPOTENCY_CONFLICT。新key新建Resume/version 1。10 MiB文件上限、PDF30页、全文200000 UTF-16单位、解析15秒；DOCX不用页数。大小超限413 PAYLOAD_TOO_LARGE；类型/签名/扫描/加密/损坏/空文本及解析资源限制422 UNSUPPORTED_FILE，reason为Schema枚举，不透传原始异常或路径。请求传输期限30秒，解析器繁忙/基础设施失败返回安全服务端错误。
+
+详情不返回owner/storageKey/路径或语义结构化占位字段；EXTRACT属于S2.4。解析/提交前断连会中止并补偿；数据库已提交但响应丢失属于幂等重试窗口，同key可取回原版本，不能误删已引用文件。提交结果不明且无法查询数据库时保留精确manifest供对账，不宣称文件系统与数据库原子提交。
 
 本文只列出已实现的接口：健康检查，以及S1.4-T8的任务查询/取消。任务路由需要显式启用本地任务API，使用固定开发身份；任务创建、简历、岗位和报告HTTP仍为[架构设计](architecture.md#9-api调用链进度与错误)。所有接口共同遵守[接口契约规范](api-contract.md)。
 

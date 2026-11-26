@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 import { Readable } from 'node:stream';
 import { test } from 'node:test';
+import { fork } from 'node:child_process';
+import { once } from 'node:events';
+import { stagedFileSchema } from '../src/modules/storage/storage.port.js';
+import { z } from 'zod';
 import { LocalStorage } from '../src/infrastructure/storage/local-storage.js';
 
 async function fixture() {
@@ -109,4 +113,24 @@ await test('reclaimer holds the operation lock across the database check and ret
     await f.storage.commit(file);
     assert.equal((await f.storage.read(file.storageKey)).toString(), 'race');
   } finally { await f.close(); }
+});
+
+await test('upload reconciliation only removes expired unreferenced files after the exact uploader process has exited', { timeout: 20_000 }, async () => {
+  const f = await fixture();
+  const child = fork(new URL('./fixtures/storage-crash.fixture.js', import.meta.url), [], {
+    env: { ...process.env, STORAGE_TEST_ROOT: f.root }, silent: true,
+  });
+  const exited = once(child, 'exit'); child.stdout?.resume(); child.stderr?.resume();
+  try {
+    const file = stagedFileSchema.parse((await once(child, 'message'))[0]);
+    const path = join(f.root, 'staging', file.operationId, 'manifest.json');
+    const value = z.record(z.string(), z.json()).parse(JSON.parse(await readFile(path, 'utf8')) as unknown);
+    await writeFile(path, JSON.stringify({ ...value, createdAt: '2020-01-01T00:00:00.000Z' }));
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    assert.equal((await f.storage.reconcileUploads(cutoff, { isReferenced: () => Promise.resolve(false) })).removed.length, 0);
+    child.kill('SIGKILL'); await exited;
+    assert.equal((await f.storage.reconcileUploads(cutoff, { isReferenced: () => Promise.resolve(true) })).removed.length, 0);
+    assert.deepEqual((await f.storage.reconcileUploads(cutoff, { isReferenced: () => Promise.resolve(false) })).removed, [file.operationId]);
+    assert.deepEqual(await readdir(join(f.root, 'files')), []);
+  } finally { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; } await f.close(); }
 });

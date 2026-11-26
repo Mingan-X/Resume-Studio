@@ -13,6 +13,7 @@ const manifestSchema = z.object({
   schemaVersion: z.literal(1), operationId: uuid, storageKey: uuid,
   createdAt: z.iso.datetime(), state: z.enum(['WRITING', 'READY', 'COMMITTING', 'COMMITTED']),
   size: z.int().nonnegative(), sha256: z.string(),
+  uploaderPid: z.int().positive().optional(),
 }).strict();
 type Manifest = z.infer<typeof manifestSchema>;
 
@@ -104,9 +105,9 @@ export class LocalStorage implements StoragePort {
     const operationId = randomUUID(), storageKey = randomUUID();
     const path = join(this.root, 'staging', operationId);
     await mkdir(path, { mode: 0o700 });
-    await mkdir(join(path, 'lock'), { mode: 0o700 });
+    const release = await this.lock(operationId);
     const value: Manifest = { schemaVersion: 1, operationId, storageKey,
-      createdAt: new Date().toISOString(), state: 'WRITING', size: 0, sha256: '' };
+      createdAt: new Date().toISOString(), state: 'WRITING', size: 0, sha256: '', uploaderPid: process.pid };
     let handle: FileHandle | undefined;
     const abort = () => input.destroy(new Error('UPLOAD_ABORTED'));
     signal?.addEventListener('abort', abort, { once: true });
@@ -135,12 +136,12 @@ export class LocalStorage implements StoragePort {
     } catch (error) {
       await handle?.close();
       // An I/O error during cleanup leaves the exact operation manifest for inspection.
-      await rmdir(join(path, 'lock')).catch(() => undefined);
+      await release().catch(() => undefined);
       await this.removeStaging(operationId).catch(() => undefined);
       throw error;
     } finally {
       signal?.removeEventListener('abort', abort);
-      await rmdir(join(path, 'lock')).catch(error => { if (!missing(error)) throw error; });
+      await release().catch(error => { if (!missing(error)) throw error; });
     }
   }
 
@@ -194,10 +195,90 @@ export class LocalStorage implements StoragePort {
 
   async inspect(operationId: string): Promise<Manifest> { return this.manifest(operationId); }
 
+  async readStaged(input: StagedFile): Promise<Buffer> {
+    const file = stagedFileSchema.parse(input), value = await this.manifest(file.operationId);
+    this.matches(value, file);
+    if (value.state !== 'READY') throw new StorageError('INVALID_STATE');
+    const path = await this.checked(join(await this.operation(file.operationId), 'payload'), false);
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      if ((await handle.stat()).size !== file.size) throw new StorageError('INVALID_STATE');
+      const bytes = await handle.readFile();
+      if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new StorageError('INVALID_STATE');
+      return bytes;
+    } finally { await handle.close(); }
+  }
+
+  // Explicit upload compensation only; caller must have settled its DB transaction.
+  async compensate(input: StagedFile, references: StorageReferencePort): Promise<void> {
+    const file = stagedFileSchema.parse(input), release = await this.lock(file.operationId);
+    try {
+      const value = await this.manifest(file.operationId); this.matches(value, file);
+      if (await references.isReferenced(file.storageKey)) return;
+      if (value.state === 'COMMITTED' || value.state === 'COMMITTING') {
+        const directory = join(this.root, 'files', file.storageKey);
+        try {
+          await this.checked(directory, true);
+          const names = await readdir(directory);
+          if (names.some(name => name !== 'payload')) throw new StorageError('INVALID_PATH');
+          if (names.length) await unlink(await this.checked(join(directory, 'payload'), false));
+          await rmdir(directory);
+        } catch (error) { if (!missing(error)) throw error; }
+      }
+      await this.removeStaging(file.operationId, true);
+    } finally { await release(); }
+    // A referenced file retains its manifest; return above skips this removal.
+    await rmdir(await this.operation(file.operationId));
+  }
+
   private async lock(id: string): Promise<() => Promise<void>> {
     const path = join(await this.operation(id), 'lock');
     await mkdir(path, { mode: 0o700 });
-    return async () => { await rmdir(await this.checked(path, true)); };
+    const marker = join(path, 'owner.json'), handle = await open(marker, 'wx', 0o600);
+    try { await handle.writeFile(JSON.stringify({ pid: process.pid })); await handle.sync(); } finally { await handle.close(); }
+    return async () => {
+      await unlink(await this.checked(marker, false));
+      await rmdir(await this.checked(path, true));
+    };
+  }
+
+  private async recoverDeadLock(id: string): Promise<void> {
+    const path = join(await this.operation(id), 'lock');
+    try {
+      await this.checked(path, true);
+      const marker = await this.checked(join(path, 'owner.json'), false);
+      const owner = z.object({ pid: z.int().positive() }).strict().parse(JSON.parse(await readFile(marker, 'utf8')) as unknown);
+      try { process.kill(owner.pid, 0); return; }
+      catch (error) { if (!z.object({ code: z.literal('ESRCH') }).safeParse(error).success) return; }
+      // A reused PID is conservatively retained. Only absence proves the old process ended.
+      await unlink(marker); await rmdir(path);
+    } catch (error) { if (!missing(error)) throw error; }
+  }
+
+  async reconcileUploads(before: Date, references: StorageReferencePort): Promise<{ removed: string[]; retained: string[] }> {
+    if (!Number.isFinite(before.getTime()) || before.getTime() > Date.now() - 60_000) throw new StorageError('INVALID_STATE');
+    const root = await this.checked(join(this.root, 'staging'), true), removed: string[] = [], retained: string[] = [];
+    for (const id of await readdir(root)) {
+      const value = await this.manifest(id);
+      if (new Date(value.createdAt) >= before) { retained.push(id); continue; }
+      if (!value.uploaderPid) { retained.push(id); continue; }
+      try { process.kill(value.uploaderPid, 0); retained.push(id); continue; }
+      catch (error) { if (!z.object({ code: z.literal('ESRCH') }).safeParse(error).success) { retained.push(id); continue; } }
+      await this.recoverDeadLock(id);
+      if (await references.isReferenced(value.storageKey)) { retained.push(id); continue; }
+      try {
+        if (value.state === 'WRITING') {
+          const release = await this.lock(id);
+          try { if (await references.isReferenced(value.storageKey)) { retained.push(id); continue; } await this.removeStaging(id, true); }
+          finally { await release(); }
+          await rmdir(await this.operation(id));
+        } else await this.compensate({ operationId: value.operationId, storageKey: value.storageKey, size: value.size, sha256: value.sha256 }, references);
+        removed.push(id);
+      } catch (error) {
+        if (z.object({ code: z.literal('EEXIST') }).safeParse(error).success) retained.push(id); else throw error;
+      }
+    }
+    return { removed, retained };
   }
 
   private async removeStaging(id: string, locked = false): Promise<void> {

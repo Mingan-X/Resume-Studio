@@ -8,6 +8,16 @@ await test('API configuration converts the port and excludes unrelated secrets',
   assert.equal(Object.isFrozen(result), true);
 });
 
+await test('resume API requires explicit local identity, project database and absolute storage root', () => {
+  const env = { APP_ENV: 'test', HTTP_PORT: '3000', RESUME_API_ENABLED: 'true', STORAGE_ROOT: process.cwd(),
+    DATABASE_URL: 'postgresql://resume_studio_test:synthetic@127.0.0.1:55432/resume_studio_s12_test' };
+  assert.ok(loadConfig('api', env).resumes);
+  for (const change of [{ APP_ENV: 'production' }, { HTTP_HOST: '0.0.0.0' }, { STORAGE_ROOT: '../escape' },
+    { RESUME_API_ENABLED: 'yes' }, { DATABASE_URL: 'postgresql://foreign:synthetic@127.0.0.1:55432/foreign' }]) {
+    assert.throws(() => loadConfig('api', { ...env, ...change }), ConfigValidationError);
+  }
+});
+
 await test('required and invalid configuration reports field names without values', () => {
   for (const env of [
     {}, { APP_ENV: 'test' }, { APP_ENV: 'private-marker', HTTP_PORT: 'private-marker' },

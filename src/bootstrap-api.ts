@@ -11,6 +11,7 @@ import { registerShutdown } from './lifecycle.js';
 
 export async function createApi(config: ApiConfig): Promise<INestApplication> {
   const extra = config.tasks ? [(await import('./modules/tasks/task-api.module.js')).TaskApiModule.register(config.tasks)] : [];
+  if (config.resumes) extra.push((await import('./modules/resumes/resume-api.module.js')).ResumeApiModule.register(config.resumes));
   const app = await NestFactory.create(ApiModule.register(config, extra), {
     logger: false, abortOnError: false,
   });

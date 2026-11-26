@@ -8,6 +8,7 @@ extendZodWithOpenApi(z);
 // ESM static imports would construct schemas before the generation-only extension is installed.
 const { healthQuerySchema, healthResponseSchema, errorResponseSchema } = await import('../dist/src/contracts/http.js');
 const { taskPathSchema, taskQuerySchema, taskResponseSchema, cancelTaskRequestSchema, cancelTaskResponseSchema } = await import('../dist/src/contracts/task-api.js');
+const { resumeListQuerySchema, resumeListResponseSchema, resumeVersionPathSchema, resumeVersionResponseSchema } = await import('../dist/src/contracts/resumes.js');
 const registry = new OpenAPIRegistry();
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
@@ -27,9 +28,18 @@ registry.registerPath({ method: 'post', path: '/api/v1/tasks/{taskId}/cancel', o
   summary: '持久化取消请求', description: '请求必须为application/json空对象。202只表示请求已保存，最终状态通过GET查询。非终态重复请求返回202；终态返回409。由消费者或对账器在安全边界提交CANCELLED。',
   request: { params: taskPathSchema, query: taskQuerySchema, body: { required: true, content: { 'application/json': { schema: cancel } } } },
   responses: { 202: response(accepted,'取消请求已保存'), ...errors, 409: response(error,'任务已结束，INVALID_STATE') } });
+registry.registerPath({ method: 'post', path: '/api/v1/resumes', operationId: 'uploadResume', summary: '同步上传并解析简历',
+  request: { headers: z.object({ 'idempotency-key': z.uuid() }), query: taskQuerySchema,
+    body: { required: true, content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }) }).strict() } } } },
+  responses: { 201: response(resumeVersionResponseSchema, '原文件与解析产物已提交；幂等重放返回原版本'), ...errors,
+    409: response(error, '同幂等键不同文件'), 413: response(error, '文件超过10 MiB'), 422: response(error, '文件不支持或解析失败；reason给出原因') } });
+registry.registerPath({ method: 'get', path: '/api/v1/resumes', operationId: 'listResumes', summary: '当前owner的简历列表',
+  request: { query: resumeListQuerySchema }, responses: { 200: response(resumeListResponseSchema, 'createdAt/id降序游标分页'), ...errors } });
+registry.registerPath({ method: 'get', path: '/api/v1/resumes/{resumeId}/versions/{versionId}', operationId: 'getResumeVersion', summary: '读取简历版本与已存文本证据',
+  request: { params: resumeVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(resumeVersionResponseSchema, '不可变文本与警告，不返回结构化占位'), ...errors } });
 const document = new OpenApiGeneratorV31(registry.definitions, { sortComponents: 'alphabetically' }).generateDocument({
   openapi: '3.1.0', info: { title: 'Resume Studio Backend', version: '0.1.0',
-    description: 'S1.4已实现HTTP契约。任务路由仅在TASK_API_ENABLED=true时启用；固定开发身份不提供生产认证。' },
+    description: '任务与简历路由分别通过TASK_API_ENABLED/RESUME_API_ENABLED启用；固定开发身份仅用于本地开发，不提供生产认证。' },
   servers: [{ url: '/', description: '与前端同源；本地通过代理连接API' }],
 });
 const generated = JSON.stringify(document, null, 2) + '\n';
