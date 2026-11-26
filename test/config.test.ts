@@ -28,3 +28,17 @@ await test('Worker needs APP_ENV but has no dependency on HTTP settings', () => 
   });
   assert.throws(() => loadConfig('worker', {}), ConfigValidationError);
 });
+
+await test('task API is explicit, uses the project database and refuses production or public development identity', () => {
+  const valid = { APP_ENV: 'test', HTTP_PORT: '3000', TASK_API_ENABLED: 'true',
+    DATABASE_URL: 'postgresql://resume_studio_test:synthetic-only@127.0.0.1:55432/resume_studio_s12_test' };
+  assert.equal(loadConfig('api', valid).tasks?.databaseUrl, valid.DATABASE_URL);
+  assert.equal(loadConfig('api', { ...valid, TASK_API_ENABLED: 'false' }).tasks, undefined);
+  for (const extra of [{ TASK_API_ENABLED: '1' }, { APP_ENV: 'production' }, { HTTP_HOST: '0.0.0.0' },
+    { DATABASE_URL: '' }, { DATABASE_URL: valid.DATABASE_URL.replace('127.0.0.1', 'foreign.invalid') },
+    { DATABASE_URL: valid.DATABASE_URL.replace('55432','5432') }, { DATABASE_URL: valid.DATABASE_URL.replace('resume_studio_test:','postgres:') }]) {
+    assert.throws(() => loadConfig('api', { ...valid, ...extra }), (error: unknown) => {
+      assert.ok(error instanceof ConfigValidationError); assert.ok(!error.message.includes('synthetic-only')); return true;
+    });
+  }
+});

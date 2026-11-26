@@ -6,3 +6,11 @@ export class IdempotencyConflictError extends Error {
     this.name = 'IdempotencyConflictError';
   }
 }
+
+export class TaskNotFoundError extends Error {
+  constructor() { super('Task not available'); }
+}
+
+export class TaskInvalidStateError extends Error {
+  constructor() { super('Task already ended'); }
+}

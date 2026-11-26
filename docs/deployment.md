@@ -109,7 +109,7 @@ pnpm run tasks:consume job-index
 
 领取任务时同事务创建TaskAttempt和RUNNING收据、递增fenceToken；默认租约60秒、心跳10秒，租约不超过冻结输入期限。每次尝试还受10分钟执行上限限制；次数与总期限跨尝试保留，不因进程重启重置。参数与Schema见[consumer配置](../src/infrastructure/consumer/config.ts)。本阶段处理器只接受kind=synthetic的冻结输入，产出一条SYNTHETIC_COMPLETED事件，与任务SUCCEEDED、尝试结束和收据DONE同事务提交，之后才ACK；不会生成真实报告或岗位索引。
 
-有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交。普通模式只执行合成完成处理器；T7另提供下述显式Checkpoint图模式，停止证据与线程切换规则对领取路径统一生效。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；T5已为预算耗尽和非法消息增加下述持久移交流程。
+有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交。普通模式只执行合成完成处理器；T7另提供下述显式Checkpoint图模式，停止证据与线程切换规则对领取路径统一生效。T8已增加取消API及安全边界终结；取消标志阻止继续执行业务。T5已为预算耗尽和非法消息增加下述持久移交流程。
 
 迁移 `202611260001_s14_task_execution_guard`增加数据库trigger，禁止任务fenceToken/generation回退及已终态任务变回其他状态；无需重建表或改旧迁移。回退应用时保留记录和约束，不重置任务/收据/队列。该trigger不替代应用fence条件，也不限制官方Checkpoint内部SQL。
 
@@ -138,7 +138,7 @@ pnpm run tasks:reconcile watch
 
 命令启动时核验PostgreSQL和RabbitMQ项目/服务/端口/卷，使用固定开发owner。once运行一轮；watch每轮结束后等待10秒，不重叠执行。默认每种任务10条候选，长期未完成窗口120秒，每轮60秒期限；通过[reconciliation配置](../src/infrastructure/reconciliation/config.ts)验证范围。watch连续3轮数据库/任务修复错误退出；逐轮结构化汇总只包含结果分类、Outbox数量/最老时间，不输出原始数据或异常。once遇到持锁阻塞、失败投递、修复错误或停止会返回非零；这不授权自动重置失败任务/Outbox预算。
 
-对账提交恢复事务后才调用既有Outbox发布器，因此RabbitMQ不可用时已写入的恢复计划仍保留；publisher有界失败不回滚任务。还需运行原 `tasks:consume` 执行合成任务；对账器不在内存执行任务或生成报告。终态、有效租约、取消请求和未来retryAt跳过；持有同任务执行锁时返回lock-held，不抢占。
+对账提交恢复事务后才调用既有Outbox发布器，因此RabbitMQ不可用时已写入的恢复计划仍保留；publisher有界失败不回滚任务。还需运行原 `tasks:consume` 执行合成任务；对账器不在内存执行任务或生成报告。终态跳过，无取消请求时有效租约/未来retryAt跳过；T8的取消请求单独按安全边界终结。持有同任务执行锁时返回lock-held，不抢占。
 
 消费者现在从原3连接池保留一条session advisory lock连接，正常事务继续使用池中其他连接。默认每个消费命令一个执行；不得自行增加同一上下文并发使锁连接占满池。对账使用transaction advisory lock，无长期专属连接。新旧消费者不能与对账器混跑：旧T5进程没有锁协议，可能使对账器误以为执行锁空闲；部署前停止旧消费会话，再统一更新T6消费者和对账器。
 
@@ -160,6 +160,26 @@ pnpm run tasks:consume:graph
 业务池仍最多3连接，其中1条在执行期持有session锁；图执行另使用最多3连接的Checkpoint池，同一进程预算最多6连接，测试父子进程分别计入总额。图处理器等待已开始的产物/saver写入及池关闭，消费者才记录executionStoppedAt并释放锁。中止后5秒内仍未收束，则销毁锁连接并保留“停止未知”，下次恢复使用新thread；这不等于强制终止旧进程。`confirmWorkerExit`仅供可信本地监督方绑定领取身份并确认自己的子进程实际退出，当前没有常驻监督服务。
 
 升级时统一更新消费者，不能混跑缺少停止/线程协议的旧代码。回退前停止图消费者与watch并确认没有活动执行；保留新增表、产物、attempt与Checkpoint，不自动down迁移、删线程或清卷。旧版本不具备新隔离保证，需要重新核对其能否恢复现存任务；不要用不兼容图版本直接续跑。真实报告、LLM与JobVersion/Qdrant索引不在此合成实现范围。
+
+### S1.4-T8 任务查询与取消API
+
+T8复用既有cancelRequested、任务/事件/attempt字段，无新数据库迁移、服务或队列。API默认仍只启用健康检查；要对接本地任务查询/取消，先按上文应用全部已有迁移，再在PowerShell运行：
+
+```powershell
+pnpm run build
+$env:TASK_API_ENABLED = 'true'
+node --env-file=infra/.env --env-file-if-exists=.env dist/src/main-api.js
+# 关闭API后，恢复该终端默认设置：
+$env:TASK_API_ENABLED = 'false'
+```
+
+根目录.env需要APP_ENV=development（或test）、HTTP_PORT与loopback HTTP_HOST；DATABASE_URL由infra/.env提供，必须是现有本机项目数据库/业务账号及55432端口。显式环境变量优先于env文件；不打印配置或把密码复制进命令。启用后拒绝APP_ENV=production、HTTP_HOST=0.0.0.0、非法开关或数据库配置，错误只报告字段名。未启用时不加载任务数据库模块，不改变原健康检查/空Worker启动路径。
+
+当前IdentityPort是固定开发主体，无法通过请求头或正文切换用户，不具备公网认证能力。API只有PostgreSQL池（最多3连接），不在HTTP请求中启动RabbitMQ消费者、LangGraph或观测；详情见[HTTP API](api.md)。关闭应用时释放池。
+
+POST取消仅保存请求并返回202。继续运行 `tasks:consume analysis`、`tasks:consume job-index`（图验证使用 `tasks:consume:graph`）或 `tasks:reconcile once|watch`，它们才能在安全边界提交CANCELLED。持锁执行清理结束前保持RUNNING；对账不能抢占。无锁取消不等待未来retryAt/未过期租约，也不重新发布恢复任务或dead消息；现有调度消息仍可能发布，消费者见终态后可靠ACK。全部消费者和对账器应统一升级到T8，否则旧代码会长期跳过取消请求。
+
+回退前停止API、消费者及watch并核对待取消任务；旧T7消费者/对账器没有完成取消的路径，回退不会自动撤销已保存的取消请求。保留任务、事件、收据与Checkpoint，不重置flag或清空队列。取消终态仅表示业务写入被隔离，不代替旧进程实际退出或资源删除授权。
 
 ## S1.3 诊断组件初始化
 
@@ -285,7 +305,7 @@ pnpm run start:worker
 | HTTP_PORT | 必需 | 不使用 | 十进制整数，1–65535 |
 | HTTP_HOST | 默认127.0.0.1 | 不使用 | 支持127.0.0.1、0.0.0.0、::1；本地使用loopback |
 
-启动脚本用Node env-file读取.env；入口先通过仅依赖Zod的配置模块校验，再动态加载各自应用装配。启动失败报告独立于Nest/AppLogger，缺配置或非法值时不会加载Nest；退出码为1，只输出安全错误码与字段名。`/health` 是 liveness；API与空Worker当前不自动连接诊断服务。Worker用可清理定时器保持存活，尚无业务消费者。
+启动脚本用Node env-file读取.env；入口先通过仅依赖Zod的配置模块校验，再动态加载各自应用装配。启动失败报告独立于Nest/AppLogger，缺配置或非法值时不会加载Nest；退出码为1，只输出安全错误码与字段名。`/health` 是 liveness；默认API与空Worker不自动连接诊断服务，显式任务API按T8配置装配数据库。Worker用可清理定时器保持存活，实际消费者仍由显式命令运行。
 
 Ctrl+C触发应用关闭；关闭超过5秒退出失败。脚本/容器停止不应被当成持久化数据删除。
 

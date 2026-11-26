@@ -8,6 +8,31 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T8 任务查询与安全取消（分支 feature/s1.4-task-foundation）
+
+维护者授权T8–T10一起开发，任务编号、范围、依赖与验收不改，按任务分开本地提交。T8从干净的b25bfd8继续，未丢弃既有T1–T7成果；实现与专项通过，联合全量的默认DockerQdrant仍失败，阶段不标记已完成。T9生成与T10汇总记录分别追加。
+
+- 新task-api运行时Zod契约、TaskController/TaskQueryService/TaskQueryRepository及独立TaskApiModule。GET按可信IdentityPort限定owner，在同一Repeatable Read事务读取任务和最新事件，返回真实stage、已保存completed/planned（未知total=null）、累计attempt、retryAt、安全任务错误、reportId和cancelRequested；两类任务状态区分，JOB_INDEX无PARTIAL，不返回输入、owner、fence或图线程。
+- POST取消要求application/json空对象，无查询参数；行锁事务只保存cancelRequested并返回202，非终态重复请求仍202。所有终态返回409 INVALID_STATE；越权与不存在都404。完成与请求取消竞争同一任务行锁；数据库错误安全500，不返回伪成功。
+- 消费领取/对账在执行锁内完成取消：增加fence、清除租约/重试时间、结束attempt记账及RUNNING收据、写单调seq取消事件，不创建新attempt/dead消息或清空Outbox。运行中的处理器先在心跳/提交边界中止，实际清理收束后才由当前领取身份取消；未收束仍沿用T7未知停止规则。无锁取消优先于未来retryAt/租约期限，持锁时对账延后；终态及迟到旧token不能覆盖。原T6“取消暂时跳过”断言改为新取消行为，持锁/owner/行锁等断言保留。
+- TASK_API_ENABLED默认为关闭，只在显式true时动态导入任务模块；启用仅允许development/test、loopback监听和既有本机项目业务数据库。配置错误仍在Nest加载前失败，根.env示例补开关；API只依赖PostgreSQL，消费者/图/观测不自动启动。生产身份/创建HTTP仍未交付。复用原数据库字段，无迁移或新Docker服务。
+- 同步接口文档与契约；前端目录只读核对发现尚无src实现，api-integration.md已有INVALID_STATE及未知code兼容规则。本次为新增接口，无破坏性规划调整；未修改前端、未对外发消息，契约交接通过本分支API文档完成。
+
+| 检查 | 实际结果 |
+|---|---|
+| 初期类型检查/构建 | 首批实现通过；补充故障测试后Prisma扩展客户端不满足TransactionDatabase回调类型，构建失败；改为现有测试的Nest provider注入方式后构建通过，未加类型断言或忽略检查 |
+| T8专项真实HTTP/PostgreSQL/子进程 | 14通过、0失败、0跳过，16.268秒（父10.264秒）。覆盖两类查询/重复取消/重试取消/完成竞争、owner和请求校验、只读DB、真实SQL错误回滚、实际Worker清理期间持锁后CANCELLED/DONE；精确清理及池关闭通过 |
+| 联合工作区pnpm test第1次 | 44通过、1失败、0跳过，12.525秒；新增任务配置用例失败，空URL在refine中触发new URL异常，未转换成ConfigValidationError。原API/Worker限制不变，OpenAPI检查通过 |
+| 配置修复后pnpm test第2次 | 45通过、0失败、0跳过，4.854秒；URL解析异常安全转为校验失败，未放松端点/账号限制 |
+| typecheck、Lint | 通过，零警告；本轮新旧API原8秒/10秒限制不变 |
+| db:status、db:validate | 通过；7条历史迁移均已应用，Schema有效，本任务无新迁移，未重复执行无变化的部署 |
+| 非法任务配置入口实际模块探测 | 缺失/非法DATABASE_URL时退出1、stdout为空、CONFIG_INVALID且不泄露测试值；module hook证明未加载Nest/bootstrap |
+| 默认Docker完整test:integration | 85通过、2失败、0跳过，474.248秒；T8父/子14项全部通过（父6.443秒），T1–T7/Checkpoint/Langfuse均通过；失败仅Qdrant创建超时及父测试 |
+| Docker失败/残留诊断 | 本轮s12_7bd08a65_d89d_4913_83d2_2951a4826fa1服务端PUT=6.982165秒（迟到200），精确DELETE=0.415540秒，集合残留0。保留原5秒限制，不把失败归入API冷启动L1 |
+| 原生对照及最终联合检查 | 结果统一见随后T10批次汇总，不用替代实例结果覆盖Docker失败 |
+
+未执行：真实业务报告/索引/模型、任务创建HTTP、SSE、生产认证、多主机/长期负载、取消后外部副作用撤回、资源删除、常驻进程监督及远端CI。CANCELLED表示业务写入被隔离，不证明任意未知旧进程已退出；没有消费者/对账器时202可能保持待处理。部署须统一更新消费者/对账器；回退保留flag/记录，旧T7代码不能自动完成新取消请求。没有修改服务、存储、超时或重置资源；未推送、未合并。
+
 ## 2026-11-26 S1.4-T7 Checkpoint与业务fence联合隔离（分支 feature/s1.4-task-foundation）
 
 状态：T7实现及真实故障专项通过；默认Docker全量仍有Qdrant创建超时，S1.4保持“进行中”，未标记维护者验收通过。按维护者授权使用原生Qdrant另跑同一套完整集成，其结果与Docker分别记录。任务规划不改，T8–T10未实施；D8决定已单独保存为1a4ebe9，T7实现、对照工具与本记录按T7本地提交，未推送、未合并。

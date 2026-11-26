@@ -169,7 +169,7 @@ await test('S1.4-T6 real PostgreSQL reconciliation locks, recovery and delivery'
     } finally { await lockPool.end(); }
   });
 
-  await t.test('row locks, valid leases, cancellation, future retries and other owners remain unchanged', async () => {
+  await t.test('row locks, valid leases, future retries and other owners remain unchanged; cancellation is finalized without execution', async () => {
     const c = await context('job-index'); await store.claim(c.ownerId, c.message);
     assert.equal(await store.reconcile(c.ownerId, 'job-index', c.taskId, reconciliation), 'skipped');
     await expire(c); const session = await database.pool.connect();
@@ -179,6 +179,8 @@ await test('S1.4-T6 real PostgreSQL reconciliation locks, recovery and delivery'
     } finally { await session.query('ROLLBACK'); session.release(); }
     assert.equal(await store.reconcile(randomUUID(), 'job-index', c.taskId, reconciliation), 'skipped');
     await db.jobIndexTask.update({ where: { ownerId_id: { ownerId:c.ownerId, id:c.taskId } }, data:{cancelRequested:true} });
+    assert.equal(await store.reconcile(c.ownerId, 'job-index', c.taskId, reconciliation), 'cancelled');
+    assert.equal((await db.jobIndexTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId: c.ownerId, id: c.taskId } } })).status, 'CANCELLED');
     assert.equal(await store.reconcile(c.ownerId, 'job-index', c.taskId, reconciliation), 'skipped');
     const future = await context('analysis');
     await db.analysisTask.update({ where: {ownerId_id:{ownerId:future.ownerId,id:future.taskId}}, data:{status:'RETRY_WAIT',retryAt:new Date(Date.now()+60000)} });

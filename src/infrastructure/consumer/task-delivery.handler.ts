@@ -22,7 +22,7 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 }
 
 export class TaskDeliveryHandler {
-  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped'>,
+  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'>,
     private readonly identity: IdentityPort, private readonly handler: SyntheticTaskHandler,
     private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
@@ -113,6 +113,7 @@ export class TaskDeliveryHandler {
     if (!settled) throw new ExecutionUnsettledError();
     try { await this.store.markExecutionStopped(claim); }
     catch (error) { if (executionFailed) throw new AggregateError([executionError, error], 'Execution and stopped-marker persistence failed', { cause: error }); throw error; }
+    if (executionFailed && await this.store.cancelAtBoundary(claim)) return 'ack';
     if (executionFailed) throw executionError;
     return 'ack';
   }

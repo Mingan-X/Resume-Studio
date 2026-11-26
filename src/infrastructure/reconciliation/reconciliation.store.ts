@@ -13,10 +13,11 @@ export class ReconciliationStore {
     const table = type === 'analysis' ? Prisma.sql`analysis_task` : Prisma.sql`job_index_task`;
     const rows = await this.database.client.$queryRaw(Prisma.sql`
       SELECT id FROM ${table}
-      WHERE owner_id = ${ownerId}::uuid AND cancel_requested = false AND (${cursor}::uuid IS NULL OR id > ${cursor}::uuid)
-        AND ((status = 'RUNNING' AND (lease_until IS NULL OR lease_until <= statement_timestamp()))
+      WHERE owner_id = ${ownerId}::uuid AND (${cursor}::uuid IS NULL OR id > ${cursor}::uuid)
+        AND ((cancel_requested = true AND status IN ('QUEUED','RETRY_WAIT','RUNNING'))
+          OR (cancel_requested = false AND ((status = 'RUNNING' AND (lease_until IS NULL OR lease_until <= statement_timestamp()))
           OR (status IN ('QUEUED','RETRY_WAIT') AND updated_at + ${staleMs} * interval '1 millisecond' <= statement_timestamp()
-            AND (retry_at IS NULL OR retry_at <= statement_timestamp())))
+            AND (retry_at IS NULL OR retry_at <= statement_timestamp())))))
       ORDER BY id LIMIT ${limit}`);
     return z.array(z.object({ id: z.uuid() })).max(limit).parse(rows).map(row => row.id);
   }

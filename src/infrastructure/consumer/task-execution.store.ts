@@ -80,6 +80,32 @@ async function finishFailure(tx: Prisma.TransactionClient, ownerId: string, mess
     payloadVersion: 1, payload, availableAt: retryAt ?? now } });
 }
 
+// Caller owns the execution lock (or is its settled holder) and the task row lock.
+// Cancellation fences business writes; it does not assert that an unknown old process has exited.
+async function finishCancellation(tx: Prisma.TransactionClient, ownerId: string, taskType: TaskType,
+  task: z.infer<typeof rowSchema>, now: Date) {
+  const type = dbType(taskType), reference = { ownerId, taskType: type, taskId: task.id };
+  const usage = budgetUsageSchema.parse(task.budgetUsage);
+  if (task.leaseOwner) {
+    const attempt = await tx.taskAttempt.findFirst({ where: { ...reference, attemptId: task.leaseOwner, endedAt: null } });
+    if (attempt) usage.elapsedMs += Math.max(0, now.getTime() - attempt.startedAt.getTime());
+  }
+  const changed = await tx.$executeRaw(Prisma.sql`UPDATE ${table(taskType)} SET status='CANCELLED', stage='CANCELLED',
+    fence_token=fence_token+1, lease_owner=NULL, lease_until=NULL, heartbeat_at=NULL, retry_at=NULL,
+    error_code=NULL, updated_at=${now}, budget_usage=${JSON.stringify(budgetUsageSchema.parse(usage))}::jsonb
+    WHERE owner_id=${ownerId}::uuid AND id=${task.id}::uuid AND cancel_requested=true
+      AND generation=${task.generation} AND fence_token=${task.fenceToken} AND status IN ('QUEUED','RETRY_WAIT','RUNNING')`);
+  if (changed !== 1) throw new ExecutionLeaseLostError();
+  await tx.taskAttempt.updateMany({ where: { ...reference, endedAt: null }, data: { endedAt: now, errorClass: 'CANCELLED' } });
+  await tx.consumerReceipt.updateMany({ where: { ...reference, status: 'RUNNING', generation: { lte: task.generation } },
+    data: { status: 'DONE', processedAt: now, leaseOwner: null, leaseUntil: null } });
+  const previous = await tx.taskEvent.findFirst({ where: reference, orderBy: { seq: 'desc' } });
+  await tx.taskEvent.create({ data: { ...reference, id: randomUUID(), seq: (previous?.seq ?? 0) + 1,
+    analysisTaskId: type === 'ANALYSIS' ? task.id : null, jobIndexTaskId: type === 'JOB_INDEX' ? task.id : null,
+    stage: 'CANCELLED', safeMessage: 'Task cancelled',
+    counts: taskCountsSchema.parse(previous?.counts ?? { schemaVersion: 1, planned: 1, completed: 0, failed: 0 }) } });
+}
+
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
 
@@ -90,7 +116,8 @@ export class TaskExecutionStore {
         SELECT pg_try_advisory_xact_lock(${executionLockKey(ownerId, taskType, taskId)}::bigint) AS acquired`)[0]!;
       if (!lock.acquired) return 'lock-held';
       const task = await lockTask(tx, ownerId, { taskType, taskId }, true), now = await databaseNow(tx);
-      if (!task || terminal.has(task.status) || task.cancelRequested) return 'skipped';
+      if (!task || terminal.has(task.status)) return 'skipped';
+      if (task.cancelRequested) { await finishCancellation(tx, ownerId, taskType, task, now); return 'cancelled'; }
       const expired = task.status === 'RUNNING' && (!task.leaseUntil || task.leaseUntil <= now);
       if (task.status === 'RUNNING' && !expired) return 'skipped';
       if (!expired && (task.updatedAt.getTime() + config.staleMs > now.getTime() || (task.retryAt && task.retryAt > now))) return 'skipped';
@@ -175,6 +202,10 @@ export class TaskExecutionStore {
       const now = await databaseNow(tx);
       const reference = { ownerId, taskType: type, taskId: task.id,
         analysisTaskId: type === 'ANALYSIS' ? task.id : null, jobIndexTaskId: type === 'JOB_INDEX' ? task.id : null };
+      if (task.cancelRequested && !terminal.has(task.status)) {
+        await finishCancellation(tx, ownerId, message.taskType, task, now);
+        task.status = 'CANCELLED';
+      }
       if (terminal.has(task.status) || message.dispatchGeneration < task.generation) {
         // Even terminal/stale delivery requires a writable DB before ACK. Persist reliable disposition.
         if (receipt) await tx.consumerReceipt.update({ where: { id: receipt.id, ownerId },
@@ -184,7 +215,7 @@ export class TaskExecutionStore {
         return { kind: 'ack' };
       }
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
-      if (task.cancelRequested || (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now)) return { kind: 'deferred' };
+      if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });
       const deadline = new Date(Math.min((first?.startedAt ?? now).getTime() + snapshot.budget.maxDurationMs,
@@ -259,6 +290,16 @@ export class TaskExecutionStore {
       await tx.taskAttempt.updateMany({ where: { ownerId: claim.ownerId, taskId: claim.message.taskId,
         taskType: dbType(claim.message.taskType), attemptId: claim.attemptId, fenceToken: claim.fenceToken, executionStoppedAt: null },
       data: { executionStoppedAt: await databaseNow(tx) } });
+    });
+  }
+
+  async cancelAtBoundary(claim: ExecutionClaim): Promise<boolean> {
+    return this.database.client.$transaction(async tx => {
+      const task = await lockTask(tx, claim.ownerId, claim.message);
+      if (!task || task.status !== 'RUNNING' || !task.cancelRequested || task.fenceToken !== claim.fenceToken
+        || task.generation !== claim.message.dispatchGeneration || task.leaseOwner !== claim.attemptId) return false;
+      await finishCancellation(tx, claim.ownerId, claim.message.taskType, task, await databaseNow(tx));
+      return true;
     });
   }
 

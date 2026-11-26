@@ -37,7 +37,7 @@ await test('consumer validates bounded body, task type, message ID, content type
 
 await test('heartbeat failure aborts work and prevents completion even when handler returns late', async () => {
   const f = fixture(); let completed = 0, beats = 0, aborted = false;
-  const handler = new TaskDeliveryHandler({ markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('Heartbeat failure must not be recorded as task failure'); },
+  const handler = new TaskDeliveryHandler({ cancelAtBoundary: () => Promise.resolve(false), markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('Heartbeat failure must not be recorded as task failure'); },
     reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
     heartbeat: () => { beats++; return Promise.reject(new Error('database unavailable')); },
     complete: () => { completed++; return Promise.resolve(); },
@@ -54,13 +54,13 @@ await test('heartbeat failure aborts work and prevents completion even when hand
 await test('terminal and deferred dispositions never execute; successful ACK decision follows complete', async () => {
   const f = fixture(); let completed = false;
   for (const kind of ['ack', 'deferred'] as const) {
-    const handler = new TaskDeliveryHandler({ markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('No task failure expected'); },
+    const handler = new TaskDeliveryHandler({ cancelAtBoundary: () => Promise.resolve(false), markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('No task failure expected'); },
       reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind }),
       heartbeat: () => { assert.fail('No heartbeat expected'); }, complete: () => { assert.fail('No completion expected'); },
     }, f.identity, { execute: () => { assert.fail('No execution expected'); } }, consumerConfigSchema.parse({}), unlockedUnitContext);
     assert.equal(await handler.handle(f.message, new AbortController().signal), kind);
   }
-  const handler = new TaskDeliveryHandler({ markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('No task failure expected'); },
+  const handler = new TaskDeliveryHandler({ cancelAtBoundary: () => Promise.resolve(false), markExecutionStopped: () => Promise.resolve(), fail: () => { assert.fail('No task failure expected'); },
     reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
     heartbeat: () => Promise.resolve(), complete: async () => { await delay(10); completed = true; },
   }, f.identity, new SyntheticCompletionHandler(), consumerConfigSchema.parse({}), unlockedUnitContext);
@@ -73,6 +73,7 @@ await test('cancellation retains execution lock until actual handler settlement 
   const started = new Promise<void>(resolve => { ready = resolve; });
   const pending = new Promise<void>(resolve => { release = resolve; });
   const handler = new TaskDeliveryHandler({ claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
+    cancelAtBoundary: () => Promise.resolve(false),
     heartbeat: () => Promise.resolve(), reserveUsage: () => Promise.resolve(),
     fail: () => { assert.fail('Cancellation must not become business failure'); },
     complete: () => { completed = true; return Promise.resolve(); },

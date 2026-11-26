@@ -9,10 +9,10 @@ import { HttpErrorFilter } from './infrastructure/http/http-error.filter.js';
 
 @Module({})
 export class ApiModule {
-  static register(config: ApiConfig): DynamicModule {
+  static register(config: ApiConfig, extra: DynamicModule[] = []): DynamicModule {
     return {
       module: ApiModule,
-      imports: [ConfigModule.register(config), LoggingModule, HealthModule],
+      imports: [ConfigModule.register(config), LoggingModule, HealthModule, ...extra],
       providers: [{ provide: APP_FILTER, useClass: HttpErrorFilter }],
     };
   }
