@@ -25,6 +25,7 @@
     "db:validate": "node --env-file=infra/.env scripts/prisma.mjs validate",
     "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",
     "outbox:publish": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js publish",
+    "tasks:consume": "node --env-file=infra/.env dist/src/infrastructure/consumer/cli.js",
     "test:integration": "pnpm run build && node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/*.test.js",
     "infra:persistence": "node --env-file=infra/.env dist/test/integration/persistence.fixture.js",
     "checkpoint:init": "node scripts/checkpoint-init.mjs",
