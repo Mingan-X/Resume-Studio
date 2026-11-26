@@ -71,6 +71,10 @@
 
 用途与成本：PDF.js负责PDF文本与真实位置，带可选@napi-rs/canvas（平台二进制成本，T5实验确认加载方式）；Mammoth负责DOCX正文/表格，整包JSZip读取带来内存成本，所以先用yauzl流式预检实际展开量。Mammoth默认禁止externalFileAccess，不净化生成HTML，且文档明确提示恶意文件可能消耗CPU/内存，必须隔离执行；如果使用transformDocument，其API被上游标为不稳定，升级需专项回归。yauzl须启用lazyEntries、strictFileNames与validateEntrySizes，但不校验CRC，应用需另行验证CRC及总量/压缩比/链接/嵌套包。三者都不能单独提供完整安全沙箱。
 
+S2.1-T4已精确安装yauzl3.4.0及开发类型@types/yauzl3.4.0（MIT，无peer，未声明engines，需本机编译验证），传递依赖pend；锁文件同步，pnpm12.23.0冻结安装通过。用途为受限子进程内顺序读取ZIP流并核对实际展开量，CRC使用Node内置zlib.crc32，不增加CRC包；类型包无运行成本。PDF.js/Mammoth尚待T5/T6接入，完整运行验证以progress为准。
+
+
+
 替代方案：Python/MinerU或云端解析会新增服务/隐私边界，D11已排除；仅用JSZip不能提供本任务要求的流式资源预检；不另选解析方向。T1只冻结候选和边界，T4–T6安装时精确声明并同步锁文件，验证冻结安装、运行样本和传递依赖；目前不宣称解析可用。
 
 | 服务 | 镜像版本 | digest |
