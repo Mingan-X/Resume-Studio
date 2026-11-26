@@ -21,3 +21,5 @@ T3草稿服务从可信IdentityPort获取owner，创建时显式保存D7的六�
 T4发布服务要求显式确认硬门槛和权重，再次校验要求及有效权重；未配置当前索引目标返回JOB_INDEX_TARGET_UNAVAILABLE，不伪造目标。一次事务完成PUBLISHED/内容哈希、真实JobIndexTask、JobIndexTarget和job.index.requested.v1 Outbox；任一写入失败全部回滚。owner/key与publish-job-v1/versionId绑定，同请求返回原versionId/taskId，不同版本409；重放继续使用首次冻结的目标，不随配置变化重建任务。岗位正文及要求哈希在输入快照中独立保存。
 
 当前目标表受owner/版本/任务复合外键及目标匹配触发器约束。索引READY提交必须持有当前fence/lease并命中该版本的当前task/embedding/index目标；新版本或同版本切换目标后，旧执行不能标记新目标。默认消费者只具备synthetic能力，S2.3才装配真实处理器；T4专项显式领取真实任务仅验证数据库fence，不代表完成向量索引。HTTP确认/发布接口仍待T9。
+
+T5提供 `pnpm run rubric:import <owner UUID> <JSON文件路径>` 与 `pnpm run rubric:load <owner UUID> <version>`，先运行build并使用项目infra/.env。命令核对本项目PostgreSQL归属，不创建owner；正式导入拒绝SYNTHETIC。文件上限1MiB，错误只返回安全code。版本与内容哈希幂等绑定，同内容重放不再插入，内容不一致必须用新版本。RubricService加载时先校验整个版本完整性，再按维度返回全部五级，不依赖Qdrant检索；测试须显式allowSynthetic且不会注册任何默认版本。当前owner范围是开发身份与后续会话身份的同一边界。

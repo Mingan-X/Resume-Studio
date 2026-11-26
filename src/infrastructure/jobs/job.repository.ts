@@ -96,6 +96,21 @@ export class JobRepository {
     await this.database.client.rubricVersion.create({ data: { ownerId, version: content.version, content, contentHash } });
     return { version: content.version, contentHash };
   }
+  async importRubric(owner: string, raw: unknown) {
+    const ownerId = z.uuid().parse(owner), content = rubricVersionSchema.parse(raw), contentHash = requestHash(content);
+    return this.database.client.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([ownerId, content.version])}, 23))::text`;
+      const prior = await tx.rubricVersion.findFirst({ where: { ownerId, version: content.version } });
+      if (prior) {
+        const parsed = rubricVersionSchema.parse(prior.content);
+        if (requestHash(parsed) !== prior.contentHash) throw new Error('INVALID_RUBRIC_HASH');
+        if (prior.contentHash !== contentHash) throw new Error('RUBRIC_VERSION_CONFLICT');
+        return { version: content.version, contentHash, replay: true };
+      }
+      await tx.rubricVersion.create({ data: { ownerId, version: content.version, content, contentHash } });
+      return { version: content.version, contentHash, replay: false };
+    });
+  }
   async findRubric(owner: string, version: string) {
     const ownerId = z.uuid().parse(owner);
     const row = await this.database.client.rubricVersion.findFirst({ where: { ownerId, version: versionNameSchema.parse(version) } });
