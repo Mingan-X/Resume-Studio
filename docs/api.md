@@ -42,6 +42,7 @@ environment来自启动配置，可为development/test/production。返回200仅
 | 400 | VALIDATION_ERROR | 请求不符合Schema，例如未知查询参数 |
 | 400 | BAD_REQUEST | 请求格式错误，例如HTTP body解析失败 |
 | 404 | NOT_FOUND | 不存在的路由 |
+| 409 | IDEMPOTENCY_CONFLICT | 已接入统一错误适配器；同幂等键对应不同任务输入。当前无任务创建HTTP入口，仅在应用服务及测试专用HTTP路由验证 |
 | 500及以上 | INTERNAL_ERROR | 安全的服务端错误，不暴露原始异常 |
 | 其他HTTP异常 | HTTP_ERROR | 统一的HTTP错误表示 |
 

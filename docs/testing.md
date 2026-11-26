@@ -39,6 +39,26 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 | test/integration/checkpoint.test.ts | 官方setup重复执行、数据库权限隔离、运行账号DDL拒绝、池关闭；真实子进程强制终止后的续跑和首Checkpoint缺失时恢复 |
 | test/observability.test.ts | 配置白名单；实际HTTP捕获OTLP并检查关联与脱敏；断连、超时、503和部分拒绝；200个span冲击8容量及关闭释放 |
 | test/integration/observability.test.ts | 核对本项目容器/网络/卷、健康及诊断项目身份；Nest ObservabilityModule运行合成图，查询Langfuse已持久化的callback/手工span及原文脱敏 |
+| test/tasks.test.ts | 固定开发身份及可替换provider、递归规范化哈希、严格合成输入、拒绝owner伪造与非法key/预算、最小调度契约 |
+| test/integration/tasks.test.ts | 真实PostgreSQL两类任务及Outbox；幂等重放/409、确定性的并发插入竞争、owner隔离、写Outbox前后故障回滚、SQL不可变输入/外键/状态及唯一约束、精确清理和连接池关闭 |
+| test/outbox.test.ts | publish(false)等待confirm、return优先于ACK、nack/断连、握手超时关闭socket、独立correlationId、退避及事件契约/归属校验 |
+| test/integration/outbox.test.ts | 真实PostgreSQL SKIP LOCKED、并发发布/过期租约令牌隔离、RabbitMQ路由/return/overflow NACK、TCP丢confirm/断连恢复、确认后强杀重复发布、测试收据去重、预算持久化、quorum DLX无绑定后的留存与恢复 |
+| test/consumer.test.ts | 有界消息/路由/身份校验、心跳失败中止且拒绝迟到结果、终态和有效执行重复处置、完成事务先于ACK决定 |
+| test/integration/consumer.test.ts | 两类任务重复消费、并发领取与真实双消费者、过期接管/旧token写入拒绝、心跳与收据同步、旧代次/终态、只读数据库不ACK、完成SQL故障回滚、提交后ACK前强杀重投、停机及非法消息保留 |
+
+任务集成用例注册独立TasksModule并替换身份provider，以本轮随机Owner隔离数据；不向API或Worker增加业务路由。并发测试在两次真实SELECT均返回不存在后释放屏障，强制触发唯一约束竞争。故障测试通过Prisma扩展在真实Outbox INSERT之前或之后抛错，执行的SQL仍在真实交互事务内，验证任务与Outbox均不残留，并用原key重试成功。HTTP测试只注册测试专用409路由，验证统一错误体、requestId和日志白名单。
+
+S1.4迁移验证执行 `pnpm run db:validate`、`db:deploy`、再次`db:deploy`和`db:status`；重复部署应无待执行迁移。CHECK和trigger在SQL迁移中手工维护，不能只依赖Prisma schema diff判断完整性。任务集成前及清理前使用ownedPostgres核实Compose项目、服务、端口与卷，清理只针对本轮确实创建的Owner和隔离区精确ID；清理失败仍报告失败，禁止按前缀清库。
+
+T3测试前需应用新迁移。它在已有诊断权限内创建 `s12.t3.<本轮UUID>` 拓扑、策略和本轮Owner；不向共享 `resume.*` 队列灌入测试消息。创建/清理前核对RabbitMQ项目、服务、端口和卷；先确认本轮精确队列名不存在，再声明，清理只处理这些名称。开发用 `outbox:setup` / `outbox:publish` 命令的重复运行另行记录，不由集成用例自动清理其持久拓扑。
+
+实际NACK测试使用quorum长度限制与reject-publish；该限制允许短暂超额，最多五次探测等待真正的broker NACK，不把达到队列长度当成确认失败。TCP代理解析真实AMQP帧，在basic.publish之后丢弃confirm或断开连接；真实发布超时仍为5秒（专项代理用更短故障期限），不靠mock异常代替broker行为。测试子进程在confirm成功、数据库mark之前通知父进程，父进程强杀并确认退出，等待原15秒租约自然到期后重发，验证同messageId和仅一次合成副作用；这里的简化ConsumerReceipt消费者只属于T3测试，T4消费者另有独立验证。
+
+T4使用新的 `s12.t4.<本轮UUID>` 队列与策略，创建和清理前验证本项目归属；只清理本轮确认新建的精确资源。两类任务各测重复投递、条件领取、单调fence和过期接管；使用真实数据库提前过期本轮租约后验证旧token心跳/结果/终态不能提交，不把此测试说成T7旧LangGraph/Checkpoint隔离。
+
+数据库不可写通过单独连接的 `default_transaction_read_only=on` 实现，不改共享账号权限或数据库全局配置。完成事务故障由Prisma扩展注入超过列宽的stage，触发真实PostgreSQL错误，核对终态、事件与DONE收据整体回滚且RabbitMQ重投。`consumer-crash.fixture.ts`运行实际消费者，数据库提交后暂扣ACK并通知父进程，父进程强杀后由另一个实际消费者处理重投，验证只有一次尝试与完成事件。停机/格式错误/活跃租约测试均检查未ACK及redelivered；无skip-on-missing，不自动重置数据库。
+
+DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，观察源quorum队列保留并最终转发。RabbitMQ 4.4.0本地内部dead-letter publisher confirm timeout实测为180000ms，测试最长等待190秒覆盖一次内部重试，父用例最长300秒；该等待与外部publish的5秒截止分开。未修改服务端设置或原有Qdrant/API测试超时，因此完整集成通常需要数分钟。单节点quorum未验证多副本故障或DLX长期积压容量。
 
 `checkpoint-worker.fixture.ts`仅是测试子进程入口。合成输入独立保存在既有诊断表，图状态只保存UUID、数值和步骤；不含简历、模型请求或真实业务任务。中途终止用例先从PostgreSQL确认首节点状态已持久化，再强杀子进程，等待进程退出后以同thread和 `invoke(null, config)` 续跑，通过独立执行记录验证已完成节点没有重复运行。首次Checkpoint用例在官方saver首次put前设置测试屏障并强杀，确认thread不存在后从独立保存的输入启动。屏障不属于生产实现，也不证明任意外部副作用恰好一次。
 
@@ -87,7 +107,7 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 ## 尚未验证
 
-正式任务与Outbox、业务幂等、重试/DLQ、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成图恢复的实际运行结果见进度记录；旧执行fence与新恢复thread隔离仍由S1.4-T7验收。对应阶段见[开发计划](development-roadmap.md)。
+正式业务任务输入/所有权、真实报告/索引执行器、任务执行重试/失败dead事件、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布及T4消费均有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复的实际运行结果见进度记录；旧执行fence与新恢复thread隔离仍由S1.4-T7验收。对应阶段见[开发计划](development-roadmap.md)。
 
 当前RabbitMQ重投测试不能证明业务任务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；旧Worker迟到写入、旧thread隔离和两类任务各自的终态保护在S1.4-T7中单独验收。
 

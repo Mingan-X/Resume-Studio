@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复及本地观测验证已实现；本文的正式任务、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布及T4租约消费已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -14,7 +14,7 @@
 
 **Checkpoint**：工作流状态快照及待完成节点，用于崩溃后继续；不替代任务记录、报告、授权或队列。Prisma 管业务表，官方 PostgresSaver 管自己的表，二者独立事务。
 
-以下业务任务实体、Outbox、NodeArtifact及它们与Checkpoint的联合恢复属于目标设计；当前Prisma Schema只有诊断表。官方Checkpoint表已由独立setup建立，并用于S1.3合成图测试。已确定的是组件方向、职责分工与一致性原则；候选并发数、超时、重试和租约参数须通过集成与负载测试确认，Rubric等级、评分映射和权重等业务政策须单独审查，不将这些提案写成已实现或生产级保证。
+当前Prisma Schema已有诊断表、Owner、两类任务与attempt/event/receipt/outbox/quarantine模型；已实现合成任务与Outbox创建、发布以及T4执行租约/消费者。NodeArtifact、真实业务处理器及Checkpoint联合恢复仍属目标设计。官方Checkpoint表由独立setup建立，用于S1.3合成图测试。并发、超时、重试和租约参数尚未经过生产负载验证，Rubric等级、评分映射和权重等业务政策须单独审查。
 
 ## 2. 整体架构
 
@@ -23,6 +23,9 @@
 | 当前入口/模块 | 实际接线 | 验证边界 |
 |---|---|---|
 | API / 空Worker | main入口先校验配置，再动态导入bootstrap-api或bootstrap-worker；配置失败只调用独立startup-error；API只装配配置、日志和健康检查，Worker仅配置、日志及存活定时器 | 没有业务任务、模型调用或观测导出 |
+| TasksModule / IdentityModule | 显式register数据库连接；应用服务取得可信owner，再校验合成输入，通过TaskRepository写任务和Outbox | 默认固定开发主体，可替换身份provider；仅数据库创建/幂等，不含发布器、消费者或任务HTTP接口 |
+| OutboxModule | 显式注册身份、数据库与消息发布适配器，`outbox:publish`执行有界批次 | 短事务领取/发布/条件标记；无常驻轮询，消费者由ConsumerModule提供 |
+| ConsumerModule | `tasks:consume`按任务类型运行有界手动ACK会话；身份、执行存储和合成处理器通过Nest装配 | TaskAttempt/ConsumerReceipt、租约心跳与fence保护合成完成事件；未接入业务图或常驻调度 |
 | Checkpointer | `src/infrastructure/checkpoint/`提供受控provision/setup与独立pg池；图仅在测试fixture中 | 旧子进程确认退出后同thread续跑；无首Checkpoint时从独立输入启动，不包含fence |
 | ObservabilityModule | `test/fixtures/observability-graph.ts`使用官方CallbackHandler及手工OTel span；独立集成测试注册Nest模块 | 合成输入与关联/脱敏验证；未验证跨API/Worker传播或真实LLM |
 | 本地服务 | 单一resume-studio项目，业务三服务在default网络，Langfuse六服务在observability网络 | 独立账号/卷、双向独立启停；运行结果见开发进度；本机存储性能仍有限制 |
@@ -190,7 +193,7 @@ sequenceDiagram
     API-->>UI: 状态、阶段、报告ID
 ```
 
-业务交换机 `resume.tasks`（durable direct），队列 `resume.analysis.v1` 与 `resume.job-index.v1`（durable quorum）；路由键 `analysis.requested.v1` / `job.index.requested.v1`。死信交换机 `resume.dead`，终端队列 `resume.analysis.dead.v1`。名称是方案，尚未创建。
+T3显式setup建立业务交换机 `resume.tasks`（durable direct），队列 `resume.analysis.v1` 与 `resume.job-index.v1`（durable quorum）；路由键 `analysis.requested.v1` / `job.index.requested.v1`。死信交换机 `resume.dead`，两个终端队列 `resume.analysis.dead.v1`、`resume.job-index.dead.v1`分别按原路由键绑定，覆盖两类任务。主队列使用精确匹配策略：at-least-once dead lettering、reject-publish overflow、delivery-limit=5、consumer-timeout=900000ms；终端队列不回流主队列。拓扑在既有本项目vhost内，账号仅新增这些精确资源权限；测试拓扑采用本轮UUID隔离的s12前缀。
 
 任务调度消息只带schemaVersion、messageId、taskType（analysis/job-index）、taskId、dispatchGeneration、occurredAt、traceparent/tracestate；业务数据从数据库读取，不把简历全文、凭证或任意文件路径放入队列。消费者按taskType读取AnalysisTask或JobIndexTask，核对路由、所有权、输入版本与代次，不能信任消息提供任意数据库对象。上图展示分析任务；索引任务走自己的路由和业务状态，复用相同交付基础设施。
 
@@ -203,6 +206,17 @@ OutboxEvent是通用事务事件，不是AnalysisTask的专属子表。用aggreg
 发布器按availableAt领取事件，使用短事务与`FOR UPDATE SKIP LOCKED`/租约；释放事务后发送网络消息。所有发布使用confirm channel和persistent消息，`mandatory=true`并监听return；publish返回boolean只代表客户端缓冲区背压，不代表broker接受。return、nack、超时、断连都不能标成功。发布失败有限退避，任务保留可见待投递状态。
 
 confirm成功但published标记前崩溃：事件会再次发布，这是允许的重复。禁止“为防重复先标published”。多发布器通过租约隔离，迟到发布仍可能重复，消费端负责最终幂等。
+
+T3已实现边界：
+
+- 单条CTE以 `FOR UPDATE SKIP LOCKED` 领取到期事件，每次产生新的leaseOwner UUID并递增publishAttempts，租约默认15秒；同事务检查已耗尽的次数/期限。所有操作限定身份适配器提供的ownerId，不在领取事务内等待网络。
+- 每次发送使用独立confirm连接/通道和随机correlationId，messageId始终保持Outbox eventId。连接、握手、通道RPC、确认共用5秒截止和socket AbortSignal；return、nack、断连、超时均不写published。publish返回false仍等confirm；旧连接销毁，迟到回调不影响下一次尝试。此做法适合当前低吞吐合成阶段，未宣称连接复用的性能表现。
+- 成功标记和失败更新都检查eventId、ownerId、leaseOwner、租约未到期及未终结状态。confirm后数据库写入失败直接暴露错误并保留租约，过期可再领取；真实子进程在该窗口被强杀的T3测试验证重复messageId，并由测试专用ConsumerReceipt事务吸收。T4另实现实际消费路径，见§5.4。
+- 默认最多8次发布尝试，自事件createdAt起1小时总期限；1秒起指数退避、上限30秒，抖动为上限的50%–100%。延迟写回availableAt，不在进程中睡眠重试。耗尽或非法事件保存failedAt/lastErrorCode且publishedAt为空，事件和任务仍保留；不自动重置预算，不把基础设施投递失败改成业务任务FAILED。人工恢复入口及告警暂未实现。
+- 每个批次最多10条、60秒总期限，到期中止后续发送；单次已开始的数据库操作还受原3秒等待/5秒事务及SQL限制。`outbox:publish`只运行一个批次，未接入后台调度；不创建额外服务。默认身份仅发布固定开发owner的事件。未来服务多owner调度需另定义授权范围。
+- 持久化payload经Zod及事件类型/版本/聚合ID一致性检查，目前仅支持两类requested.v1。未知事件终止自动发送并保留错误；新增事件类型需增加明确的契约和路由，不能任意指定exchange。trace传播、业务重试dead事件属于后续接入。
+
+RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.4.0配置为180秒；DLX目标暂时无绑定时的留存/恢复测试等待该完整周期，未降低服务端周期或改变5秒发布限制。quorum单节点部署验证不代表多节点高可用。官方行为依据：[publisher confirms](https://www.rabbitmq.com/docs/confirms)、[quorum queues](https://www.rabbitmq.com/docs/quorum-queues)、[amqplib channel API](https://amqp-node.github.io/amqplib/channel_api.html)；本地实测结果见开发进度。
 
 ### 5.3 手动ACK、重复消息与并发
 
@@ -218,6 +232,16 @@ confirm成功但published标记前崩溃：事件会再次发布，这是允许�
 上述隔离是待实现并验证的要求，不是现有能力。**官方Checkpointer内部SQL不会自动受到业务Fencing Token约束**：业务条件更新只能保护经过该检查的业务表写入，不能阻止旧saver向原thread写入。必须有真实PostgreSQL/Worker集成测试：暂停旧执行并使租约/锁连接失效，启动新执行后恢复旧执行，验证旧token不能提交NodeArtifact/报告/任务终态；无法确认旧执行停止时新执行使用新thread，旧Checkpoint迟到写入不能改变新activeGraphThreadId及其恢复结果；确认旧执行已结束时才用原thread续跑。另测JobIndexTask旧执行不得更新新版本的indexStatus。仅测试TTL、mock token或正常重启不能替代这些故障场景。
 
 ### 5.4 重试、死信与长任务
+
+#### S1.4-T4 已实现的消费边界
+
+`TaskConsumer`在一个消费会话中使用一条连接、一个任务队列和prefetch=1，消息大小、JSON Schema、contentType、messageId、exchange/routingKey及taskType均验证。owner来自可信IdentityPort，不能由消息指定。数据库按owner/taskType/taskId锁行后核对冻结快照和代次；TaskAttempt、RUNNING收据与单调fenceToken领取在同事务提交，每次以新attemptId作为leaseOwner。receipt的consumerName/messageId重复但task/generation不同会拒绝，不把冲突收据当成去重成功。
+
+终态或旧generation消息写入DONE处置后ACK，不执行处理器；未来generation或未知/越权任务不ACK。有效RUNNING租约返回deferred，关闭本次消费让消息保留，未提前假设可靠承接。过期租约可重新领取，结束旧尝试并记录LEASE_EXPIRED，递增token、保留原taskId/冻结输入，旧执行的心跳、完成及终态写入均须匹配owner、generation、token、attemptId、未过期租约、RUNNING和未取消状态。
+
+心跳更新任务及当前收据采用同一事务、同一个数据库时间。心跳不重叠执行；失败会abort本次处理器，完成前等待已开始的心跳结束，禁止后台继续续租。执行受输入冻结预算、跨尝试首个startedAt推导的总期限及单次上限限制。当前只执行无外部副作用的合成处理器；处理结果与输入哈希核对后，在同事务写SYNTHETIC_COMPLETED TaskEvent、SUCCEEDED、TaskAttempt结束及ConsumerReceipt DONE，再在原channel ACK。合成状态没有报告/indexStatus语义，真实产物事务将随S2接入。
+
+数据库不可读/不可写、SQL提交失败、心跳/租约丢失、格式错误或停机均不ACK，关闭会话且不自动重连形成热循环。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。新数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。当前没有任务重试Outbox、失败dead事件、隔离区、对账器、取消API或Checkpoint联动，分别属于T5–T8；receipt存在和租约失效都不能证明旧LangGraph已停止。
 
 **业务重试采用数据库延迟Outbox**：失败分类后，在事务中更新Task为RETRY_WAIT、递增dispatchGeneration、写入新的messageId与availableAt；提交后ACK原消息。发布器到期再投递。无需RabbitMQ延迟插件，也不会在TTL队列头部阻塞不同延迟消息。
 
@@ -306,6 +330,18 @@ erDiagram
 | Quarantine | messageId、消息哈希、错误码、脱敏元数据；非法消息不直接当作正常Task |
 
 普通可检索字段建列，灵活模型产物放JSONB并附schemaVersion；禁止把所有对象只放无Schema的JSON。状态迁移和唯一约束同时由代码/数据库约束保护。人民币/美元费用使用Decimal或最小货币单位，不能用浮点误差当精确账单。
+
+#### S1.4-T1/T2 已实现的映射
+
+- `IdentityModule` 默认提供固定开发owner `00000000-0000-4000-8000-000000000001`，由迁移建立Owner记录；`IDENTITY`/`IdentityPort`可替换，应用服务不接受请求正文的ownerId。未知身份不能自动建立Owner，任务外键拒绝未登记主体。此适配器未接入公网入口，不代表完成登录鉴权。
+- 两类任务保持独立表与状态枚举，初始 `QUEUED`、generation=1、fenceToken=0；分析任务初始activeGraphThreadId=taskId、graphGeneration=1。租约、取消、预算使用量等字段只提供存储，领取/心跳/状态迁移由后续任务实现。
+- `TaskAttempt`、`TaskEvent`、`ConsumerReceipt`保留taskType/taskId，并以analysisTaskId/jobIndexTaskId互斥外键绑定实际任务；SQL CHECK要求类型、taskId及外键一致，复合外键同时校验ownerId。TaskEvent的seq为正且按taskType/taskId唯一；单调序号的分配逻辑随进度写入实现，本批不提供事件写入服务。TaskAttempt费用用整数微单位与currency保存。
+- `OutboxEvent`保留通用aggregateType/aggregateId，无分析任务专属外键；创建服务在同一事务内创建对应聚合并写调度事件。`Quarantine`面向无法可信解析的基础设施消息，messageId可空、不信任owner；本批无面向用户的隔离区查询。其他新增应用查询均显式限定ownerId。
+- 合成输入Schema固定 `schemaVersion: 1`、`kind: synthetic`，明确冻结输入版本、预算及配置版本；versionId暂为合成UUID，无尚不存在的ResumeVersion/JobVersion外键。快照内嵌于任务JSONB，因此任务、快照、Outbox是同库同事务。写入及幂等读回都执行Zod校验；SQL核对快照owner/版本与列一致，并用trigger禁止更新输入、版本、owner、幂等键和requestHash。S2接入真实资源时须另加迁移与授权检查，不能直接把合成ID当成业务记录。
+- 幂等作用域为 `(ownerId, taskType, Idempotency-Key)`，各任务表唯一 `(ownerId,idempotencyKey)`；key按UUID校验并统一小写。SHA-256覆盖任务类型及完整验证后的快照（含owner、所有版本和预算），递归排序对象键，数组顺序保持；不包含生成的taskId、事件时间。相同请求返回原taskId，差异请求抛出安全的 `IDEMPOTENCY_CONFLICT`，HTTP错误适配器映射409。并发唯一冲突发生后先回滚，再从新事务视图读取已提交赢家；没有内存幂等缓存或无界重试。
+- 当前调度payload仅含schemaVersion/messageId/taskType/taskId/dispatchGeneration/occurredAt；不含输入正文、owner凭证或任意trace字段。跨进程trace字段在后续接入时扩展并验证；T3发布器只发送已验证的两类调度消息。
+
+约束与不可变trigger由[迁移SQL](../prisma/migrations/202611250001_s14_task_foundation/migration.sql)维护，Prisma Schema不完整表达CHECK/trigger。官方Checkpoint库/schema不受该迁移管理。
 
 ### 6.2 分工与状态机
 
@@ -468,4 +504,4 @@ Resume-Studio-Backend/
   data/                        # 本地运行资料和迁移快照，gitignore
 ```
 
-前端不在本仓库，见 Resume-Studio-Frontend；workflows尚未创建。当前已建立prisma、infra、scripts与临时data目录，生成的凭证/客户端/测试manifest不入Git。官方机制依据统一列在[兼容性文档来源](dependency-compatibility.md#5-官方来源)，本架构中的业务数量、超时、表和协议名称仍是项目提案。
+前端不在本仓库，见 Resume-Studio-Frontend；workflows尚未创建。当前已建立prisma、infra、scripts与临时data目录，生成的凭证/客户端/测试manifest不入Git。官方机制依据见[兼容性文档来源](dependency-compatibility.md#5-官方来源)及§5.2；各节明确列出的合成任务/发布器已有实现，其余业务数量、超时、表和协议仍属方案。

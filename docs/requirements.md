@@ -51,7 +51,7 @@
 - 只有“固定结构化判断 + 固定输入快照 + 固定评分规则”的计算可保证一致；对 LLM 重新分析，即使 temperature=0，也不承诺逐字或数值完全相同。
 - 报告快照须关联resumeVersionId及输入配置快照、冻结的CandidateSet与jobVersionId、ProfileAssessment、rubricVersion、scoringPolicyVersion及权重快照，并完整覆盖全部计划要求及各自的执行状态。已完成判断的要求关联相应RequirementJudgment结果；未执行、执行失败或预算截断而未完成的要求保留未完成状态与原因，不伪造RequirementJudgment，也不将其当作unknown判断结果。这里约束报告可追溯的内容，不预先限定这些信息是否使用同表、分表或其他持久化结构。派生重算报告关联原报告，不覆盖原判断、执行状态快照和历史报告。
 
-任务恢复/重试与重新分析是不同操作：恢复和重试保留原任务身份、冻结输入及幂等产物，并遵守执行租约/fence隔离；旧执行已确认停止才可复用原Checkpoint thread，否则创建新恢复thread并拒绝旧执行迟到业务写入，taskId仍不变。重新分析或重新召回创建新的AnalysisTask/taskId，保留历史任务和报告。JD索引使用独立JobIndexTask，和分析共享Outbox/消息/租约基础设施，但保持独立业务状态；新索引输入/目标版本建新索引任务，原版本失败重试不换任务身份。上述任务系统尚未实现。
+任务恢复/重试与重新分析是不同操作：恢复和重试保留原任务身份、冻结输入及幂等产物，并遵守执行租约/fence隔离；旧执行已确认停止才可复用原Checkpoint thread，否则创建新恢复thread并拒绝旧执行迟到业务写入，taskId仍不变。重新分析或重新召回创建新的AnalysisTask/taskId，保留历史任务和报告。JD索引使用独立JobIndexTask，和分析共享Outbox/消息/租约基础设施，但保持独立业务状态；新索引输入/目标版本建新索引任务，原版本失败重试不换任务身份。S1.4-T1/T2已实现两类合成任务的模型、冻结输入与事务Outbox及创建幂等；上述执行、恢复与正式业务流程尚未实现。
 
 公式、边界处理和示例见[架构 §8](architecture.md#8-评分引擎设计)。
 

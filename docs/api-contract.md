@@ -45,7 +45,7 @@
 | 头 | 方向 | 约定 | 状态 |
 |---|---|---|---|
 | `x-request-id` | 响应 | 服务端为每个请求生成UUID；忽略客户端提供的同名值；错误体中的requestId与之相同 | 已实现 |
-| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | 规划（S1.4-T2） |
+| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | S1.4-T2已实现应用服务及409错误映射；创建HTTP入口仍规划 |
 | `Content-Type` | 请求 | JSON接口为 `application/json`；上传为 `multipart/form-data` | 规划 |
 | `Cookie` / `X-CSRF-Token` | 请求 | 会话Cookie与CSRF令牌，具体方案见决策D9 | 规划（S3.2） |
 
@@ -77,7 +77,7 @@
 | 其他 | HTTP_ERROR | 其他HTTP异常 | 已实现 |
 | 401 | UNAUTHENTICATED | 未登录或会话过期 | 规划（S3.2） |
 | 403 | FORBIDDEN | 已登录但无权执行该操作 | 规划（S3.2） |
-| 409 | IDEMPOTENCY_CONFLICT | 同一幂等键对应不同请求 | 规划（S1.4） |
+| 409 | IDEMPOTENCY_CONFLICT | 同一所有者及任务类型下，同幂等键对应不同请求 | 已实现应用服务与HTTP错误映射；任务HTTP入口规划 |
 | 409 | INVALID_STATE | 资源当前状态不允许该操作，如取消已结束任务 | 规划（S1.4） |
 | 413 | PAYLOAD_TOO_LARGE | 上传超出大小限制 | 规划（S2.1） |
 | 422 | UNSUPPORTED_FILE | 文件类型、签名或内容不受支持（含扫描PDF、加密文件） | 规划（S2.1） |

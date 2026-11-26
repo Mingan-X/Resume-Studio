@@ -11,7 +11,7 @@
 | S1.1 | 工程基线 | 依赖锁定、ESM/装饰器编译、类型检查/Lint/测试、API与空Worker入口、Zod配置、统一HTTP错误、requestId日志 | — | — | 已完成 |
 | S1.2 | 基础设施诊断 | Compose项目隔离、PostgreSQL/Prisma诊断表与迁移、RabbitMQ confirm/return/ACK、Qdrant CRUD、重启持久化工具 | S1.1 | — | 已完成 |
 | S1.3 | 工作流持久化与观测 | 官方PostgreSQL Checkpointer接入与恢复验证、OTel/Langfuse接入与脱敏 | S1.2 | D4 已确定本地自托管 | 已完成（2026-11-25，附已知环境限制L1） |
-| S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8 | 未开始 |
+| S1.4 | 任务与消息可靠性 | 两类任务、Outbox、消费收据、租约/fence、重试/DLQ、对账、任务查询/取消API | S1.3 | D8（仅T9） | 进行中 |
 | S2.1 | 简历文件与证据 | Storage、上传、PDF/DOCX解析、文本块与结构化简历 | S1.4 | D6 | 未开始 |
 | S2.2 | JD与Rubric | JD草稿/结构化/确认/不可变发布、JobIndexTask、六维Rubric版本 | S1.4 | D1、D2 | 未开始 |
 | S2.3 | 岗位召回 | 技能关键词、Qdrant索引、Dense Vector、RRF融合、CandidateSet | S2.2 | D3 | 未开始 |
@@ -62,7 +62,7 @@ S1.1与S1.2是同一次初始化提交交付的基线，没有独立历史分支
 | S1.3-T6 | 文档与进度 | T1–T5 | 依赖说明、架构、测试、部署文档与进度记录 | 文档只描述已验证行为；未执行项如实记录 |
 | S1.3-T7 | 验收遗留修复 | T1–T6 | 见下方“S1.3-T7 任务说明” | 见下方“S1.3-T7 任务说明” |
 
-2026-11-25重新验收：T1–T7.4通过；T7.5中构建后首次 `pnpm test` 的有效配置API启动用例超过8秒失败，判定为本机机械硬盘冷启动造成的环境限制。维护者决定接受S1.3并记录为已知环境限制L1，在部署服务器或硬件满足条件后重新验证（已加入S3.3验收要求）。验收记录、L1的判断依据与处理规则见[开发进度](progress.md)。D4采用同一resume-studio项目的observability profile，专属网络、账号和数据卷，显式服务列表独立启停。分支feature/s1.3-checkpoint-setup，未推送、未合并。
+2026-11-25重新验收：T1–T7.4通过；T7.5中构建后首次 `pnpm test` 的有效配置API启动用例超过8秒失败，判定为本机机械硬盘冷启动造成的环境限制。维护者决定接受S1.3并记录为已知环境限制L1，在部署服务器或硬件满足条件后重新验证（已加入S3.3验收要求）。验收记录、L1的判断依据与处理规则见[开发进度](progress.md)。D4采用同一resume-studio项目的observability profile，专属网络、账号和数据卷，显式服务列表独立启停。feature/s1.3-checkpoint-setup已推送；2026-11-25开始S1.4前fetch确认远端master通过PR #1合并，合并提交17d4002。
 
 ### S1.3 验收证据索引
 
@@ -114,6 +114,8 @@ T7完成后将阶段状态改为“待验收”，由维护者重新验收。
 | S1.4-T8 | 任务查询与取消API | T4 | `GET /api/v1/tasks/:taskId`、`POST /api/v1/tasks/:taskId/cancel`，契约见[接口契约规范](api-contract.md) | owner检查；返回真实stage与计数；取消在安全边界生效，终态不被迟到Worker改回 |
 | S1.4-T9 | OpenAPI契约生成 | T8、D8 | 由Zod契约生成OpenAPI文档的脚本与提交的产物 | 生成结果与运行时校验使用同一组Schema；CI可检测产物过期 |
 | S1.4-T10 | 文档与进度 | T1–T9 | 架构、API、测试文档与进度记录 | 同上 |
+
+2026-11-26：在 `feature/s1.4-task-foundation` 上保留T1–T3改动并实现T4。合成任务的创建/发布、实际消费者、持久收据、条件租约与心跳、旧token写入拒绝及提交/ACK窗口已有专项验证。完整回归仍有基础设施失败，阶段保持“进行中”，不标记维护者验收通过；逐次结果与遗留见[开发进度](progress.md)。T5–T10仍待实施，D8仅阻塞T9；T4不包含真实业务处理器或T7 Checkpoint联合隔离。
 
 ## 5. 后续阶段交付与验收
 

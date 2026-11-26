@@ -54,7 +54,64 @@ pnpm run db:status
 - `infra:provision` 不接受容器名参数，仅解析本项目 Compose 服务并检查项目标签。建立非管理员诊断账号/数据库，配置 vhost 前缀权限，不轮换已有密码。
 - 初始化脚本的归属校验不自动覆盖所有清理入口；现有持久化cleanup仅使用连接范围和manifest定位资源，尚无独立Compose标签核验。执行前须核对目标实例与manifest归属，后续补强要求见[测试边界](testing.md#数据隔离与已知边界)。
 - `db:generate` 生成 `src/generated/prisma`，不连接数据库。生成目录不提交；首次构建前必须执行。
-- `db:deploy` 使用现有迁移创建诊断表，重复执行不会重复建表。不要使用重置数据库命令替代迁移。
+- `db:deploy` 使用现有迁移创建诊断表及S1.4任务模型，重复执行不会重复建表。不要使用重置数据库命令替代迁移。
+
+### S1.4 合成任务迁移
+
+沿用本项目 `resume_studio_s12_test` 数据库及 `resume_studio_test` 账号；保留历史诊断名称，不另建Docker服务、业务数据库或通用任务聚合表。TasksModule仅在显式注册的合成上下文中使用该连接，API/空Worker仍保持原启动依赖。固定开发Owner随迁移建立；真实身份/输入版本及生产配置由后续任务接入。
+
+应用迁移前在仓库根目录先运行 `pnpm run build`（首次先 `db:generate`），再验证PostgreSQL归属：
+
+```powershell
+node --env-file=infra/.env --input-type=module -e 'const {ownedPostgres}=await import("./dist/src/infrastructure/checkpoint/ownership.js"); await ownedPostgres();'
+pnpm run db:validate
+pnpm run db:deploy
+pnpm run db:deploy
+pnpm run db:status
+```
+
+上述命令逐项确认成功后继续；归属失败不得应用迁移。`202611250001_s14_task_foundation`只新增模型、枚举、约束、不可变输入trigger及开发Owner，不修改诊断或官方Checkpoint表。应用使用3连接上限与原事务等待/执行限制，不在事务内访问RabbitMQ/Qdrant/模型。
+
+迁移提交后应用回退可切回S1.3代码并保留新增表，不自动执行破坏性down或删除Owner/任务。后续Schema变更使用新迁移；从合成输入扩展到真实版本时同时更新SQL快照约束与Zod，不直接修改已应用迁移。集成测试只清理本轮已创建的记录，不删除开发Owner或数据卷。
+
+### S1.4-T3 Outbox发布与业务拓扑
+
+沿用当前Compose项目、PostgreSQL库和RabbitMQ vhost，不新增Docker服务。先生成客户端并构建，核对上述PostgreSQL归属后应用迁移，再执行：
+
+```powershell
+pnpm run db:generate
+pnpm run build
+pnpm run db:deploy
+pnpm run outbox:setup
+pnpm run outbox:publish
+```
+
+`outbox:setup`为显式管理操作，逐次核对RabbitMQ Compose项目、服务、127.0.0.1端口与卷标签。它在 `resume-studio-s12-test` 中保留原 `s12.*` 诊断权限，只增加 `resume.tasks`、`resume.dead`、两条主队列和两条终端队列的精确权限；不授予管理用户tag或其他vhost权限。已存在但不同的权限/同名策略会失败，不擅自覆盖。`infra:provision`识别并保留已安装的这组权限。
+
+setup声明durable direct交换机、durable quorum队列并核验实际生效策略。主队列采用at-least-once dead-lettering、reject-publish、delivery-limit=5、15分钟consumer timeout；分析/索引各有终端队列。重复setup不清空队列，不删除资源。首次安装失败时已创建的持久拓扑保留，可修正原因后重新执行；不能使用purge或删除卷修复。
+
+`outbox:publish`只处理开发固定owner的到期事件，一个批次最多10条、60秒，正常无事件输出idle退出。单次连接/发布/确认共同最多5秒，租约15秒；失败时指数退避写回数据库，最多8次、从事件创建起最长1小时，参数见[outbox配置](../src/infrastructure/outbox/config.ts)。遇到失败、非法事件、预算耗尽、取消或失去租约，命令返回非零状态；failedAt/lastErrorCode保留可核查原因。未提供自动预算重置或人工恢复命令，避免无限重发。
+
+命令通过AbortSignal释放本次RabbitMQ连接，退出关闭数据库池。当前不是常驻调度器；API/空Worker启动路径保持兼容，后续在现有Worker内接线。任务创建HTTP及业务重试尚未交付；T4提供下述显式消费会话。消息发布成功不表示任务完成。
+
+T3迁移 `202611250002_s14_outbox_publisher`只追加Outbox失败字段、结果互斥约束和查询索引；不改已应用的T1迁移。回退应用代码时保留新字段和队列/消息，避免数据丢失；权限/策略回退应先核实没有活动发布/消费并单独安排，普通回退不自动删除拓扑。
+
+### S1.4-T4 合成任务消费
+
+先构建、核对PostgreSQL/RabbitMQ归属并应用迁移及T3拓扑，然后按任务类型运行：
+
+```powershell
+pnpm run tasks:consume analysis
+pnpm run tasks:consume job-index
+```
+
+每次只消费对应主队列，默认最多10条或60秒，prefetch=1、noAck=false；正常到达会话期限且无未完成消息可以退出0。会话结束关闭连接和数据库池。Ctrl+C/期限到达中止正在执行的合成工作；未可靠提交或ACK的消息随原连接关闭交回broker，不使用立即nack/requeue循环，不在进程内自动无限重连。数据库/输入错误、活跃执行冲突、停机或仍有未确认消息时返回非零和安全汇总。命令使用固定开发owner，跨owner调度未开放。
+
+领取任务时同事务创建TaskAttempt和RUNNING收据、递增fenceToken；默认租约60秒、心跳10秒，租约不超过冻结输入期限。每次尝试还受10分钟执行上限限制；次数与总期限跨尝试保留，不因进程重启重置。参数与Schema见[consumer配置](../src/infrastructure/consumer/config.ts)。本阶段处理器只接受kind=synthetic的冻结输入，产出一条SYNTHETIC_COMPLETED事件，与任务SUCCEEDED、尝试结束和收据DONE同事务提交，之后才ACK；不会生成真实报告或岗位索引。
+
+有效租约下重复消息不执行、不提前ACK，本次消费返回deferred并关闭连接。租约过期可重新领取，旧token不能心跳/提交；这只验证合成数据库写入。尚未接入LangGraph/Checkpoint，因此不能推断旧图停止或同thread并发安全（T7）。取消标志会阻止领取/提交，但取消API和终态取消流程仍属T8；预算耗尽、未知/非法消息安全停止消费并保留消息，失败分类、可靠重试和隔离区仍属T5，不通过ACK丢弃。
+
+迁移 `202611260001_s14_task_execution_guard`增加数据库trigger，禁止任务fenceToken/generation回退及已终态任务变回其他状态；无需重建表或改旧迁移。回退应用时保留记录和约束，不重置任务/收据/队列。该trigger不替代应用fence条件，也不限制官方Checkpoint内部SQL。
 
 ## S1.3 诊断组件初始化
 
