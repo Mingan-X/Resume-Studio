@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // The optional namespace is reserved for exact-run integration resources.
 export const topologyNamespaceSchema = z.union([
-  z.literal('resume'), z.string().regex(/^s12\.t[345]\.[a-f0-9]{32}$/),
+  z.literal('resume'), z.string().regex(/^s12\.t[3456]\.[a-f0-9]{32}$/),
 ]);
 export function taskTopology(namespace = 'resume') {
   const prefix = topologyNamespaceSchema.parse(namespace);

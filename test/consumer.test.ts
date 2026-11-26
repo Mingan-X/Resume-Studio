@@ -8,6 +8,7 @@ import { decodeTaskDelivery } from '../src/infrastructure/consumer/contracts.js'
 import type { ExecutionClaim } from '../src/infrastructure/consumer/contracts.js';
 import { TaskDeliveryHandler, SyntheticCompletionHandler } from '../src/infrastructure/consumer/task-delivery.handler.js';
 import { analysisInput } from './support/task-inputs.js';
+import { unlockedUnitContext } from './support/execution-lock.js';
 
 function fixture() {
   const ownerId = randomUUID();
@@ -44,7 +45,7 @@ await test('heartbeat failure aborts work and prevents completion even when hand
     signal.addEventListener('abort', () => { aborted = true; }, { once: true });
     await delay(250);
     return new SyntheticCompletionHandler().execute(claim, new AbortController().signal);
-  } }, consumerConfigSchema.parse({ heartbeatMs: 100, leaseMs: 2000 }));
+  } }, consumerConfigSchema.parse({ heartbeatMs: 100, leaseMs: 2000 }), unlockedUnitContext);
   await assert.rejects(handler.handle(f.message, new AbortController().signal));
   await delay(250);
   assert.equal(aborted, true); assert.equal(completed, 0); assert.equal(beats, 1);
@@ -56,12 +57,12 @@ await test('terminal and deferred dispositions never execute; successful ACK dec
     const handler = new TaskDeliveryHandler({ fail: () => { assert.fail('No task failure expected'); },
       reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind }),
       heartbeat: () => { assert.fail('No heartbeat expected'); }, complete: () => { assert.fail('No completion expected'); },
-    }, f.identity, { execute: () => { assert.fail('No execution expected'); } }, consumerConfigSchema.parse({}));
+    }, f.identity, { execute: () => { assert.fail('No execution expected'); } }, consumerConfigSchema.parse({}), unlockedUnitContext);
     assert.equal(await handler.handle(f.message, new AbortController().signal), kind);
   }
   const handler = new TaskDeliveryHandler({ fail: () => { assert.fail('No task failure expected'); },
     reserveUsage: () => Promise.resolve(), claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
     heartbeat: () => Promise.resolve(), complete: async () => { await delay(10); completed = true; },
-  }, f.identity, new SyntheticCompletionHandler(), consumerConfigSchema.parse({}));
+  }, f.identity, new SyntheticCompletionHandler(), consumerConfigSchema.parse({}), unlockedUnitContext);
   assert.equal(await handler.handle(f.message, new AbortController().signal), 'ack'); assert.equal(completed, true);
 });

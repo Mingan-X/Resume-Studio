@@ -21,6 +21,7 @@ import { ConfirmedTaskPublisher } from '../../src/infrastructure/messaging/confi
 import { TaskCreationService } from '../../src/modules/tasks/task-creation.service.js';
 import { TaskRepository } from '../../src/infrastructure/tasks/task.repository.js';
 import { TaskExecutionStore } from '../../src/infrastructure/consumer/task-execution.store.js';
+import { PostgresExecutionLock } from '../../src/infrastructure/consumer/task-execution.lock.js';
 import { TaskDeliveryHandler, SyntheticCompletionHandler } from '../../src/infrastructure/consumer/task-delivery.handler.js';
 import type { SyntheticTaskHandler } from '../../src/infrastructure/consumer/task-delivery.handler.js';
 import { TaskConsumer } from '../../src/infrastructure/consumer/task.consumer.js';
@@ -111,7 +112,7 @@ await test('S1.4-T5 transactional retry, cumulative budgets, dead outbox and qua
     const event = await db.outboxEvent.findFirstOrThrow({ where: { ownerId, aggregateId: task.taskId } });
     const message = taskDispatchSchema.parse(event.payload);
     const store = new TaskExecutionStore(database, executionConfig), quarantine = new QuarantineStore(database, identity);
-    const handler = (executor: SyntheticTaskHandler = new SyntheticCompletionHandler(), persistence = store) => new TaskDeliveryHandler(persistence, identity, executor, executionConfig);
+    const handler = (executor: SyntheticTaskHandler = new SyntheticCompletionHandler(), persistence = store) => new TaskDeliveryHandler(persistence, identity, executor, executionConfig, new PostgresExecutionLock(database.pool));
     const consumer = (executor?: SyntheticTaskHandler, persistence?: TaskExecutionStore, q = quarantine) =>
       new TaskConsumer(config.rabbitmqUrl, topology, handler(executor, persistence), q);
     const outbox = new OutboxPublisher(new OutboxStore(database, outboxConfigSchema.parse({})), publisher, identity, outboxConfigSchema.parse({}));

@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费与T5重试/隔离区已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区及T6对账已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -26,6 +26,7 @@
 | TasksModule / IdentityModule | 显式register数据库连接；应用服务取得可信owner，再校验合成输入，通过TaskRepository写任务和Outbox | 默认固定开发主体，可替换身份provider；仅数据库创建/幂等，不含发布器、消费者或任务HTTP接口 |
 | OutboxModule | 显式注册身份、数据库与消息发布适配器，`outbox:publish`执行有界批次 | 短事务领取/发布/条件标记；无常驻轮询，消费者由ConsumerModule提供 |
 | ConsumerModule | `tasks:consume`按任务类型运行有界手动ACK会话；身份、执行存储和合成处理器通过Nest装配 | TaskAttempt/ConsumerReceipt、租约心跳与fence保护合成完成事件；未接入业务图或常驻调度 |
+| ReconciliationModule | `tasks:reconcile once/watch`按owner分页扫描两类任务，事务修复后调用Outbox发布器 | 与消费者共享执行锁标识；只恢复调度或按预算失败，不凭空生成报告/Checkpoint终态 |
 | Checkpointer | `src/infrastructure/checkpoint/`提供受控provision/setup与独立pg池；图仅在测试fixture中 | 旧子进程确认退出后同thread续跑；无首Checkpoint时从独立输入启动，不包含fence |
 | ObservabilityModule | `test/fixtures/observability-graph.ts`使用官方CallbackHandler及手工OTel span；独立集成测试注册Nest模块 | 合成输入与关联/脱敏验证；未验证跨API/Worker传播或真实LLM |
 | 本地服务 | 单一resume-studio项目，业务三服务在default网络，Langfuse六服务在observability网络 | 独立账号/卷、双向独立启停；运行结果见开发进度；本机存储性能仍有限制 |
@@ -241,7 +242,7 @@ RabbitMQ内部死信确认/重试周期独立于客户端发布超时，本机4.
 
 心跳更新任务及当前收据采用同一事务、同一个数据库时间。心跳不重叠执行；失败会abort本次处理器，完成前等待已开始的心跳结束，禁止后台继续续租。执行受输入冻结预算、跨尝试首个startedAt推导的总期限及单次上限限制。当前只执行无外部副作用的合成处理器；处理结果与输入哈希核对后，在同事务写SYNTHETIC_COMPLETED TaskEvent、SUCCEEDED、TaskAttempt结束及ConsumerReceipt DONE，再在原channel ACK。合成状态没有报告/indexStatus语义，真实产物事务将随S2接入。
 
-数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。对账器、取消API、Checkpoint联动仍属T6–T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
+数据库不可读/不可写、SQL提交失败、心跳/租约丢失或停机不ACK，关闭会话且不自动重连形成热循环；T5已为格式错误增加持久隔离后ACK。confirm与消费ACK独立：提交后ACK前进程被强杀时，消息重投到终态任务，不重复产出。数据库trigger保护终态与token/generation单调性；正常操作仍必须经过应用条件更新。T6对账已接入合成执行锁；取消API、Checkpoint联动仍属T7/T8，receipt存在和租约失效都不能证明旧LangGraph已停止。
 
 **业务重试采用数据库延迟Outbox**：失败分类后，在事务中更新Task为RETRY_WAIT、递增dispatchGeneration、写入新的messageId与availableAt；提交后ACK原消息。发布器到期再投递。无需RabbitMQ延迟插件，也不会在TTL队列头部阻塞不同延迟消息。
 
@@ -387,6 +388,17 @@ S1.3合成图使用已固定的LangGraph 1.7.5与 `durability: sync`；本次核
 
 对账器是任务表的定时修复服务，不是自研Agent Runtime：只查过期租约、未完成状态和待发送事件，产生恢复消息或修正终态；真正执行仍交给LangGraph。
 
+#### S1.4-T6 当前实现
+
+- `PostgresExecutionLock`给合成消费者提供session advisory lock：以固定命名空间、ownerId/taskType/taskId的SHA-256前64位作为有符号bigint键，UUID统一小写。对账事务使用同键的pg_try_advisory_xact_lock；消费者先拿session锁再领取任务，对账先拿transaction锁再以FOR UPDATE SKIP LOCKED读任务。锁冲突直接延后，不等待或抢占。哈希碰撞最多造成无关任务延迟，不授予并发执行。
+- session连接来自原3连接池并在执行期间保留，事务另借连接；当前每个consumer命令最多执行一个任务。退出时显式解锁，连接错误/未知锁结果销毁该连接；锁连接丢失触发AbortSignal，不ACK。扩展进程内并发前必须重新核算池预算。T6没有把这把锁接到LangGraph、saver或thread切换，不替代T7验证；合成数据库写入仍由generation/fence约束。
+- 默认每轮每类最多10个候选，用UUID游标分页并回绕，跳过锁住或校验失败的任务不会一直挡住后续任务。只查询可信owner下过期RUNNING，以及updatedAt超过120秒、retryAt已到的QUEUED/RETRY_WAIT。每个候选在事务中重新判断终态、取消标志、代次、租约及输入Schema，不用扫描时的旧值直接写入。
+- 过期且无执行锁的RUNNING在一个事务内结束旧attempt、累计elapsedMs、将旧代次RUNNING收据标DONE，递增generation/fence/recoveryCount，置QUEUED/RECOVERY_QUEUED并写新messageId Outbox和进度事件。原taskId、快照、调用/token/费用预算和graph thread字段不变；晚到旧消息/旧token分别由旧代次与fence拒绝。两个对账实例竞争同一候选只会安排一次恢复。
+- 长期QUEUED/RETRY_WAIT缺调度Outbox，或当前代次事件已confirm且超过120秒仍无执行时，才安排新的恢复代次。当前代次未发布事件继续使用T3发布租约/退避/次数；failedAt事件仅报告delivery-failed，不清零重发预算或换新事件绕过限制。未发布事件扫描包含dead及Quarantine来源，由原发布器处理；活跃发布租约不抢占，过期租约由原领取逻辑恢复。进度汇总包含pending/due/failed及最老事件时间。
+- recoveryCount默认最多3次，不因重启清零；已有恢复消息仍待发布时等待原投递，不因次数达到上限提前判失败。再次需要恢复却超限，或输入执行次数/总期限已耗尽，则复用T5事务写FAILED/dead。没有首attempt的任务只受恢复次数约束，不臆造执行起点；已开始的任务保持首次attempt总期限。缺少原投递/收据时dead.originalMessageId为空，不生成伪造的消费收据。
+- 定时watch立即执行一轮，完成后间隔10秒再执行，轮次不重叠；每轮60秒期限，后续操作停止，已开始的SQL仍受原连接/语句/事务上限约束。连续3轮数据库/修复错误退出并报告安全错误。每个候选失败保留error汇总，继续同页其他候选；发布错误沿用Outbox持久预算。once/watch都由显式命令启动，不新增Docker服务，不默认为API/空Worker引入依赖。
+- T6不读取或修正官方Checkpoint，不通过缺失终态推测业务成功；表中Checkpoint结束后的幂等finalize仍属于未来真实产物/业务图接入。取消请求只跳过并保留状态，不提前实现取消API。
+
 ## 7. 召回、RAG与索引一致性
 
 当前确定的方案是 **结构化技能关键词检索 + Dense Vector（稠密向量检索）+ RRF（按排名融合）+ LLM 逐项判断**。前两路负责获取岗位候选，RRF 融合候选排名，LLM 随后对候选岗位的每条要求给出带证据的判断；最终评分与排序仍由普通代码完成。当前方案没有采用 BM25 检索或独立 Reranker 模型，不应称为完整的“BM25 + Dense + Reranker”链路，也不因补充这一说明而提前增加组件。
@@ -502,7 +514,7 @@ Resume-Studio-Backend/
     infrastructure/            # 已有数据库、消息、向量、HTTP与日志适配器
       checkpoint/              # 已有provision/setup、独立池、配置与归属校验
       observability/           # 已有模块、脱敏、导出器、配置与归属校验
-  prisma/                      # 当前仅合成诊断表schema/迁移；业务表尚未实现
+  prisma/                      # 诊断、任务/Outbox/收据/隔离区schema与迁移；简历/岗位业务表未实现
   test/                        # 已有配置、HTTP、进程、恢复和观测测试
     fixtures/                  # 合成观测图；不注册到API/Worker
     integration/               # 真实服务测试与恢复子进程fixture

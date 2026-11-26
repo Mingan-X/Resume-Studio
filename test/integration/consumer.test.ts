@@ -19,6 +19,7 @@ import { ConfirmedTaskPublisher } from '../../src/infrastructure/messaging/confi
 import { TaskCreationService } from '../../src/modules/tasks/task-creation.service.js';
 import { TaskRepository } from '../../src/infrastructure/tasks/task.repository.js';
 import { TaskExecutionStore } from '../../src/infrastructure/consumer/task-execution.store.js';
+import { PostgresExecutionLock } from '../../src/infrastructure/consumer/task-execution.lock.js';
 import { TaskDeliveryHandler, SyntheticCompletionHandler } from '../../src/infrastructure/consumer/task-delivery.handler.js';
 import type { SyntheticTaskHandler } from '../../src/infrastructure/consumer/task-delivery.handler.js';
 import { TaskConsumer } from '../../src/infrastructure/consumer/task.consumer.js';
@@ -84,7 +85,7 @@ await test('S1.4-T4 real consumer receipts, execution leases and fenced completi
     const message = taskDispatchSchema.parse(row.payload), config = consumerConfigSchema.parse({ heartbeatMs: 100, leaseMs: 2_000 });
     const store = new TaskExecutionStore(database, config);
     const handler = (execution: SyntheticTaskHandler = new SyntheticCompletionHandler(), persistence = store) =>
-      new TaskDeliveryHandler(persistence, identity, execution, config);
+      new TaskDeliveryHandler(persistence, identity, execution, config, new PostgresExecutionLock(database.pool));
     const consumer = (execution?: SyntheticTaskHandler, persistence?: TaskExecutionStore) =>
       new TaskConsumer(connectionConfig.rabbitmqUrl, topology, handler(execution, persistence));
     const read = () => type === 'analysis' ? db.analysisTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: task.taskId } } })

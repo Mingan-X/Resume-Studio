@@ -8,6 +8,49 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-26 S1.4-T6 定时对账与持锁执行保护（分支 feature/s1.4-task-foundation）
+
+状态：S1.4保持“进行中”。从干净的T5提交4fb15a2继续T6；范围为任务/Outbox定时扫描、恢复调度与不抢占持锁执行，未开展T7图恢复。T6专项通过，全量回归仍有既有Qdrant失败；本任务与记录整理为本地提交，未推送、未合并。
+
+实现：
+
+- 新ReconciliationModule/Store/Service与 `tasks:reconcile once|watch`；默认每类10条候选、UUID游标分页回绕，扫描过期RUNNING和超过120秒未完成的QUEUED/RETRY_WAIT，不漏掉因锁阻塞前面任务而排在后面的任务。修复事务逐条短执行，之后再调用既有Outbox发布器；输出pending/due/failed和最老事件时间。
+- 为T6“持锁不抢占”补齐最小消费执行锁：PostgresExecutionLock从原3连接池借专属session连接，键由固定命名空间及owner/type/task确定；消费者从拿锁到本次数据库处理结束保持它，对账使用同键transaction advisory lock再SKIP LOCKED锁任务。有效执行、行锁、取消、未来retryAt、终态和非本owner跳过；锁连接丢失Abort，不将带锁连接归还池。
+- 过期无锁RUNNING事务结束旧attempt并累计elapsedMs，可靠结束旧代次RUNNING收据、递增generation/fence/recoveryCount，置QUEUED并同事务创建新恢复messageId Outbox与TaskEvent。保留taskId、冻结输入、所有预算及graph线程字段；晚到旧token被拒绝。并发对账只恢复一次，SQL失败全部回滚。
+- 缺本代调度或已confirm但长期仍无执行的任务恢复调度；当前未发布或失败事件保留原T3退避/租约/预算，不重置，不靠创建新代次绕过failedAt。已有恢复消息仍待投递时，即使恢复次数达到上限也继续等待；真正再次需要恢复且recoveryCount达默认3次，或执行次数/总期限耗尽时复用T5 FAILED/dead事务。
+- watch立即执行、完成后间隔10秒，轮次不重叠；单轮60秒期限和既有数据库/发布期限，连续3轮数据库/修复错误停止。单任务异常分类汇总为error，不输出原始SQL/输入；新候选仍可继续。命令固定开发owner，未接入跨owner调度或API/空Worker自动启动。
+- 新迁移202611260003仅加recoveryCount非负列与扫描索引，未改旧迁移/Checkpoint库；无依赖或镜像变化。消费者fixture统一使用真实锁，纯单元测试使用明确标注的无锁测试端口。更新部署、测试、架构、README和路线图，注明不能混跑无锁旧消费者与新对账器。
+
+逐次验证（test runner耗时不含构建）：
+
+| 检查 | 实际结果 |
+|---|---|
+| 开始状态/前置 | feature/s1.4-task-foundation干净，HEAD=4fb15a2；九个项目服务healthy；阅读AGENTS/CONTRIBUTING/路线图和相关架构/实现 |
+| db:generate及初期build | 通过，使用原Prisma与依赖；没有新增包 |
+| PostgreSQL归属及首次db:deploy | 通过，新增T6迁移；未reset或删除资源 |
+| 独立T6真实集成专项第1次 | 11通过、0失败、0跳过，40.014秒（父37.108秒）。含两类恢复+实际消费、并发对账、真实持锁子进程不抢占/强杀后恢复、锁连接终止、行锁/owner/取消隔离、原发布预算、缺投递/恢复上限、只读DB/SQL回滚；精确资源清理、池连接0 |
+| 首轮Lint | 通过，零警告 |
+| 审阅补充 | 修正恢复次数上限与尚待投递事件的顺序：本代仍pending时不提前FAILED，增加对应真实断言；不改既有限制 |
+| pnpm test第1次 | 41通过、0失败、0跳过，12.388秒；原API/Worker启动/关闭与8秒限制保留，L1未复现 |
+| typecheck、最终Lint | 通过，零警告 |
+| 第2次db:deploy、db:status | 无pending，共6条迁移已应用 |
+| db:validate、schema diff | 通过，无结构差异 |
+| tasks:reconcile once | 真实Nest装配成功，开发owner扫描为空，publications=[idle]、pending/due/failed=0，退出0 |
+| tasks:reconcile watch | 真实子进程连续2轮扫描，收到私有IPC shutdown后按与SIGINT/SIGTERM共用的stop路径退出0，无stderr；不等于Linux信号实测 |
+| 初步文档/变更检查 | 26文件、51个本地链接目标有效，git diff --check通过；依赖/锁文件无变化 |
+| 完整test:integration | 66通过、2失败、0跳过，471.452秒；T6父/子11项全部通过（父49.756秒），T1–T5、Checkpoint、Langfuse均通过；仅Qdrant创建超时及父测试失败 |
+| 收尾元数据修正及独立T6专项第2次 | 对账终结但没有原投递/收据时，不新建伪消费收据，dead.originalMessageId=null；新增断言。修正后build通过，T6 11通过、0失败、0跳过，41.913秒（父41.207秒），精确资源清理/池关闭通过；完整回归是在该元数据修正前开始，修正后只针对受影响的T6及基础/静态检查复验 |
+| pnpm test第2次（最终代码） | 41通过、0失败、0跳过，12.827秒；原API/Worker断言及限制不变 |
+| 最终typecheck、Lint | 通过，零警告 |
+| 最终资源核对 | 三轮T6 manifest均cleaned=true；RabbitMQ只保留4条正式队列和1条正式策略，ready/unacked均0，AMQP连接0；Qdrant s12_*残留0 |
+| 最终文件检查 | 28个修改/新增文件、97个本地链接目标有效，diff检查通过；凭证、data、dist及生成客户端均被忽略，依赖/锁文件未变 |
+
+边界与观察：首轮专项通过后审阅发现pending恢复事件达到恢复次数上限不应提前失败，已修正并纳入最终完整回归；这是本批实现边界调整，不是放宽验收。T6只恢复调度，未读取Checkpoint或推测SUCCEEDED；持锁子进程试验是合成执行，不把它当成T7旧图/线程/saver迟到写入验证。session锁占用原池一条连接，当前每个consumer命令最多一个活动任务，增加进程内并发前须重新核算池容量。
+
+完整回归仍有既有Qdrant集合创建超时：本轮 `s12_91ef2918_a7ac_48d2_a7fc_d61b1b584ddc` 服务端PUT耗时5.436763秒，超出未改的5秒客户端限制；随后精确DELETE成功（0.070312秒），只读核对s12_*残留0。Langfuse本轮通过。未修改Qdrant/API/观测超时，未关闭服务或改tmpfs；存储性能处理仍需单独安排，不能用T6专项通过覆盖全量失败。
+
+未执行/限制：T7 session锁与LangGraph/Checkpoint联合恢复及新thread切换、T8任务取消/查询API、T9 OpenAPI、真实报告/索引/LLM、跨owner授权、后台进程监督、多副本容错、长期负载/生产硬件、容器重启及新机冻结安装（依赖无变化）。锁断开无法证明任意旧图已停止，T6不提供图恢复保证；未自动重置failed Outbox，不新增人工恢复接口。现有API/空Worker入口仍未自动装配对账器，需要显式watch命令。未推送、未合并。
+
 ## 2026-11-26 S1.4-T5 有界任务重试、dead事件与持久隔离区（分支 feature/s1.4-task-foundation）
 
 状态：T5实现与专项验证通过，完整回归仍有既有Qdrant失败，S1.4保持“进行中”。先按维护者授权将此前工作保存为4个本地提交：501544e（T1/T2）、485c004（T3）、8ede21c（T4）、aaea0ab（累计文档）；提交后工作区曾干净，再开始本任务。T5与本记录整理为单独本地提交，未推送、未合并，未以提交表示阶段验收通过。

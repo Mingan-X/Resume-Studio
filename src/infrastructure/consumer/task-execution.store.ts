@@ -14,12 +14,15 @@ import { TaskFailure, isRetryable, executionRetryDelay } from './failure.js';
 import type { TaskFailureCode } from './failure.js';
 import type { ClaimResult, ExecutionClaim } from './contracts.js';
 import type { ConsumerConfig } from './config.js';
+import { executionLockKey } from './task-execution.lock.js';
+import type { ReconciliationConfig } from '../reconciliation/config.js';
 
 const table = (type: TaskType) => type === 'analysis' ? Prisma.sql`analysis_task` : Prisma.sql`job_index_task`;
 const dbType = (type: TaskType): 'ANALYSIS' | 'JOB_INDEX' => type === 'analysis' ? 'ANALYSIS' : 'JOB_INDEX';
 const rowSchema = z.object({ id: z.uuid(), ownerId: z.uuid(), status: z.string(), generation: z.int(),
   fenceToken: z.bigint(), leaseOwner: z.uuid().nullable(), leaseUntil: z.date().nullable(),
-  retryAt: z.date().nullable(), cancelRequested: z.boolean(), inputSnapshot: z.unknown(), budgetUsage: z.unknown() });
+  retryAt: z.date().nullable(), recoveryCount: z.int().nonnegative(), updatedAt: z.date(),
+  cancelRequested: z.boolean(), inputSnapshot: z.unknown(), budgetUsage: z.unknown() });
 const timeRows = z.array(z.object({ now: z.date() })).length(1);
 const terminal = new Set(['SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED']);
 
@@ -27,18 +30,19 @@ async function databaseNow(tx: Prisma.TransactionClient) {
   return timeRows.parse(await tx.$queryRaw`SELECT clock_timestamp() AS now`)[0]!.now;
 }
 
-async function lockTask(tx: Prisma.TransactionClient, ownerId: string, message: ExecutionClaim['message']) {
+async function lockTask(tx: Prisma.TransactionClient, ownerId: string, message: Pick<ExecutionClaim['message'], 'taskId' | 'taskType'>, skipLocked = false) {
   return z.array(rowSchema).max(1).parse(await tx.$queryRaw(Prisma.sql`
     SELECT id, owner_id AS "ownerId", status, generation, fence_token AS "fenceToken", retry_at AS "retryAt",
       lease_owner AS "leaseOwner", lease_until AS "leaseUntil", cancel_requested AS "cancelRequested",
-      input_snapshot AS "inputSnapshot", budget_usage AS "budgetUsage"
-    FROM ${table(message.taskType)} WHERE owner_id = ${ownerId}::uuid AND id = ${message.taskId}::uuid FOR UPDATE`))[0];
+      input_snapshot AS "inputSnapshot", budget_usage AS "budgetUsage", recovery_count AS "recoveryCount", updated_at AS "updatedAt"
+    FROM ${table(message.taskType)} WHERE owner_id = ${ownerId}::uuid AND id = ${message.taskId}::uuid
+      FOR UPDATE ${skipLocked ? Prisma.sql`SKIP LOCKED` : Prisma.empty}`))[0];
 }
 
 // Caller holds the task row lock, validates execution authority, and passes validated accumulated usage.
 async function finishFailure(tx: Prisma.TransactionClient, ownerId: string, message: ExecutionClaim['message'],
   task: z.infer<typeof rowSchema>, now: Date, code: TaskFailureCode, retryAt: Date | null,
-  usage: z.infer<typeof budgetUsageSchema>, attemptId: string | null) {
+  usage: z.infer<typeof budgetUsageSchema>, attemptId: string | null, originalMessageId: string | null = message.messageId) {
   const status = retryAt ? 'RETRY_WAIT' : 'FAILED', type = dbType(message.taskType);
   const generation = task.generation + (retryAt ? 1 : 0);
   const changed = await tx.$executeRaw(Prisma.sql`
@@ -55,7 +59,7 @@ async function finishFailure(tx: Prisma.TransactionClient, ownerId: string, mess
   const name = consumerName(message.taskType);
   const receipt = await tx.consumerReceipt.findUnique({ where: { consumerName_messageId: { consumerName: name, messageId: message.messageId }, ownerId } });
   if (receipt) await tx.consumerReceipt.update({ where: { ownerId, id: receipt.id }, data: { status: 'DONE', processedAt: now, leaseOwner: null, leaseUntil: null } });
-  else await tx.consumerReceipt.create({ data: { ...reference, id: randomUUID(), consumerName: name, messageId: message.messageId,
+  else if (originalMessageId !== null) await tx.consumerReceipt.create({ data: { ...reference, id: randomUUID(), consumerName: name, messageId: message.messageId,
     generation: message.dispatchGeneration, status: 'DONE', processedAt: now } });
   const previous = await tx.taskEvent.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { seq: 'desc' } });
   await tx.taskEvent.create({ data: { ...reference, id: randomUUID(), seq: (previous?.seq ?? 0) + 1, stage: status,
@@ -64,7 +68,7 @@ async function finishFailure(tx: Prisma.TransactionClient, ownerId: string, mess
   const eventId = randomUUID();
   const payload = retryAt ? taskDispatchSchema.parse({ ...message, messageId: eventId, dispatchGeneration: generation, occurredAt: now.toISOString() })
     : deadMessageSchema.parse({ schemaVersion: 1, kind: 'dead', messageId: eventId, taskType: message.taskType,
-      occurredAt: now.toISOString(), originalMessageId: message.messageId, errorCode: code,
+      occurredAt: now.toISOString(), originalMessageId, errorCode: code,
       source: { kind: 'task', taskId: task.id, dispatchGeneration: task.generation } });
   await tx.outboxEvent.create({ data: { eventId, ownerId,
     aggregateType: type === 'ANALYSIS' ? 'AnalysisTask' : 'JobIndexTask', aggregateId: task.id,
@@ -74,6 +78,79 @@ async function finishFailure(tx: Prisma.TransactionClient, ownerId: string, mess
 
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
+
+  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig) {
+    const ownerId = ownerIdSchema.parse(owner), taskId = z.uuid().parse(id).toLowerCase();
+    return this.database.client.$transaction(async tx => {
+      const lock = z.array(z.object({ acquired: z.boolean() })).length(1).parse(await tx.$queryRaw`
+        SELECT pg_try_advisory_xact_lock(${executionLockKey(ownerId, taskType, taskId)}::bigint) AS acquired`)[0]!;
+      if (!lock.acquired) return 'lock-held';
+      const task = await lockTask(tx, ownerId, { taskType, taskId }, true), now = await databaseNow(tx);
+      if (!task || terminal.has(task.status) || task.cancelRequested) return 'skipped';
+      const expired = task.status === 'RUNNING' && (!task.leaseUntil || task.leaseUntil <= now);
+      if (task.status === 'RUNNING' && !expired) return 'skipped';
+      if (!expired && (task.updatedAt.getTime() + config.staleMs > now.getTime() || (task.retryAt && task.retryAt > now))) return 'skipped';
+      const snapshot = taskType === 'analysis' ? analysisInputSnapshotSchema.parse(task.inputSnapshot) : jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
+      if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
+      const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
+      const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
+      const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
+      const timedOut = first !== null && first.startedAt.getTime() + snapshot.budget.maxDurationMs <= now.getTime();
+      const reference = { ownerId, taskId, taskType: type };
+      const currentEvent = await tx.outboxEvent.findFirst({ where: { ownerId, aggregateId: taskId,
+        aggregateType: type === 'ANALYSIS' ? 'AnalysisTask' : 'JobIndexTask',
+        eventType: type === 'ANALYSIS' ? 'analysis.requested.v1' : 'job.index.requested.v1',
+        payload: { path: ['dispatchGeneration'], equals: task.generation } }, orderBy: [{ createdAt: 'desc' }, { eventId: 'desc' }] });
+      if (currentEvent) {
+        const payload = taskDispatchSchema.parse(currentEvent.payload);
+        if (payload.taskType !== taskType || payload.taskId !== taskId || payload.messageId !== currentEvent.eventId
+          || currentEvent.payloadVersion !== 1) throw new Error('INVALID_RECOVERY_EVENT');
+      }
+      // A pending or exhausted delivery is owned by the publisher, not a new unlimited dispatch cycle.
+      if (!expired && usage.attempts < snapshot.budget.maxAttempts && !timedOut && currentEvent) {
+        if (currentEvent.failedAt) return 'delivery-failed';
+        if (!currentEvent.publishedAt) return 'pending';
+        if (currentEvent.publishedAt.getTime() + config.staleMs > now.getTime()) return 'skipped';
+      }
+      const receipt = await tx.consumerReceipt.findFirst({ where: { ...reference, generation: task.generation,
+        ...(task.leaseOwner ? { leaseOwner: task.leaseOwner } : {}) }, orderBy: { createdAt: 'desc' } });
+      const original = taskDispatchSchema.parse({ schemaVersion: 1, messageId: receipt?.messageId ?? currentEvent?.eventId ?? randomUUID(),
+        taskType, taskId, dispatchGeneration: task.generation, occurredAt: now.toISOString() });
+      if (task.leaseOwner) {
+        const attempt = await tx.taskAttempt.findFirst({ where: { ...reference, attemptId: task.leaseOwner, endedAt: null } });
+        if (attempt) usage.elapsedMs += Math.max(0, now.getTime() - attempt.startedAt.getTime());
+      }
+      if (exhausted || timedOut) {
+        await finishFailure(tx, ownerId, original, task, now, timedOut ? 'DEADLINE_EXCEEDED' : 'BUDGET_EXHAUSTED', null, usage, task.leaseOwner,
+          receipt?.messageId ?? currentEvent?.eventId ?? null);
+        // Any other delivery for the same superseded execution is also durably terminal.
+        await tx.consumerReceipt.updateMany({ where: { ...reference, generation: task.generation, status: 'RUNNING' },
+          data: { status: 'DONE', processedAt: now, leaseOwner: null, leaseUntil: null } });
+        return 'failed';
+      }
+      const generation = task.generation + 1, eventId = randomUUID();
+      const changed = await tx.$executeRaw(Prisma.sql`
+        UPDATE ${table(taskType)} SET status = 'QUEUED', stage = 'RECOVERY_QUEUED', generation = ${generation},
+          fence_token = fence_token + 1, recovery_count = recovery_count + 1, lease_owner = NULL, lease_until = NULL,
+          heartbeat_at = NULL, retry_at = NULL, updated_at = ${now}, budget_usage = ${JSON.stringify(budgetUsageSchema.parse(usage))}::jsonb
+        WHERE owner_id = ${ownerId}::uuid AND id = ${taskId}::uuid AND generation = ${task.generation}
+          AND fence_token = ${task.fenceToken} AND status IN ('QUEUED','RETRY_WAIT','RUNNING') AND cancel_requested = false`);
+      if (changed !== 1) throw new ExecutionLeaseLostError();
+      if (task.leaseOwner) await tx.taskAttempt.updateMany({ where: { ...reference, attemptId: task.leaseOwner, endedAt: null },
+        data: { endedAt: now, errorClass: 'LEASE_EXPIRED' } });
+      await tx.consumerReceipt.updateMany({ where: { ...reference, generation: task.generation, status: 'RUNNING' },
+        data: { status: 'DONE', processedAt: now, leaseOwner: null, leaseUntil: null } });
+      await tx.outboxEvent.create({ data: { ownerId, eventId, aggregateId: taskId,
+        aggregateType: type === 'ANALYSIS' ? 'AnalysisTask' : 'JobIndexTask', eventType: `${type === 'ANALYSIS' ? 'analysis' : 'job.index'}.requested.v1`,
+        payloadVersion: 1, payload: taskDispatchSchema.parse({ ...original, messageId: eventId, dispatchGeneration: generation, occurredAt: now.toISOString() }) } });
+      const previous = await tx.taskEvent.findFirst({ where: reference, orderBy: { seq: 'desc' } });
+      await tx.taskEvent.create({ data: { ...reference, id: randomUUID(), seq: (previous?.seq ?? 0) + 1,
+        analysisTaskId: type === 'ANALYSIS' ? taskId : null, jobIndexTaskId: type === 'JOB_INDEX' ? taskId : null,
+        stage: 'RECOVERY_QUEUED', safeMessage: 'Task recovery scheduled',
+        counts: taskCountsSchema.parse({ schemaVersion: 1, planned: 1, completed: 0, failed: 0 }) } });
+      return 'recovered';
+    });
+  }
 
   async claim(owner: string, input: unknown): Promise<ClaimResult> {
     const ownerId = ownerIdSchema.parse(owner), message = taskDispatchSchema.parse(input);

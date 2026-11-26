@@ -1,11 +1,14 @@
 import { requestHash } from '../../modules/tasks/request-hash.js';
 import type { IdentityPort } from '../../modules/identity/identity.module.js';
+import { ownerIdSchema } from '../../modules/identity/identity.module.js';
+import { taskDispatchSchema } from '../../contracts/tasks.js';
 import type { TaskDispatch, UsageReservation } from '../../contracts/tasks.js';
 import { syntheticCompletionSchema, ExecutionLeaseLostError } from './contracts.js';
 import { TaskFailure, classifyTaskFailure } from './failure.js';
 import type { ConsumerConfig } from './config.js';
 import type { ExecutionClaim, SyntheticCompletion } from './contracts.js';
 import type { TaskExecutionStore } from './task-execution.store.js';
+import type { ExecutionLock } from './task-execution.lock.js';
 
 export interface SyntheticTaskHandler {
   execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }): Promise<SyntheticCompletion>;
@@ -21,11 +24,18 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 export class TaskDeliveryHandler {
   constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage'>,
     private readonly identity: IdentityPort, private readonly handler: SyntheticTaskHandler,
-    private readonly config: ConsumerConfig) {}
+    private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
   async handle(message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
+    const parsed = taskDispatchSchema.parse(message);
+    const ownerId = ownerIdSchema.parse(await this.identity.getOwnerId());
+    return await this.locks.run(ownerId, parsed.taskType, parsed.taskId, signal,
+      executionSignal => this.handleLocked(ownerId, parsed, executionSignal)) ?? 'deferred';
+  }
+
+  private async handleLocked(ownerId: string, message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
     signal.throwIfAborted();
-    const result = await this.store.claim(await this.identity.getOwnerId(), message);
+    const result = await this.store.claim(ownerId, message);
     signal.throwIfAborted();
     if (result.kind !== 'acquired') return result.kind;
     const { claim } = result;

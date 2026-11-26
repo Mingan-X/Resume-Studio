@@ -7,13 +7,14 @@ import { consumerConfigSchema } from '../../src/infrastructure/consumer/config.j
 import { TaskExecutionStore } from '../../src/infrastructure/consumer/task-execution.store.js';
 import { TaskDeliveryHandler, SyntheticCompletionHandler } from '../../src/infrastructure/consumer/task-delivery.handler.js';
 import { TaskConsumer } from '../../src/infrastructure/consumer/task.consumer.js';
+import { PostgresExecutionLock } from '../../src/infrastructure/consumer/task-execution.lock.js';
 
 try {
   const ownerId = z.uuid().parse(process.env.S14_OWNER_ID);
   const connection = loadInfrastructureConfig(process.env), config = consumerConfigSchema.parse({});
   const database = new DatabaseService(connection);
   const handler = new TaskDeliveryHandler(new TaskExecutionStore(database, config),
-    { getOwnerId: () => Promise.resolve(ownerId) }, new SyntheticCompletionHandler(), config);
+    { getOwnerId: () => Promise.resolve(ownerId) }, new SyntheticCompletionHandler(), config, new PostgresExecutionLock(database.pool));
   const consumer = new TaskConsumer(connection.rabbitmqUrl, taskTopology(process.env.S14_NAMESPACE), {
     handle: async (message, signal) => {
       const disposition = await handler.handle(message, signal);

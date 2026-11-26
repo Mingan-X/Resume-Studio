@@ -11,6 +11,7 @@ import { TaskExecutionStore } from './task-execution.store.js';
 import { SyntheticCompletionHandler, TaskDeliveryHandler } from './task-delivery.handler.js';
 import { TaskConsumer } from './task.consumer.js';
 import { QuarantineStore } from './quarantine.store.js';
+import { PostgresExecutionLock } from './task-execution.lock.js';
 
 @Module({})
 export class ConsumerModule {
@@ -19,8 +20,8 @@ export class ConsumerModule {
     return { module: ConsumerModule, imports: [IdentityModule], providers: [
       { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService,
       { provide: TaskExecutionStore, inject: [DatabaseService], useFactory: (db: DatabaseService) => new TaskExecutionStore(db, execution) },
-      { provide: TaskDeliveryHandler, inject: [TaskExecutionStore, IDENTITY], useFactory: (store: TaskExecutionStore, identity: IdentityPort) =>
-        new TaskDeliveryHandler(store, identity, new SyntheticCompletionHandler(), execution) },
+      { provide: TaskDeliveryHandler, inject: [TaskExecutionStore, IDENTITY, DatabaseService], useFactory: (store: TaskExecutionStore, identity: IdentityPort, db: DatabaseService) =>
+        new TaskDeliveryHandler(store, identity, new SyntheticCompletionHandler(), execution, new PostgresExecutionLock(db.pool)) },
       { provide: QuarantineStore, inject: [DatabaseService, IDENTITY], useFactory: (db: DatabaseService, identity: IdentityPort) => new QuarantineStore(db, identity) },
       { provide: TaskConsumer, inject: [TaskDeliveryHandler, QuarantineStore], useFactory: (handler: TaskDeliveryHandler, quarantine: QuarantineStore) =>
         new TaskConsumer(config.rabbitmqUrl, taskTopology(), handler, quarantine) },

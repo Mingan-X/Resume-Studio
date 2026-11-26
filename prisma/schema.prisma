@@ -71,6 +71,7 @@ model AnalysisTask {
   reportId String? @map("report_id") @db.Uuid
   inputSnapshot Json @map("input_snapshot") @db.JsonB
   status AnalysisTaskStatus @default(QUEUED)
+  recoveryCount Int @default(0) @map("recovery_count")
   retryAt DateTime? @map("retry_at")
   stage String @default("QUEUED") @db.VarChar(64)
   generation Int @default(1)
@@ -93,6 +94,7 @@ model AnalysisTask {
   @@unique([ownerId, id])
   @@index([ownerId, status, createdAt])
   @@index([status, leaseUntil])
+  @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
 }
 
@@ -106,6 +108,7 @@ model JobIndexTask {
   indexVersion String @map("index_version") @db.VarChar(64)
   inputSnapshot Json @map("input_snapshot") @db.JsonB
   status JobIndexTaskStatus @default(QUEUED)
+  recoveryCount Int @default(0) @map("recovery_count")
   retryAt DateTime? @map("retry_at")
   stage String @default("QUEUED") @db.VarChar(64)
   generation Int @default(1)
@@ -128,6 +131,7 @@ model JobIndexTask {
   @@unique([ownerId, id])
   @@index([ownerId, status, createdAt])
   @@index([status, leaseUntil])
+  @@index([ownerId, status, updatedAt])
   @@map("job_index_task")
 }
 

@@ -123,6 +123,27 @@ pnpm run tasks:consume job-index
 
 回退到T4代码时先停止会读取新dead事件的发布进程并保留数据/消息：旧发布器不认识dead契约，会将其标为INVALID_EVENT，不能保证混跑版本正确。已迁移的字段和数据保留，不删除旧迁移、队列或卷；需要回退时单独评估待发新事件，不能自动重置事件预算。此次无依赖升级、新账号、新Docker服务或新vhost。
 
+### S1.4-T6 定时对账
+
+先生成客户端、构建，按上文核对PostgreSQL归属后应用新增迁移，再使用：
+
+```powershell
+pnpm run db:generate
+pnpm run build
+pnpm run db:deploy
+pnpm run tasks:reconcile once
+# 前台定时运行，Ctrl+C关闭：
+pnpm run tasks:reconcile watch
+```
+
+命令启动时核验PostgreSQL和RabbitMQ项目/服务/端口/卷，使用固定开发owner。once运行一轮；watch每轮结束后等待10秒，不重叠执行。默认每种任务10条候选，长期未完成窗口120秒，每轮60秒期限；通过[reconciliation配置](../src/infrastructure/reconciliation/config.ts)验证范围。watch连续3轮数据库/任务修复错误退出；逐轮结构化汇总只包含结果分类、Outbox数量/最老时间，不输出原始数据或异常。once遇到持锁阻塞、失败投递、修复错误或停止会返回非零；这不授权自动重置失败任务/Outbox预算。
+
+对账提交恢复事务后才调用既有Outbox发布器，因此RabbitMQ不可用时已写入的恢复计划仍保留；publisher有界失败不回滚任务。还需运行原 `tasks:consume` 执行合成任务；对账器不在内存执行任务或生成报告。终态、有效租约、取消请求和未来retryAt跳过；持有同任务执行锁时返回lock-held，不抢占。
+
+消费者现在从原3连接池保留一条session advisory lock连接，正常事务继续使用池中其他连接。默认每个消费命令一个执行；不得自行增加同一上下文并发使锁连接占满池。对账使用transaction advisory lock，无长期专属连接。新旧消费者不能与对账器混跑：旧T5进程没有锁协议，可能使对账器误以为执行锁空闲；部署前停止旧消费会话，再统一更新T6消费者和对账器。
+
+迁移202611260003仅新增两类任务recoveryCount（非负、默认0）和owner/status/updatedAt索引；旧记录兼容，不清空数据。默认最多恢复调度3次，输入尝试次数/总期限仍累计。回退时先停止watch和消费者，保留字段、事件、任务及原卷；不改已应用迁移。Checkpoint schema/thread从未由本功能修改，T7另验收图恢复。
+
 ## S1.3 诊断组件初始化
 
 ### S1.3 Checkpointer 初始化（独立于业务进程）
@@ -192,7 +213,7 @@ ObservabilityModule按需注册一个进程级provider；当前只在合成图�
 
 ### 完整集成的准备顺序
 
-先完成上文基础设施初始化，再执行以下命令。它们用于准备验收环境，不是本次T6重新运行过的记录。
+先完成上文基础设施初始化，再执行以下命令。它们用于准备S1.3验收环境，不代表每次后续任务都会重新执行；实际运行记录见progress。
 
 ```powershell
 pnpm run checkpoint:init
