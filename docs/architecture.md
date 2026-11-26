@@ -366,6 +366,8 @@ erDiagram
 
 S2.1-T3新增FileAsset、Resume、ResumeVersion、EvidenceBlock与ResumeUpload映射及迁移。ResumeVersion通过(ownerId,resumeId)和(ownerId,fileAssetId,fileHash)复合外键保护关联；EvidenceBlock/ResumeUpload绑定同owner版本；内容表由触发器禁止UPDATE。ResumeRepository按owner/key事务advisory lock串行化首次上传，同事务创建记录与幂等绑定。S1.4合成任务UUID没有追加真实简历外键。迁移/运行验证以progress为准，ExtractedDocument持久化与引用内容校验仍待T7，HTTP待T8。
 
+S2.1-T7/T8接入ExtractedDocument不可变产物与同事务上传；完整产物存在后禁止追加块。HTTP同步解析运行在无模型/数据库凭证的隔离子进程，成功提交版本后201；引用经owner、版本、文本哈希与UTF-16边界逐字校验。文件系统与数据库之间采用manifest和引用检查补偿，已提交但响应丢失通过幂等重放找回；崩溃清理确认原进程退出后再按真实DB引用执行。所有权/接口与运行限制见api、deployment和progress；ParsedResume语义产物尚未执行。
+
 AnalysisTask状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANCELLED`；暂时失败走`RUNNING → RETRY_WAIT → RUNNING`。JobIndexTask具有独立的`QUEUED/RUNNING/RETRY_WAIT/SUCCEEDED/FAILED/CANCELLED`生命周期，不套用画像/报告的PARTIAL语义；JobVersion.indexStatus仅反映对应目标版本是否可供索引查询。两类任务共享租约、交付和重试原语，状态迁移由各自业务校验。
 
 cancelRequested为独立标志，运行中的取消在安全边界处理；终态不可被迟到Worker改回RUNNING。恢复/重试保持原taskType/taskId及输入快照；仅确认旧执行及其写入停止后复用原thread，无法确认时按§5.3新建恢复thread并使用fence。新的简历分析/重新召回创建新taskId，不覆盖历史任务或报告；索引的新输入/目标版本创建新JobIndexTask，原版本失败重试仍保留原索引任务身份。

@@ -10,6 +10,8 @@ S2.1专项：`test/evidence-contracts.test.ts`验证严格证据契约与安全�
 
 `test/parser-preflight.test.ts`使用内存生成ZIP与真实隔离子进程，验证类型签名、实际解压量/CRC/路径/外部关系，以及CPU忙循环总期限、RSS/JS堆、abort、PID退出、文件权限与网络拒绝。该专项只证明预检和执行器边界；PDF/DOCX文字与位置实验属于T5/T6。Windows已运行，Linux读取/proc的分支尚未运行。超时不等于成功中止，测试在失败返回后检查原PID不存在。
 
+`pdf-parser.test.ts`、`docx-parser.test.ts`覆盖合成文本质量、位置与明确失败；`evidence.test.ts`/`parsed-resume.test.ts`覆盖逐字引用/代理对、严格语义结构与空值边界。`integration/resume-api.test.ts`覆盖真实HTTP/文件/数据库上传与重放/冲突、owner/分页、文件与DB提交失败、解析断连、已提交响应丢失的幂等恢复。`storage.test.ts`真实强杀子进程验证崩溃后对账只清理无引用的过期精确文件；测试数据不包含真实简历或模型输出。
+
 ## 执行命令
 
 首次安装依赖后，先运行 `pnpm run infra:init` 和 `pnpm run db:generate`。生成步骤无需连接数据库；运行集成测试前按[部署文档](deployment.md)启动服务并应用迁移。

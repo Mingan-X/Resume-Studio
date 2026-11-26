@@ -12,13 +12,15 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1、S1.2、S1.3、S1.4（合成任务基础设施、查询/取消API及OpenAPI生成）。简历上传、画像、岗位管理、召回、匹配和报告尚未实现。**
+**已完成 S1.1–S1.4。S2.1已完成阶段实现与回归（保留L2），待统一验收：本地PDF/DOCX上传、文本块/引用持久化、列表与版本详情、ParsedResume契约已实现，尚待阶段验收。画像、岗位管理、召回、匹配和报告尚未实现。**
 
 S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败，重跑通过。S1.4 附已知环境限制L2：本机默认Docker Qdrant创建集合可能超过5秒客户端限制，使 `pnpm run test:integration` 的Qdrant诊断用例失败；原生Qdrant对照通过。两项限制都在部署服务器或硬件满足条件后重新验证，判断依据与处理规则见[开发进度](docs/progress.md)。
 
 已有能力：
 
 - NestJS API 与独立 Worker 入口；Worker 当前为空进程，不消费业务任务。
+- 显式启用RESUME_API_ENABLED后，PDF/DOCX同步上传并隔离解析，按owner/key/文件SHA-256幂等；本地文件、不可变版本/文本块/解析产物分开保存，引用逐字校验。PDF仅可靠页码，DOCX段落/表格定位；扫描/加密/空文本与资源超限明确失败，不做OCR。
+- 简历列表/版本详情及同源OpenAPI；Storage暂存精确补偿与崩溃对账命令。ParsedResume只有契约与固定合成校验样例，语义EXTRACT仍属S2.4，上传响应没有结构化占位字段。
 - Zod 配置校验、健康检查、统一 HTTP 错误、服务端 requestId 和 JSON 日志。
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
 - 可替换的开发单用户身份；独立 AnalysisTask/JobIndexTask 及共享任务记录模型；冻结输入与 Outbox 同事务写入、按所有者及任务类型隔离的请求幂等。TasksModule的创建能力仍只在显式上下文使用，查询/取消由独立TaskApiModule提供，尚无任务创建HTTP接口。
