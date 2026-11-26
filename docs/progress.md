@@ -8,6 +8,44 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.1-T3 完成与回归结论
+
+第三轮默认Docker完整集成92项：90通过、2失败、0跳过（617.435秒），仅Qdrant createCollection原5秒超时及父测试，子用例6.173秒；归属核验后集合只读查询为空，按已接受L2记录。fence/消费者两处测试前提修正通过全量验证，Langfuse通过，S2.1数据库专项5项全部通过，全部本轮业务测试清理完成。原生Qdrant未运行，对照未执行且未操作。T3完成，仍不解除L1/L2，不把默认命令记成全绿。
+
+累计已执行T3检查：generate/validate、deploy两次/status（8条迁移）、typecheck/lint、真实数据库专项、三轮完整集成，失败与修复均见前述记录。最终共享工作区基础测试58/58通过（含已经完成验证的T4/T5代码，10.702秒）；T3单独开发阶段的52/1 L1结果仍保留。T3按任务提交迁移、repository、专项和回归helper最小修正；解析依赖/实现另按T4–T6提交。未执行Linux、新机冷安装或生产验证。
+
+## 2026-11-27 S2.1-T3 第二轮回归及消费者测试前提修复；T4专项通过
+
+第二轮默认Docker全量92项：88通过、4失败、0跳过，596.987秒；仅消费者analysis并发接管子项/父项与Qdrant创建子项/父项失败。fence、Checkpointer、Langfuse、S2.1数据库、其余可靠性测试均通过。消费者实得limit而预期deferred：测试直接claim后使用2秒租约，但没有TaskDeliveryHandler心跳，发布/接线超过租约时消费者合法接管。最小修正仅在测试验证“仍在租约内”期间按原heartbeatMs续租；随后停止心跳，按原逻辑显式过期并验证新fence/旧写拒绝。未扩大生产租约、测试窗口或放宽断言。专项12/12通过（54.816秒），精确资源已清理；修正后typecheck、零警告lint通过，第三轮完整回归已启动。
+
+T4真实预检/隔离专项3/3通过（4.798秒），含类型与OLE/CFB、伪造ZIP展开量/CRC、路径/链接/嵌套/外部关系、真实子进程超时/abort/RSS/堆限制、权限/网络/环境隔离、输出校验与PID退出。完整pnpm test为56/56通过、0跳过（7.419秒）；该次覆盖T3与T4及两处可靠性测试helper修正的编译。默认解析worker尚无PDF/DOCX适配器，明确失败而不是产出假文本。Linux资源监测和复杂真实解析样本未执行；接下来按T5/T6验证。
+
+## 2026-11-27 S2.1-T3 修正后专项复核与T4并行准备
+
+终止会话同步修正后，首次fence专项仍失败：5项中2通过、3失败（含父测试），114.094秒；unknown-old用例报Worker ended before late-checkpoint，首Checkpoint前重启用例报Worker event timed out: claimed（原20秒）。该轮清单cleaned=true，未修改业务行为、期限或断言。再次诊断运行带父测试名称筛选，Node runner实际运行了全部5项，5通过、0跳过（35.710秒）；不能将它称为只跑一项，也不覆盖前次失败。第二轮完整集成已启动，旧Worker隔离与Checkpointer通过，消费者并发接管出现新失败，等待最终异常；Langfuse1/1通过。
+
+首轮Docker Qdrant经归属核验后只读查询集合为空，createCollection超时符合L2；原生进程未运行，对照未执行，没有启停它。原API冷启动L1、首次Langfuse超时及两轮fence失败分别保留，不合并成同一种环境问题。
+
+完整集成等待期间，准备仅依赖T1/T2的S2.1-T4，尚未标完成：yauzl3.4.0、@types/yauzl3.4.0精确安装及冻结安装通过；ZIP流式实际展开量/CRC/路径/链接/外部关系预检、隔离子进程及合成测试代码已写入。T4 typecheck通过；首次lint因仅类型用途的z导入失败，改为import type后lint通过。T4运行/恶意样本/资源边界尚未执行，PDF/DOCX适配器未实现，不提前发布路由或声称解析成功。T3/T4分别组织提交，阶段尚未合并或推送。
+
+## 2026-11-27 S2.1-T3 首轮完整回归与故障定位补记
+
+默认Docker完整test:integration：92项中87通过、5失败、0跳过，551.672秒；失败为Checkpoint fence子用例及父测试、Qdrant子用例及父测试、真实Langfuse。S2.1数据库5项在完整套件中全部通过（父3.243秒）；其余任务创建/消费者/Outbox/重试/对账/API均通过，测试输出确认本轮记录/队列/策略清理。
+
+- fence失败是终止旧数据库会话后立即reconcile得到lock-held而非recovered。核对[PostgreSQL16官方说明](https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-SIGNAL)：pg_terminate_backend默认timeout=0只确认信号发送，不等待会话实际退出。最小修正仅修改测试terminateLock helper，使用3000ms有界等待并断言返回true，再执行原恢复断言；仍在原5000ms statement预算内，不改业务恢复、测试总体超时或原断言。该同步缺口不能归入L1/L2，待专项与全量复验。
+- Qdrant堆栈明确失败于createCollection的原5秒限制，子用例8.068秒包含归属/清理；未返回CleanupPendingError，仍需只读核对集合残留后按L2记录。不调大限制、不操作原生实例。
+- Langfuse为TimeoutError，原测试未提供具体fetch阶段；九服务均healthy后用同一专项、相同超时单独复验1/1通过（13.471秒）。没有改配置、测试、模型或依赖，不据单次通过宣称消除冷启动/负载风险；保留首轮失败，不将其误算L1。
+
+## 2026-11-27 S2.1-T3 持久化模型与迁移，回归进行中（feature/s2.1-resume-evidence）
+
+实现FileAsset、Resume、ResumeVersion、EvidenceBlock、ResumeUpload与repository；复合外键保护owner/版本/文件哈希，unique(resumeId,version)，触发器拒绝原地UPDATE；owner/key事务锁与同库事务保证上传并发幂等和回滚。没有给S1.4合成任务的版本UUID添加业务外键。ExtractedDocument仍按T7实现。
+
+已执行：db:generate和db:validate通过；核验项目PostgreSQL容器/端口/卷后db:deploy成功、再次deploy无pending，db:status显示8条迁移全部已应用。新迁移未改历史表。Prisma关系显式NoAction以匹配SQL默认动作，调整后重新generate/validate通过。typecheck和lint通过。新增真实数据库专项5/5通过（9.502秒），包括T2回收命令真实引用检查，合成记录及本轮临时目录已精确清理。
+
+失败记录：准备时Docker引擎未启动，启动Docker Desktop后首次docker inspect超时；第二次业务容器/卷归属检查成功。infra:up因PostgreSQL恢复期间unhealthy退出1；日志显示非正常关机后的fsync/自动恢复，一次ready后服务子进程退出码2并再次恢复，之后healthy且迁移/专项成功，未重置数据。observability:up两次因Web启动健康检查超时失败，之后Web实际健康200、Worker启动，最终九服务healthy。新集成测试曾因UUID模板字符串推断出现TS2322编译失败，改用Schema派生类型修复；基础测试最终52通过、1失败、0跳过（52.897秒），唯一失败为Child api did not start（8049.8ms），按L1保留。
+
+完整pnpm run test:integration正在运行；目前已发现旧Worker隔离、Langfuse持久化与Qdrant用例失败，尚待结束输出具体原因，不认定全部属于L1/L2，不标任务完成。原生Qdrant未发现运行进程，未启动/停止，原生对照未执行。文档39个本地文件链接及git diff --check通过。尚未提交T3、合并阶段或推送；后续记录补充最终回归结果与处理。
+
 ## 2026-11-27 S2.1-T2 本地存储与精确暂存补偿（feature/s2.1-resume-evidence）
 
 新增StoragePort及本地适配器：专用绝对根目录与项目/路径归属标记、服务器UUID键、流式大小上限与SHA-256、独占创建、fsync、WRITING/READY/COMMITTING/COMMITTED清单、提交及读取。检查路径祖先/真实路径、拒绝junction/symlink/文件硬链接；不承诺防御拥有根目录写权限的恶意本机管理员。

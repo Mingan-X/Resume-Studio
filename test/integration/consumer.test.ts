@@ -113,9 +113,24 @@ await test('S1.4-T4 real consumer receipts, execution leases and fenced completi
       const results = await Promise.all([c.store.claim(c.ownerId, c.message), c.store.claim(c.ownerId, c.message)]);
       const first = results.find(result => result.kind === 'acquired'); assert.ok(first?.kind === 'acquired');
       assert.equal(results.filter(result => result.kind === 'deferred').length, 1);
+      // This claim is made directly, without TaskDeliveryHandler's heartbeat loop.
+      // Keep it live while publishing/connecting; a 2s expired lease correctly permits takeover.
+      const live = new AbortController();
+      let heartbeatError: unknown;
+      const heartbeat = (async () => {
+        while (!live.signal.aborted) {
+          await c.store.heartbeat(first.claim);
+          await delay(c.config.heartbeatMs, undefined, { signal: live.signal }).catch(error => {
+            if (!live.signal.aborted) throw error;
+          });
+        }
+      })().catch(error => { heartbeatError = error; });
+      try {
       await publisher.publish(c.message);
       const deferred = await c.consumer().run(type, { maxMessages: 1, windowMs: 5_000 });
       assert.equal(deferred.reason, 'deferred'); assert.equal(deferred.acknowledged, 0);
+      } finally { live.abort(); await heartbeat; }
+      assert.equal(heartbeatError, undefined);
       const delivery = await receive(channel, c.queue); assert.equal(delivery.fields.redelivered, true); channel.ack(delivery);
       const table = type === 'analysis' ? 'analysis_task' : 'job_index_task';
       await database.pool.query(`UPDATE ${table} SET lease_until = clock_timestamp() - interval '1 second' WHERE owner_id=$1::uuid AND id=$2::uuid`, [c.ownerId, c.taskId]);
