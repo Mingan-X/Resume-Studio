@@ -2,6 +2,8 @@
 
 S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence.md)，上传/查询路由通过RESUME_API_ENABLED显式启用。
 
+S2.2-T1已定义[岗位、JD引用与Rubric领域契约](jd-rubric.md)，岗位HTTP与OpenAPI路由尚待T9接入。
+
 ## 简历上传与查询（S2.1）
 
 本地开发启用RESUME_API_ENABLED=true，并提供项目DATABASE_URL与专用绝对STORAGE_ROOT；production或非loopback拒绝启用。owner只来自IdentityPort，客户端不得指定。

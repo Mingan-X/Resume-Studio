@@ -83,6 +83,14 @@ await test('S1.4 real PostgreSQL task creation, ownership, concurrency and rollb
   const initialAnalysis = await service.createAnalysis(key, analysis);
   const initialJobIndex = await service.createJobIndex(key, jobIndex);
 
+  await t.test('S2.2 real snapshot persistence remains closed until the T2 business FK migration', async () => {
+    const snapshot = jobIndexInputSnapshotSchema.parse({ ...jobIndexInput(), ownerId, kind: 'job-index' });
+    const key = randomUUID(), before = await db.outboxEvent.count({ where: { ownerId } });
+    await assert.rejects(module.get(TaskRepository).createJobIndex(key, snapshot));
+    assert.equal(await db.jobIndexTask.count({ where: { ownerId, idempotencyKey: key } }), 0);
+    assert.equal(await db.outboxEvent.count({ where: { ownerId } }), before);
+  });
+
   await t.test('separate task defaults, immutable version snapshots and minimal transactional outbox', async () => {
     const a = await db.analysisTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: initialAnalysis.taskId } } });
     const j = await db.jobIndexTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: initialJobIndex.taskId } } });

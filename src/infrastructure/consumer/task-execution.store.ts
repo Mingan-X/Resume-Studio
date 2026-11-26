@@ -123,6 +123,8 @@ export class TaskExecutionStore {
       if (!expired && (task.updatedAt.getTime() + config.staleMs > now.getTime() || (task.retryAt && task.retryAt > now))) return 'skipped';
       const snapshot = taskType === 'analysis' ? analysisInputSnapshotSchema.parse(task.inputSnapshot) : jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
       if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
+      // No real index executor is registered until S2.3. Do not spend recovery budget while waiting.
+      if (snapshot.kind !== 'synthetic') return 'handler-unavailable';
       const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
       const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
@@ -215,6 +217,8 @@ export class TaskExecutionStore {
         return { kind: 'ack' };
       }
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
+      // Leave the task and delivery pending, without an attempt, receipt or ACK.
+      if (snapshot.kind !== 'synthetic') return { kind: 'deferred' };
       if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });
@@ -312,6 +316,7 @@ export class TaskExecutionStore {
   }
 
   async nodeArtifact(claim: ExecutionClaim, node: SyntheticNodeOutput['node'], output?: unknown): Promise<SyntheticNodeOutput | null> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     const inputHash = requestHash(claim.snapshot), componentVersion = 's17-synthetic-v1';
     const operationKey = requestHash({ ownerId: claim.ownerId, taskType: claim.message.taskType, taskId: claim.message.taskId,
       node, inputHash, componentVersion, schemaVersion: 1 });
@@ -336,6 +341,7 @@ export class TaskExecutionStore {
   }
 
   async publishSyntheticIndex(claim: ExecutionClaim, target: string): Promise<void> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     if (claim.message.taskType !== 'job-index') throw new Error('INDEX_TASK_REQUIRED');
     const snapshot = jobIndexInputSnapshotSchema.parse(claim.snapshot), id = z.uuid().parse(target);
     await this.database.client.$transaction(async tx => {
@@ -399,6 +405,7 @@ export class TaskExecutionStore {
   }
 
   async complete(claim: ExecutionClaim, output: unknown): Promise<void> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     const result = syntheticCompletionSchema.parse(output);
     if (result.inputHash !== requestHash(claim.snapshot)) throw new Error('SYNTHETIC_RESULT_INPUT_MISMATCH');
     await this.database.client.$transaction(async tx => {

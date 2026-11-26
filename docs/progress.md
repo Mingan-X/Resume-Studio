@@ -8,6 +8,36 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T1完成：岗位/Rubric契约与真实任务隔离
+
+最终检查：`pnpm run typecheck`、`pnpm run lint`零警告、`pnpm run openapi:check`通过；`pnpm test`70通过/0失败/0跳过，10.659秒；修复后的 `pnpm run test:integration`100通过/0失败/0跳过，510.052秒（data/s22-t1-integration-final.log）。Docker Qdrant创建2305.5ms通过原5000ms限制，各专项完成精确清理；未解除L1/L2，仍按S3.3在目标环境复验。相对文档文件链接与 `git diff --check` 通过。
+
+T1按任务提交，包含已复现并修复的既有deadline/heartbeat交错窗口，失败记录见下文。契约覆盖六维/完整Rubric等级/权重边界/JD引用/真实与合成快照；尚无岗位HTTP、真实索引或模型调用。无依赖变更，不需冻结重装；没有真实服务商Key、人工标注或目标服务器验证。T2模型/迁移及专项已在工作区准备，尚未generate/deploy或纳入T1提交；先等T1全量结束以保持运行中数据库及生成代码一致。阶段仍进行中，未合并推送。
+
+## 2026-11-27 S2.2-T1完整集成失败记录与截止时间竞态修复
+
+完整 `pnpm run test:integration`：100项，96通过/4失败，495.931秒。失败是新增真实快照专项（旧数据库约束job_index_task_snapshot_check仍只允许synthetic）及父项、既有retry总期限专项（runtime预算500ms，ACK实际0/预期1）及父项。本轮Qdrant创建4790.1ms在原5000ms内通过，不记L2失败；本轮各专项报告精确清理完成。完整日志在忽略的data/s22-t1-integration.log。
+
+修正新增测试到T1实际边界后，执行 `pnpm run build` 和 `node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/tasks.test.js dist/test/integration/retry.test.js`：26通过/0失败，67.918秒。没有改500ms预算、8秒会话窗口或断言；该通过不覆盖前次失败。
+
+为复核偶发ACK失败，新增mock Date/setTimeout的确定性竞态测试：心跳先开始、总期限到达、在途心跳再返回ExecutionLeaseLostError。修复前consumer专项5项4通过/1失败，返回TASK_EXECUTION_INTERRUPTED而非受fence保护的超时完成（data/s22-t1-deadline-repro.log）。根因是TaskDeliveryHandler无条件把心跳失败视作基础设施故障，绕过TaskExecutionStore.fail已实现的deadline-capped lease特例。
+
+最小修复仅允许总期限已到且心跳为ExecutionLeaseLostError时尝试原fail事务；该事务仍核对token/generation/leaseOwner/receipt以及租约是否确实截断于deadline，真实fence变更仍拒绝。数据库错误、外部取消均不放行，输出提交/续租条件及所有预算不变。回归测试同时验证数据库失败和新fence拒绝时不ACK。此项为保持既有截止时间验收语义的修复，不扩展任务或放宽限制；修复后检查待追加。
+
+## 2026-11-27 S2.2-T1契约实现与验证中（feature/s2.2-jd-rubric）
+
+接续核对HEAD=c3024f0、工作区干净；已读AGENTS、CONTRIBUTING、路线图§5/§6、需求六维及架构JD/任务/评分章节。新增岗位、要求、六维权重、Rubric完整等级契约与JD文本证据规则；真实job-index快照与synthetic分离。未注册岗位HTTP、未实现数据库迁移或真实索引。
+
+执行记录（不覆盖失败）：
+
+- 首次 `pnpm run typecheck` 失败：Zod issue直接传给addIssue不满足exactOptionalPropertyTypes。改为显式复制安全的code/path/message；后续typecheck通过。
+- `pnpm run lint` 通过，零警告；补充测试后再次typecheck/lint均通过。
+- 首轮 `pnpm test`：69项，67通过/2失败，25.718秒。新增5项全部通过；既有DOCX正常解析报PARSER_TIMEOUT（15.377秒），API启动8秒超时。DOCX不归入L1/L2，未改业务/测试超时或断言。
+- 同代码原命令复核 `pnpm test`：69通过/0失败，9.202秒，原DOCX和API用例通过。原始复核日志在忽略的data/s22-t1-unit-recheck.log；首次输出已在本记录保留。
+- 完整 `pnpm run test:integration` 已启动，结果待追加。新增真实快照延后执行专项起初提前使用T2尚未实施的数据库契约，复核旧迁移发现kind只允许synthetic；测试调整为T1验证真实写入被数据库拒绝且事务无残留，待T2迁移后再验证真实任务保持QUEUED、不ACK、不消耗尝试/恢复预算及可取消。运行中的已编译测试仍含旧版专项，预计会报此失败，将保留实际结果再复验。
+
+T1文档见[jd-rubric](jd-rubric.md)。真实模型/embedding、人工审核、目标服务器均未执行，按路线图延后；T1未新增依赖、未操作前端或master，阶段保持进行中。
+
 ## 2026-11-27 S2.1已合并推送，S2.2开始（feature/s2.2-jd-rubric）
 
 S2.1的10个任务提交已由b66131e以--no-ff合并到develop；origin/develop=b66131e，远端feature/s2.1-resume-evidence=9f9f639，均已推送。合并后工作区干净，本地已合并的S2.1分支按CONTRIBUTING用-d清理，远端阶段分支保留；master未切换/修改/推送。首次fetch发生GitHub SSL_ERROR_SYSCALL，第二次fetch成功后才合并，不以旧远端引用代替最新检查。

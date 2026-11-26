@@ -110,6 +110,8 @@
 
 ## 10. 报告与评分
 
+S2.2-T1的[岗位与Rubric领域契约](jd-rubric.md)已定义六维ID、JD引用及权重校验；岗位HTTP接口由S2.2-T9接入，尚未注册到OpenAPI。
+
 **规划**（S2.5、S3.1）
 
 - 后端返回展示所需的全部计算结果：分数、每项贡献、coverage、upperBound、eligibility、逐项verdict与证据引用。前端不计算、不重排、不补全分数。

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { taskDispatchSchema } from '../src/contracts/tasks.js';
 import { consumerConfigSchema } from '../src/infrastructure/consumer/config.js';
-import { decodeTaskDelivery } from '../src/infrastructure/consumer/contracts.js';
+import { decodeTaskDelivery, ExecutionLeaseLostError } from '../src/infrastructure/consumer/contracts.js';
 import type { ExecutionClaim } from '../src/infrastructure/consumer/contracts.js';
 import { TaskDeliveryHandler, SyntheticCompletionHandler } from '../src/infrastructure/consumer/task-delivery.handler.js';
 import { analysisInput } from './support/task-inputs.js';
@@ -84,4 +84,37 @@ await test('cancellation retains execution lock until actual handler settlement 
   await started; abort.abort(); await delay(25);
   assert.equal(locked,true);assert.equal(stopped,false);assert.equal(completed,false);
   release();await rejection;assert.equal(stopped,true);assert.equal(locked,false);assert.equal(completed,false);
+});
+
+await test('heartbeat finishing after the frozen deadline still finalizes timeout through the fenced store', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000_000 });
+  for (const mode of ['finalize', 'database-failure', 'fence-changed'] as const) {
+  const f = fixture(); let timedOut = false, stopped = false;
+  let beatStarted!: () => void, rejectBeat!: (error: Error) => void;
+  const started = new Promise<void>(resolve => { beatStarted = resolve; });
+  const beat = new Promise<void>((_resolve, reject) => { rejectBeat = reject; });
+  const handler = new TaskDeliveryHandler({ claim: () => Promise.resolve({ kind: 'acquired', claim: f.claim }),
+    cancelAtBoundary: () => Promise.resolve(false), reserveUsage: () => Promise.resolve(),
+    heartbeat: () => { beatStarted(); return beat; },
+    complete: () => { assert.fail('No output after deadline'); },
+    fail: (_claim, error) => {
+      assert.notEqual(mode, 'database-failure'); assert.equal(error.code, 'DEADLINE_EXCEEDED');
+      if (mode === 'fence-changed') return Promise.reject(new ExecutionLeaseLostError());
+      timedOut = true; return Promise.resolve();
+    },
+    markExecutionStopped: () => { stopped = true; return Promise.resolve(); },
+  }, f.identity, { execute: (_claim, signal) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  }) }, consumerConfigSchema.parse({ heartbeatMs: 100, leaseMs: 2000 }), unlockedUnitContext);
+  const work = handler.handle(f.message, new AbortController().signal);
+  const result = work.then(value => ({ value }), error => ({ error: error instanceof Error ? error.message : 'unknown' }));
+  // Flush the identity/lock/claim continuations before advancing mocked wall time.
+  for (let index = 0; index < 12; index++) await Promise.resolve();
+  t.mock.timers.tick(100); await started;
+  t.mock.timers.tick(5_000); rejectBeat(mode === 'database-failure' ? new Error('database unavailable') : new ExecutionLeaseLostError());
+  const disposition = await result;
+  if (mode === 'finalize') assert.deepEqual(disposition, { value: 'ack' });
+  else assert.ok('error' in disposition, 'Infrastructure/fence failure must not ACK');
+  assert.equal(timedOut, mode === 'finalize'); assert.equal(stopped, true);
+  }
 });

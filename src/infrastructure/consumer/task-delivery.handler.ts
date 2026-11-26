@@ -17,6 +17,7 @@ export interface SyntheticTaskHandler {
 export class SyntheticCompletionHandler implements SyntheticTaskHandler {
   execute(claim: ExecutionClaim, signal: AbortSignal): Promise<SyntheticCompletion> {
     signal.throwIfAborted();
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     return Promise.resolve({ schemaVersion: 1, kind: 'synthetic', inputHash: requestHash(claim.snapshot), completedUnits: 1 });
   }
 }
@@ -50,6 +51,11 @@ export class TaskDeliveryHandler {
     let timer: NodeJS.Timeout | undefined;
     let heartbeat: Promise<void> = Promise.resolve();
     let heartbeatFailure: unknown;
+    const atDeadline = () => timedOut || Date.now() >= claim.deadline.getTime();
+    // A heartbeat already in flight may observe the deliberately deadline-capped lease.
+    // Only the fenced failure transaction can decide whether this token may finalize it.
+    const blockingHeartbeatFailure = () => heartbeatFailure
+      && !(heartbeatFailure instanceof ExecutionLeaseLostError && atDeadline());
     let finished = false;
     const schedule = () => {
       if (finished || abort.signal.aborted) return;
@@ -83,13 +89,13 @@ export class TaskDeliveryHandler {
         if (output.inputHash !== requestHash(claim.snapshot)) throw new TaskFailure('OUTPUT_INVALID');
       } catch (error) {
         if (budgetInfrastructureError) throw budgetInfrastructureError;
-        if (signal.aborted || heartbeatFailure || error instanceof ExecutionLeaseLostError) throw error;
-        failure = timedOut ? new TaskFailure('DEADLINE_EXCEEDED') : classifyTaskFailure(error);
+        if (signal.aborted || blockingHeartbeatFailure() || (error instanceof ExecutionLeaseLostError && !atDeadline())) throw error;
+        failure = atDeadline() ? new TaskFailure('DEADLINE_EXCEEDED') : classifyTaskFailure(error);
       }
       finished = true; clearTimeout(timer); await heartbeat;
-      if (heartbeatFailure) throw heartbeatFailure;
+      if (blockingHeartbeatFailure()) throw heartbeatFailure;
       signal.throwIfAborted();
-      if (timedOut) failure = new TaskFailure('DEADLINE_EXCEEDED');
+      if (atDeadline()) failure = new TaskFailure('DEADLINE_EXCEEDED');
       if (failure) await this.store.fail(claim, failure);
       else { abort.signal.throwIfAborted(); await this.store.complete(claim, output); }
       signal.throwIfAborted();
