@@ -1,5 +1,7 @@
 # 测试与验证
 
+S3.3提供[故障注入矩阵](fault-injection.md)、[离线质量脚本](quality-evaluation.md)、[任务创建测量](performance.md)、[隔离恢复](backup-recovery.md)与[依赖审计](dependency-audit.md)。`test:faults`会主动重启本项目RabbitMQ，必须独立串行执行；普通`test:integration`增加测试专有TCP代理故障与就绪探针，不自动重启容器。只读Docker归属代理的真实CLI检查是显式fixture，不修改Docker全局配置。模型质量、目标环境L1/L2解除和发布镜像仍按[发布清单](release-operations.md)延后，不能用合成数据补齐。
+
 S3.2生命周期新增真实数据库/文件/Checkpoint/Qdrant删除重入、停止证据、到期保留、账号保留及跨owner专项，完整报告产物删除复用analysis-runtime；真实Langfuse专项验证先读到trace再确认异步删除。首次完整阶段回归结果见progress。SocketTimeout已由维护者指定记录为已知问题继续开发，不移除故障断言、不把未确认停止转为可删除。
 
 S3.2-T7 SocketTimeout专项增加socket-diagnostics（成功/拒绝连接与脱敏）及恢复Worker的loading/initialized通知。测试错误可区分process-start/module-loading/initialized，并附有界socket连接/字节/错误码数据；不记录地址、SQL、凭证或负载内容。原事件等待20秒、连接/事务/总预算及fence/恢复/ACK断言均不变。2026-11-28本轮只确认资源压力与相关22/22通过，未复现原P1008，不代表完整集成或根因修复，见[专项诊断](research/s32-postgres-2026-11-28.md)。
@@ -60,7 +62,7 @@ S1.3的真实恢复测试还需要先执行 `checkpoint:init`、构建、`checkp
 
 `pnpm test`编译后执行顶层测试文件，不要求外部服务；`test:integration`读取上述三份被忽略的配置并执行真实服务测试，服务不可用会失败而非跳过。
 
-`pnpm run test:integration:native-qdrant`额外读取 `infra/.env.qdrant-native`，只在该测试上下文中改用维护者授权的Windows原生Qdrant。准备方法见[原生Qdrant回归对照](deployment.md#原生qdrant回归对照)。它执行同一组集成文件、原5秒Qdrant超时和CRUD/维数断言；默认Docker结果与对照结果分别记入progress，两套不要同时运行。对照通过不代表原Docker路径修复。
+`pnpm run test:integration:native-qdrant`额外读取 `infra/.env.qdrant-native`，只在该测试上下文中改用维护者授权的Windows原生Qdrant。准备方法见[原生Qdrant回归对照](deployment.md#原生qdrant回归对照)。它执行同一组集成文件、当前15秒Qdrant单请求上限（操作总期限不增加）和CRUD/维数断言；默认Docker结果与对照结果分别记入progress，两套不要同时运行。历史L2仍要求目标环境核对原5秒创建性能，对照通过不代表原Docker路径修复。
 
 真实服务测试文件使用 `--test-concurrency=1` 顺序运行，以减少测试共享本机Docker资源时的竞争。并行执行曾出现Qdrant创建超过5秒，但串行后仍复发；专项排查还确认停止观测服务后仍可能超时，不能只归因于测试并发或Langfuse。只限制文件之间的调度，各用例的池并发、重投、强杀与超时断言不变；不将串行验收描述为同时满负载验证。
 
@@ -150,7 +152,7 @@ DLX测试断开本轮终端队列绑定，拒收一条消息后恢复绑定，�
 
 初始化与清理均应核实实例归属。默认Qdrant集成测试在创建前及删除前验证Compose项目、qdrant服务、127.0.0.1:56333映射、storage挂载和卷标签；集合名由本轮UUID确定，拒绝任意名称。原生对照通过test/support/native-qdrant.ts验证授权exe路径、监听PID/启动时间及文件大小/修改时间，清理前再次核对且不接受进程替换；不把它冒充Compose标签验证。Checkpoint与Langfuse使用各自已有检查。旧persistence.fixture.ts仍只校验连接范围和manifest，未独立验证Docker标签或manifest来源，不应向未知实例执行其cleanup。
 
-Qdrant客户端创建超时保持5秒。创建失败后独立进行最长15秒的清理对账，每次HTTP请求不超过5秒且受剩余期限约束；第一次exists=false仍继续等待，出现后检查归属并精确删除、确认消失。对账成功也不覆盖原创建失败，原测试仍失败。到期无法确认或归属不符时，在data/qdrant-cleanup/<runId>.json保留schemaVersion、project、service、runId、精确collection、原因及时间，并抛出QDRANT_CLEANUP_PENDING；不保存凭证。新增target字段记录Docker/原生目标地址，原生还保存已核验的进程身份；project/service表示测试项目归属，不能代替target实例验证。旧manifest无target时只指原Docker实例。原始错误与清理错误同时发生时保留两者。
+当前Qdrant客户端单请求上限为15秒，沿用S2.4经授权的调整，不增加操作总期限；历史5秒失败与L2性能核对保留。S1.3诊断集合创建失败后独立进行最长15秒的清理对账，其中每次HTTP请求不超过5秒且受剩余期限约束；第一次exists=false仍继续等待，出现后检查归属并精确删除、确认消失。对账成功也不覆盖原创建失败，原测试仍失败。到期无法确认或归属不符时，在data/qdrant-cleanup/<runId>.json保留schemaVersion、project、service、runId、精确collection、原因及时间，并抛出QDRANT_CLEANUP_PENDING；不保存凭证。新增target字段记录Docker/原生目标地址，原生还保存已核验的进程身份；project/service表示测试项目归属，不能代替target实例验证。旧manifest无target时只指原Docker实例。原始错误与清理错误同时发生时保留两者。
 
 manifest是待处理证据，不自动授权后续删除。后续操作必须核对文件内容、执行记录和目标实例归属，只处理该条精确名称，确认删除后才清除此manifest；禁止按s12前缀批量删除。创建在对账期限之外完成仍可能留存，因此保留manifest并明确失败，不承诺任意迟到创建都会在本次进程内清理。真实回归后只读统计s12_*残留，并把数量写入progress。
 
@@ -177,7 +179,7 @@ prepare保留manifest并创建专属测试资源；verify不消费掉持久消�
 
 S2.2岗位与Rubric契约专项见 [job-contracts.test.ts](../test/job-contracts.test.ts)，真实PostgreSQL模型专项见 [jobs.test.ts](../test/integration/jobs.test.ts)：owner/版本关联、事务回滚、发布后UPDATE/INSERT/DELETE保护、发布与要求写入的锁等待、Rubric不可变及真实索引任务待执行。运行结果、失败与后续修复以[进度](progress.md)为准；存储专项不等于岗位HTTP或真实embedding验证。
 
-正式业务任务输入/所有权、真实报告/索引执行器、真实业务Checkpoint恢复、LLM输出质量、真实简历解析、生产TLS/认证、完整依赖安全审计、多节点故障、备份恢复与其他主机平台。合成任务创建、发布/消费、失败移交、对账及T7联合隔离已有专项验证，但不证明真实业务执行和外部副作用恰好一次。合成图恢复与全量回归的逐次结果见进度记录。对应阶段见[开发计划](development-roadmap.md)。
+真实模型/embedding质量、真实简历代表性解析质量、目标环境TLS/浏览器会话及容量、发布镜像安全审计、多节点故障、目标服务器备份恢复与其他主机平台仍未验证。正式业务Schema/所有权、报告/索引执行器与业务Checkpoint已使用合成模型/数据和真实基础设施验证，S3.3另有本地隔离恢复及npm依赖审计；这些证据不证明模型质量、生产可用性或外部副作用恰好一次。逐次结果见进度记录，对应阶段见[开发计划](development-roadmap.md)。
 
 RabbitMQ重投与合成任务测试不能单独证明真实简历业务可靠。S1.3-T3只验证旧进程已确认退出后的合成图恢复；S1.4-T7另有上述实际暂停/迟到写入/线程隔离和索引目标保护证据，两者不混称真实业务验收。
 
