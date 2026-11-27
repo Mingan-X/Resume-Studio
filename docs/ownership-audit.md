@@ -18,4 +18,6 @@
 
 内部例外：ResumeRepository.isReferenced是GC全局引用检查；持久消息路由首次按eventId读取是服务端分派；归属诊断读取本项目实例。它们不作为私有资源HTTP接口。无法信任的信封只保存最小hash/安全元数据，落专属基础设施owner。
 
-权限测试先验证合法请求通过，再核对跨owner拒绝；无效Schema仍400，未登录401、CSRF/Origin拒绝403不混同资源404。旧专项通过overrideProvider注入已知owner，与真实登录专项共同覆盖边界，不代表浏览器HTTPS部署验证。执行结果按日期记录在[进度](progress.md)。生命周期新增边界待T4/T5完成后补入。
+权限测试先验证合法请求通过，再核对跨owner拒绝；无效Schema仍400，未登录401、CSRF/Origin拒绝403不混同资源404。旧专项通过overrideProvider注入已知owner，与真实登录专项共同覆盖边界，不代表浏览器HTTPS部署验证。执行结果按日期记录在[进度](progress.md)。
+
+生命周期：删除请求只取会话owner且要求账号存在；query按owner/id，越权404。到期扫描JOIN账号，固定开发/基础设施主体不参与；DB共享/独占owner锁及触发器阻断新业务写入。执行器逐任务核对终态/停止证据，外部删除核对文件hash、线程清单、向量metadata与Langfuse专属project。跨owner保留、账号保留、待核实不删除及故障重入由lifecycle/session-identity/analysis-runtime专项覆盖；真实trace另有lifecycle-trace。

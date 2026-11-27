@@ -1,5 +1,7 @@
 # 测试与验证
 
+S3.2生命周期新增真实数据库/文件/Checkpoint/Qdrant删除重入、停止证据、到期保留、账号保留及跨owner专项，完整报告产物删除复用analysis-runtime；真实Langfuse专项验证先读到trace再确认异步删除。首次完整阶段回归结果见progress。SocketTimeout已由维护者指定记录为已知问题继续开发，不移除故障断言、不把未确认停止转为可删除。
+
 S3.2-T7 SocketTimeout专项增加socket-diagnostics（成功/拒绝连接与脱敏）及恢复Worker的loading/initialized通知。测试错误可区分process-start/module-loading/initialized，并附有界socket连接/字节/错误码数据；不记录地址、SQL、凭证或负载内容。原事件等待20秒、连接/事务/总预算及fence/恢复/ACK断言均不变。2026-11-28本轮只确认资源压力与相关22/22通过，未复现原P1008，不代表完整集成或根因修复，见[专项诊断](research/s32-postgres-2026-11-28.md)。
 
 S3.2增加认证、会话业务身份、共享消费者身份及安全边界测试，详见[所有权矩阵](ownership-audit.md)与[认证说明](auth.md)。真实登录专项使用合成账号且精确清理；HTTP人工发送Secure Cookie不代表浏览器HTTPS部署验收。向量HTTP桩的超时用例在服务端确认收到请求后推进40ms模拟时钟，仍断言一次实际请求和超时，避免将本机调度速度误作协议行为；产品超时未调整。

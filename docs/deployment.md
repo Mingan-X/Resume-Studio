@@ -1,6 +1,8 @@
 # 本地部署
 
-S3.2身份接入需先应用账号/会话及基础设施owner迁移（当前25条），generate/build后再启用AUTH_ENABLED与精确HTTPS AUTH_ORIGIN；生产业务入口禁止开发身份。账号仅CLI通过stdin创建，新账号不继承开发数据/规则。真实Worker从持久Outbox识别账号owner；发布/对账显式SERVICE_OWNER_ID。详细步骤、前端F3.1发布顺序、系统owner和会话期限见[认证说明](auth.md)。仍只验证当前本地Compose归属，目标服务器部署待S3.3；回退需先关闭业务公网入口，保留账号/会话及迁移数据，不退回公网开发身份。
+S3.2生命周期迁移记录所有Checkpoint线程、删除屏障/请求/步骤、活动上传及向量写入、可关联trace。先停止旧版本API/Worker并确认执行已停止，部署迁移及新代码，再启用`pnpm run data:cleanup watch`；本机需配置专用STORAGE_ROOT与原有三个infra env文件。不能删数据库/卷回退迁移，不能在删除执行器运行时回退到未登记线程/操作的旧版本。真实trace删除可异步等待，历史不完整及未确认停止会保留WAITING。详见[部署与恢复边界](data-lifecycle.md)。
+
+S3.2身份接入需先应用账号/会话、基础设施owner及生命周期迁移（当前32条），generate/build后再启用AUTH_ENABLED与精确HTTPS AUTH_ORIGIN；生产业务入口禁止开发身份。账号仅CLI通过stdin创建，新账号不继承开发数据/规则。真实Worker从持久Outbox识别账号owner；发布/对账显式SERVICE_OWNER_ID。详细步骤、前端F3.1发布顺序、系统owner和会话期限见[认证说明](auth.md)。仍只验证当前本地Compose归属，目标服务器部署待S3.3；回退需先关闭业务公网入口，保留账号/会话及迁移数据，不退回公网开发身份。
 
 S3.1部署前应用报告迁移并generate/build；报告查询、重算、分析选择列表、SSE随现有TASK_API_ENABLED启用，固定开发身份仍禁止production。SSE反向代理需禁用缓冲，服务发送X-Accel-Buffering:no；连接期限/心跳/上限和数据回退说明见[报告说明](reports.md)。不删除旧产物或配置来解决迁移/环境问题。
 
