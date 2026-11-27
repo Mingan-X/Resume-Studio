@@ -20,9 +20,9 @@ S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，�
 
 - [S3.1报告与进度](docs/reports.md)：新任务SAVE意图与报告/终态/收据事务接线；报告查询/分页/重算revision和owner隔离，分析历史/可选版本与语料范围，按seq补读的SSE。响应直接提供结构化简历、证据位置、画像、全部评分/贡献和PARTIAL计数；只在本地开发身份下启用，真实模型报告联调仍延后。
 
-- [S2.5确定性评分](docs/scoring.md)：不可变评分政策与任务hash绑定，BigInt有理数计算贡献/覆盖率/上界；硬要求partial/unknown及未完成候选待核实，最多10个eligible；所有候选分数持久化，调权在原候选/判断集上重算且模型调用数0。原S2.4任务保持原图路径，新任务执行12节点图；报告与重算HTTP仍待S3.1。
+- [S2.5确定性评分](docs/scoring.md)：不可变评分政策与任务hash绑定，BigInt有理数计算贡献/覆盖率/上界；硬要求partial/unknown及未完成候选待核实，最多10个eligible；所有候选分数持久化，调权在原候选/判断集上重算且模型调用数0。原S2.4任务保持原图路径，新任务执行12节点图；报告与重算HTTP已由S3.1接入。
 
-- [S2.4分析链路](docs/analysis-workflow.md)：POST /api/v1/analyses冻结授权输入与Outbox；官方Checkpoint恢复业务图、共享抽取缓存、六维合法状态/Rubric映射、冻结候选、逐项证据校验、400唯一要求预算、显式部分失败、临时AnalysisSummary及真实阶段事件。显式tasks:consume:analysis/analysis:reconcile，正式模型配置不作假模型兜底；当前工程链路只通过确定性假模型和真实基础设施验证，reportId仍null。
+- [S2.4分析链路](docs/analysis-workflow.md)：POST /api/v1/analyses冻结授权输入与Outbox；官方Checkpoint恢复业务图、共享抽取缓存、六维合法状态/Rubric映射、冻结候选、逐项证据校验、400唯一要求预算、显式部分失败及真实阶段事件。显式tasks:consume:analysis/analysis:reconcile，正式模型配置不作假模型兜底；当前工程链路只通过确定性假模型和真实基础设施验证，新任务成功/部分成功已有报告，历史任务仍可reportId=null。
 
 - S2.3内部岗位召回链路：[合成语料/技能字典/关键词与RRF](docs/job-recall.md)、[版本化索引及故障恢复](docs/job-index.md)、[冻结候选](docs/candidate-sets.md)。工程测试使用真实PostgreSQL/RabbitMQ/Qdrant及显式合成embedding，不代表真实模型质量；[百炼适配器](docs/embedding.md)只通过本地HTTP桩，真实Key/正式embedding索引与[人工Recall@K](docs/recall-evaluation.md)仍延后。召回经S2.4业务图接入，暂无独立召回HTTP。
 
