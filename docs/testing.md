@@ -4,6 +4,8 @@
 
 ## 当前验收状态
 
+S2.2使用job-contracts、job-extraction、model-executor单元测试核对权重、来源与有界模型重试/修复/预算；openai-model.test通过本地真实HTTP桩验证JSON Schema请求、脱敏、无SDK内层重试、429/5xx/超时/非法输出/响应上限。没有真实中转或百炼质量数据。integration/jobs、job-drafts、job-publication、rubrics、job-api分别覆盖数据库不可变/并发/owner、发布Outbox和真实RabbitMQ待执行、完整等级与HTTP。模型建议成功/失败不修改JD；测试模型只显式注入，不作生产兜底。
+
 以[开发进度中的最新验收/回归记录](progress.md)为准，本文只维护检查方式与覆盖边界，不复制运行计数。
 
 S2.1专项：`test/evidence-contracts.test.ts`验证严格证据契约与安全响应投影；`test/storage.test.ts`使用本机真实临时目录验证流式大小/哈希、路径和junction拒绝、提交/补偿与回收锁。`test/integration/resume-persistence.test.ts`用于真实PostgreSQL的上传幂等、owner复合外键、不可变触发器、版本唯一约束与晚期失败回滚；需先部署S2.1迁移，运行结果以progress为准。该数据库专项不证明PDF/DOCX解析、HTTP上传或语义抽取已完成。

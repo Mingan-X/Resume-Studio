@@ -8,6 +8,43 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T10阶段交接完成，待统一验收
+
+已完成S2.2全部非延后实现及阶段交接：草稿/要求/确认/不可变发布→真实JobIndexTask+Outbox待执行，Rubric六维完整加载，受限模型端口/JD建议、兼容模型HTTP桩、岗位HTTP和同源OpenAPI。T10保留前会话README/architecture/testing修改，修正API/契约/需求/JD文档的过时状态；新增观测测试安全阶段诊断，原5秒HTTP与所有验收断言不变。状态改为待验收，按授权合并develop并推送阶段分支/develop；master不操作。
+
+本轮检查：
+
+- `pnpm run typecheck`、`pnpm run lint`最终通过，零警告；首次诊断Lint失败与修正见前条。
+- `pnpm test`80项79通过/1失败，32.619秒；唯一原API 8秒冷启动失败按L1记录，不称全绿。前会话T9基础80/80及本轮其他测试通过不覆盖此失败。
+- `pnpm run openapi:check`通过；依赖声明/锁文件本轮未改，T8/T9冻结安装已有记录，本轮不重复安装。
+- `pnpm run test:integration`125项123通过/2失败、0跳过，553.291秒（data/s22-t10-integration.log）；唯一Docker Qdrant原5秒create超时及父项按L2接受。此前非L1/L2失败已完整保留，本轮Checkpoint/fence、消费者、Langfuse、Outbox（DLX182.858秒）及岗位/文件/任务专项全部通过。
+- 文档本地文件链接8份91项及git diff --check通过。
+- 回归后核验PostgreSQL/RabbitMQ/Qdrant实例归属：正式4队列ready/unacked=0、Qdrant集合0，Job/Resume/FileAsset/JobIndexTask=0；仅开发owner及正式rubric-v1保留，hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d、PENDING_REVIEW（data/s22-t10-resources.json）。未删历史孤立policy或正式Rubric。
+
+延后/限制：真实中转Key/模型结构化能力验证、百炼真实embedding与索引、人工审核/标注及目标服务器回归未执行，按路线图延后；S2.3前真实任务不标READY。原生Qdrant未操作。L1/L2未解除，间歇基础设施停顿不是已永久修复。S2.3及后续仍未完成。
+
+远端检查首次fetch包含尚不存在的feature/s2.2-jd-rubric而失败；改为fetch origin develop成功，local/remote develop均b66131e，阶段远端分支本次首次创建。后续提交/合并/推送结果另记。
+
+## 2026-11-27 S2.2-T10基础检查及L1记录
+
+首次Lint因新增观测诊断包装Error未保留cause被preserve-caught-error拒绝；已改为记录安全stage/耗时后原样rethrow，未关闭规则。最终typecheck、零警告lint通过；`pnpm test`80项79通过/1失败，32.619秒（data/s22-t10-unit.log），唯一API启动8秒用例失败，按既有L1单独记录。代码未改业务处理器、SDK、预算或配置。随后单独执行openapi:check与完整test:integration，不让已接受L1误阻断其余检查，结果待追加。
+
+## 2026-11-27 S2.2-T10失败专项复核与安全诊断
+
+执行 `node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/checkpoint-fence.test.js dist/test/integration/consumer.test.js dist/test/integration/observability.test.js`：18项17通过/1失败，121.286秒（data/s22-t10-handoff-targeted.log）。Checkpoint及消费者全部通过，Langfuse再次TimeoutError，不归L1/L2。
+
+只读探针核验观测容器/网络/卷归属通过（3.404秒），原5秒项目API读取200（72.8ms），无法由裸TimeoutError确定读项目/观测/清理哪个HTTP阶段超时。因此仅在observability集成测试增加安全stage/elapsedMs/timeout诊断，不输出URL、Key、正文或原始异常，不改请求次数/5000ms/断言。`pnpm run build`后原observability专项1/1通过（11.920秒），本次未复现，不能宣称已证明根因或修复基础设施。
+
+已启动串行typecheck/lint/pnpm test/openapi:check及完整test:integration阶段门禁，避免安装/编译/多轮测试并行负载。T10文档8份91个本地文件链接有效、git diff --check通过。前会话既有三份文档修改完整保留；正式Rubric仍待审核，真实中转及百炼验证未执行。
+
+## 2026-11-27 S2.2-T10续接与前轮完整回归结果
+
+维护者要求本会话继续，已核对前会话idle、当前feature/s2.2-jd-rubric/da71b6a；保留README/architecture/testing三份未提交T10文档。T6–T9已由前会话提交，正式rubric-v1已入库，真实中转/embedding验证仍延后。没有重做已完成任务或把旧T4阻塞直接当作当前停止结论。
+
+接收前会话仍运行的 `pnpm run test:integration`，未并发启动新测试/编译。最终125项115通过/10失败，821.997秒（data/s22-stage-integration.log）：Checkpoint暂停PowerShell子进程超时及父项；消费者4项（重复消费者/心跳/旧代ACK/提交后强杀IPC）及父项；Qdrant原5秒create超时及父项；Langfuse读取超时。Qdrant按既有L2，其余不归L1/L2。岗位HTTP/草稿/发布/持久化和Rubric通过；既有Outbox/重试及其他组结果保留原日志。
+
+T10已对照实现修正文档过时的“岗位/上传路由未实现”等描述，阶段仍进行中。当前按原命令参数与原断言串行复核失败的checkpoint-fence/consumer/observability专项；未改配置、超时、租约、服务或任何测试断言。待结果后决定是否能够执行阶段完整回归与合并。
+
 ## 2026-11-27 S2.2-T9岗位HTTP实现与专项验证，阶段回归中
 
 新增POST/GET jobs、版本详情/PATCH编辑、confirm/publish/suggestions路由，可信owner检查jobId/versionId一致，版本响应不返回owner/内部执行字段。发布202返回jobVersionId/taskId，草稿编辑发布版派生新版本；列表稳定cursor。字段错误details仅path/code，无原始值；伪造引用400、越权404、未确认409、缺模型/索引目标503，不注册假模型兜底。JOB_API_ENABLED仅本地开发，配置文件绝对路径、严格Schema、Key/URL不入库。
