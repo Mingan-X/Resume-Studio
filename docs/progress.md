@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T7模型端口与JD建议完成，T8适配器准备
+
+T7共享LangChain消息/Schema的ModelPort与有界ModelExecutor，分类重试+jitter、单次及总期限、调用/token/费用预留、并发和一次修复共用预算；未结束调用保留并发槽防止重叠重试，持久预算接口待S2.4接任务fence。JD只读取授权草稿，等长遮盖联系方式，按原文和发送文本双重校验引用；不写回草稿、确认或要求。观测使用既有白名单extract span；未知usage/cost保持null，不填0。
+
+typecheck通过；首次lint因类型导入失败，修复后零警告通过；模型/JD合成故障专项8/8通过，覆盖重试/一次修复、预算、挂起预留、总期限、取消、UNSETTLED槽、伪造/跨版本引用、联系方式及草稿不变。完整pnpm test78/78通过，10.874秒。准备T8安装与一次构建交叉，构建读到暂态未补丁声明失败；安装后核对原core补丁在位并串行重跑通过，未改严格设置或patch。后续依赖变动与T8新增声明问题另记。
+
+未执行真实模型/人工标注，T7测试假模型仅在测试注入，无生产默认假实现。尚未注册JD抽取HTTP（T9）。T8已核对并安装@langchain/openai1.8.5，Node>=22/core^1.5.0/MIT与当前环境兼容，冻结安装通过；官方包文档/声明明确ChatOpenAI、baseURL与json_schema。实际导入时发现上游exactOptionalPropertyTypes声明冲突（zdrEnabled/modelKwargs），正以最小仅类型补丁处理，未关闭skipLibCheck或忽略peer。T8真实中转调用继续延后。
+
 ## 2026-11-27 S2.2-T6正式Rubric导入与读取完成
 
 专项排查完整回归119/119通过后恢复本阶段。执行rubric:import开发owner的resources/rubrics/rubric-v1.json首次replay=false、第二次replay=true，随后rubric:load成功；6维30等级、reviewStatus=PENDING_REVIEW，内容哈希6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d。真实数据库逐维加载核对L1–L5及20/40/60/80/100，并与受控JSON完整比较一致。该正式版本保留在开发owner下，不作为临时测试记录删除。

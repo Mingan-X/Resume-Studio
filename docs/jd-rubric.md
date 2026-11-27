@@ -23,3 +23,9 @@ T4发布服务要求显式确认硬门槛和权重，再次校验要求及有效
 当前目标表受owner/版本/任务复合外键及目标匹配触发器约束。索引READY提交必须持有当前fence/lease并命中该版本的当前task/embedding/index目标；新版本或同版本切换目标后，旧执行不能标记新目标。默认消费者只具备synthetic能力，S2.3才装配真实处理器；T4专项显式领取真实任务仅验证数据库fence，不代表完成向量索引。HTTP确认/发布接口仍待T9。
 
 T5提供 `pnpm run rubric:import <owner UUID> <JSON文件路径>` 与 `pnpm run rubric:load <owner UUID> <version>`，先运行build并使用项目infra/.env。命令核对本项目PostgreSQL归属，不创建owner；正式导入拒绝SYNTHETIC。文件上限1MiB，错误只返回安全code。版本与内容哈希幂等绑定，同内容重放不再插入，内容不一致必须用新版本。RubricService加载时先校验整个版本完整性，再按维度返回全部五级，不依赖Qdrant检索；测试须显式allowSynthetic且不会注册任何默认版本。当前owner范围是开发身份与后续会话身份的同一边界。
+
+T6的rubric-v1已导入开发owner，六维30级逐项读回及重复导入验证通过；内容仍为AI_DRAFT/PENDING_REVIEW，审核不在导入时伪造完成。
+
+T7的ModelPort使用LangChain消息与Zod结构化输出，ModelExecutor统一管理单次/总期限、最大尝试与重试、分类指数退避+jitter、token/费用预留及并发；一次格式/引用修复也消耗同一预算。UTF-8字节上界检查约束输入，可信usage超出预留即失败；缺usage或失败调用不能把费用填0。取消未实际结束的调用保留并发槽，不允许重试与旧调用重叠；持久预算reserve接口供S2.4接入任务fence，当前JD请求使用本地预算，不声称重启后跨请求预算已持久化。
+
+JD建议只读取可信owner的草稿版本，在数据库读取事务结束后调用模型，不保存建议或改变确认状态。提示明确正文中的命令仅是数据，输出不能包含总分；返回inputHash/promptVersion/modelConfigVersion/schemaVersion供后续确认核查。每条引用须逐字匹配授权正文和发送的脱敏正文；联系方式等长遮盖以保留UTF-16偏移，覆盖常见邮箱/电话/URL/标签字段，不承诺识别任意隐写个人信息。失败只暴露ModelFailure安全码。观测使用既有白名单ObservabilityService的extract span，不记录模型输入/原始异常；无真实模型配置时明确UNAVAILABLE，测试假模型不装配到生产入口。
