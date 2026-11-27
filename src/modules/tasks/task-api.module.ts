@@ -12,12 +12,14 @@ import { ANALYSIS_CONFIGURATION, AnalysisCreationService } from './analysis-crea
 import {ReportController} from './report.controller.js';
 import {ReportService} from './report.service.js';
 import {ReportRepository} from '../../infrastructure/tasks/report.repository.js';
+import {TaskEventRepository} from '../../infrastructure/tasks/task-event.repository.js';
+import {TaskEventsController,EventStreamLimits} from './task-events.controller.js';
 
 @Module({})
 export class TaskApiModule {
   static register(config: { databaseUrl: string }, analysisConfiguration: unknown = null): DynamicModule {
-    return { module: TaskApiModule, imports: [IdentityModule], controllers: [TaskController, AnalysisController,ReportController],
+    return { module: TaskApiModule, imports: [IdentityModule], controllers: [TaskController, AnalysisController,ReportController,TaskEventsController],
       providers: [{ provide: INFRA_CONFIG, useValue: config }, DatabaseService, TaskQueryRepository, TaskQueryService,
-        AnalysisRepository, AnalysisCreationService,ReportRepository,ReportService,{ provide: ANALYSIS_CONFIGURATION, useValue: analysisConfiguration }] };
+        AnalysisRepository, AnalysisCreationService,ReportRepository,ReportService,TaskEventRepository,EventStreamLimits, { provide: ANALYSIS_CONFIGURATION, useValue: analysisConfiguration }] };
   }
 }

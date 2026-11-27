@@ -8,6 +8,10 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S3.1-T5持久任务事件SSE完成
+
+SSE读取数据库TaskEvent seq，每批100、按Last-Event-ID补读，15秒心跳、300秒连接期限与5秒背压上限；每API进程owner最多5/全进程100连接，释放幂等。终态读完关闭，已读最终seq重连204；断线不请求取消，数据库新事件可跨应用实例被读到。真实HTTP与单元验证补读无重复、非法/未来ID、owner404、连接超限429和释放、live事件及断线cancelRequested=false。共用基础128/128、全量146/146、类型/Lint/OpenAPI通过，未引入内存事件总线或新依赖。
+
 ## 2026-11-27 S3.1-T4调权重算HTTP与revision完成
 
 POST reports/:reportId/recompute要求UUID Idempotency-Key和完整变更岗位权重，复用T6评分内核并在同事务保存新ScoreSet/排名/report revision与请求绑定；原报告/基础task.reportId不变。并发同key只1个revision、不同正文409、非法权重400含details、跨owner404、模型预算不变已由真实HTTP验证。共用基础128/128、全量146/146、类型/Lint及OpenAPI通过；无新增依赖，真实模型/前端真实联调仍按原安排。
