@@ -9,6 +9,8 @@ import { redactContactText } from '../../modules/models/privacy.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
 import type { ExecutionClaim } from '../consumer/contracts.js';
 import { ExecutionLeaseLostError } from '../consumer/contracts.js';
+import { realAnalysisInputSchema } from '../../contracts/tasks.js';
+import { requireAnalysisAuthority } from '../tasks/analysis-artifact.repository.js';
 
 async function readSet(tx: Prisma.TransactionClient, ownerId: string, taskId: string) {
   const row = await tx.candidateSet.findUnique({ where: { ownerId_taskId: { ownerId, taskId } }, include: { candidates: { orderBy: { rank: 'asc' } } } });
@@ -30,10 +32,17 @@ export class CandidateRepository {
     const ownerId = z.uuid().parse(claim.ownerId), taskId = z.uuid().parse(claim.message.taskId);
     const query = recallQuerySchema.parse(rawQuery), recall = recallResultSchema.parse(rawRecall);
     if (claim.snapshot.ownerId !== ownerId || claim.snapshot.embeddingVersion !== recall.embeddingVersion) throw new Error('CANDIDATE_INPUT_MISMATCH');
+    if (claim.snapshot.kind === 'analysis') {
+      const snapshot = realAnalysisInputSchema.parse(claim.snapshot);
+      if (query.corpusVersion !== snapshot.jobCorpusVersionId || recall.corpusVersion !== snapshot.jobCorpusVersionId
+        || recall.corpusHash !== snapshot.corpusHash || requestHash(recall.config) !== requestHash(snapshot.recall)
+        || requestHash(recall.indexSpec) !== requestHash({ ...snapshot.indexTarget, ownerId })) throw new Error('CANDIDATE_INPUT_MISMATCH');
+    }
     const content = candidateSetContentSchema.parse({ schemaVersion: 1, ownerId, taskId,
       query: { ...query, summary: redactContactText(query.summary), skills: query.skills.map(skill => redactContactText(skill)) }, recall });
     const contentHash = requestHash(content);
     return this.database.client.$transaction(async tx => {
+      if (claim.snapshot.kind === 'analysis') await requireAnalysisAuthority(tx, claim);
       const valid = await tx.$queryRaw`SELECT id FROM analysis_task
         WHERE owner_id=${ownerId}::uuid AND id=${taskId}::uuid AND status='RUNNING' AND cancel_requested=false
           AND generation=${claim.message.dispatchGeneration} AND fence_token=${claim.fenceToken} AND lease_owner=${claim.attemptId}::uuid

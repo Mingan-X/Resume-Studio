@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T6召回接线与真实输入冻结保存
+
+T5保存1d0f4fd。T6保存由ParsedResume生成脱敏RecallQuery、读取冻结corpus/index/recall配置、复用S2.3召回与CandidateSet的服务；已有集合只校验执行权并复用，恢复不重新召回。CandidateRepository新增真实analysis快照的corpus版本/hash、embedding/index spec及召回配置绑定，旧synthetic验证保持。
+
+共用单元验证查询去联系方式，完整工程专项使用真实Qdrant验证READY正常召回、显式INDEX_NOT_READY降级、恢复后候选逐字不变/模型调用不增；该跨节点专项随T8接线提交。基础118/118、类型/Lint通过，本轮全量相关新旧召回用例尚按整体结果记录；不增加依赖/迁移/HTTP。真实embedding/原生对照仍延后或未执行，共用Langfuse门禁失败保留，不标阶段完成。
+
 ## 2026-11-27 S2.4-T5六维画像实现保存
 
 T4保存a3bc285。T5保存PROFILE子图（模型判断→校验/确定性映射）、六维完整状态Schema、Rubric等级/feature/rubricRefs/逐字引用校验及ProfileAssessment不可变产物。unknown的level和score均null；模型score字段被拒绝，合法等级由冻结Rubric映射分值，画像不提供岗位verdict。单元拒绝缺维/伪造/跨版本证据/额外分数；完整工程专项使用正式Rubric的独立测试owner副本验证等级2映射40与其余五维unknown/null。
