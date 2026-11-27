@@ -86,10 +86,12 @@ for(const [path,item] of Object.entries(document.paths)) {
   if(!path.startsWith('/api/v1/'))continue;
   for(const [method,operation] of Object.entries(item)) {
     if(!['get','post','patch','delete','put'].includes(method))continue;
+    operation.responses['429']=generatedError('来源/账号请求频率或SSE连接数达到上限');
     if(path.startsWith('/api/v1/auth/'))continue;
     operation.security=[{sessionCookie:[]}];
     operation.responses['401']=generatedError('会话模式下未登录或会话失效');
     if(method!=='get'){
+      operation.responses['413']??=generatedError('请求体超过上限');
       operation.responses['403']=generatedError('CSRF或Origin校验失败');
       operation.parameters=[...(operation.parameters??[]),{in:'header',name:'X-CSRF-Token',required:true,schema:{type:'string',pattern:'^[a-f0-9]{64}$'}},{in:'header',name:'Origin',required:true,schema:{type:'string',format:'uri'}}];
     }

@@ -10,8 +10,13 @@ export class AuthRepository{
  constructor(private readonly database:DatabaseService){}
  async createAccount(username:unknown,password:unknown){const name=usernameSchema.parse(username),passwordHash=await hashPassword(password),id=randomUUID(),ownerId=randomUUID();
   await this.database.client.$transaction(async tx=>{await tx.owner.create({data:{id:ownerId}});await tx.account.create({data:{id,ownerId,username:name,passwordHash}});});return {id,ownerId,username:name};}
- async createAnonymous(seconds:number){const token=createSessionToken();const expiresAt=new Date(Date.now()+seconds*1000);
-  await this.database.client.authSession.create({data:{tokenHash:tokenHash(token),expiresAt}});return {token,expiresAt};}
+ async createAnonymous(seconds:number){const token=createSessionToken();return this.database.client.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(7322,1)::text`;
+  await tx.$executeRaw`DELETE FROM auth_session WHERE token_hash IN (SELECT token_hash FROM auth_session WHERE expires_at<=clock_timestamp() ORDER BY expires_at LIMIT 100)`;
+  if(await tx.authSession.count({where:{accountId:null}})>=10000)throw new ServiceUnavailableException();
+  const now=z.array(z.object({now:z.date()})).length(1).parse(await tx.$queryRaw`SELECT clock_timestamp() AS now`)[0]!.now;
+  const expiresAt=new Date(now.getTime()+z.int().min(60).max(900).parse(seconds)*1000);
+  await tx.authSession.create({data:{tokenHash:tokenHash(token),expiresAt}});return {token,expiresAt};});}
  async session(token:string){const row=await this.database.client.authSession.findUnique({where:{tokenHash:tokenHash(token)},include:{account:true}});
   if(!row||row.expiresAt<=new Date()||row.account&&!row.account.enabled)return null;
   return {token,expiresAt:row.expiresAt,account:row.account?{id:row.account.id,ownerId:row.account.ownerId,username:row.account.username}:null};}

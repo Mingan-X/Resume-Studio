@@ -8,9 +8,11 @@ import type { AuthConfig } from './auth-config.js';
 import { readSessionCookie, requireCsrf } from './session-token.js';
 import { authenticatedOwner } from '../identity/session-identity.js';
 import type { AuthenticatedRequest } from '../identity/session-identity.js';
+import {RequestLimits} from '../../infrastructure/http/api-security.js';
 
 @Injectable()
 export class SessionGuard implements CanActivate {
+  private readonly limits=new RequestLimits();
   constructor(private readonly sessions: AuthRepository, @Inject(AUTH_CONFIG) private readonly config: AuthConfig) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getClass() === AuthController || context.getClass() === HealthController) return true;
@@ -18,6 +20,7 @@ export class SessionGuard implements CanActivate {
     const token = readSessionCookie(request.headers.cookie);
     const session = token ? await this.sessions.session(token) : null;
     if (!session?.account) throw new UnauthorizedException();
+    this.limits.require(session.account.ownerId,this.config.ownerRequestsPerMinute);
     if (!['GET', 'HEAD'].includes(request.method ?? '')) {
       requireCsrf(session.token, request.headers['x-csrf-token'], request.headers.origin, this.config.origin);
     }
