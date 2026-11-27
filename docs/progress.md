@@ -8,6 +8,28 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T3独立端口检查通过，T2完整复核进行中
+
+T2非L1/L2专项原命令6/6通过，45.384秒（data/s23-t2-failure-review.log）：Checkpoint/fence全部子项与Langfuse通过。没有修改基础设施/恢复/观测源码、测试超时或断言；本次未复现，不宣称根因修复，也不覆盖此前127项中的5项失败。已启动第二次完整`pnpm run test:integration`（data/s23-t2-integration-review.log），T2仍待该回归结果。
+
+按路线图T3仅依赖T1，独立实现EmbeddingPort/EmbeddingExecutor及仅测试注册的确定性合成向量。单次/全部尝试总期限（含reserve及退避）、最大尝试、分类指数退避+jitter、token/费用预算、并发槽、联系方式遮盖和维数/条数/有限数值验证；未报告/失败调用usage为null。未settle的调用保留并发槽，禁止超时后与旧调用重叠。详见[embedding边界](embedding.md)。
+
+`pnpm run typecheck`、`pnpm run lint`通过；`pnpm test`88/88通过，12.478秒（data/s23-t3-unit.log），含T3五项脱敏/可复现合成、重试预算、非法维数/usage、期限与挂起reserve、取消与未settle故障测试。T3无外部服务、迁移、HTTP或依赖变化；不把真实百炼调用/索引/人工质量验证标完成。T3按独立任务提交；T2工作与失败记录保留，阶段不合并/推送，T4尚未实现。
+
+## 2026-11-27 S2.3-T2完整回归失败结果与专项复核启动
+
+`pnpm run test:integration`127项122通过/5失败、0跳过，634.543秒（data/s23-t2-integration.log）。失败：S1.4-T7无Checkpoint恢复子项在**旧Worker首次claimed之前**退出，安全诊断为phase=delivery/category=database/code=P1008，以及父项；Langfuse TimeoutError；Docker Qdrant原createCollection超时及父项（L2）。此前对进程退出/锁释放边界的检查只是假设，最终异常未支持该假设，因此没有修改任何恢复代码或测试等待/断言。P1008与Langfuse不归入L1/L2。
+
+语料与关键词新用例、其他消费者/Checkpoint、Outbox/DLX（182.120秒）、对账、文件与任务检查通过，套件结束且本轮各测试报告精确清理完成。没有把本轮失败用T1的126/126通过覆盖。开始按原编译产物、原超时/断言串行复核：`node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/checkpoint-fence.test.js dist/test/integration/observability.test.js`，结果待追加。基础设施/恢复/观测源码和原测试均无修改。
+
+## 2026-11-27 S2.3-T2关键词实现与回归中的非L1/L2失败
+
+T1已提交bb600a4。T2新增RecallQuery与keyword-overlap-v1参数契约，以及PostgreSQL快照技能数组精确求交；回查owner/发布状态/内容hash，按技能交集数降序、jobId/versionId稳定排序，默认50上限，只有显式city才过滤。无HTTP接口、迁移或依赖变更。
+
+已执行typecheck、lint通过，`pnpm test`83/83通过，11.428秒（data/s23-t2-unit.log）；`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/keyword-recall.test.js`1/1通过，21.017秒（data/s23-t2-keyword.log）。专项覆盖上限、并列、别名去重、城市/空技能、owner、旧快照/新版本和已删除版本剔除；只清理本轮独立owner记录。
+
+随后`pnpm run test:integration`运行中（data/s23-t2-integration.log），S1.4-T7的confirmed process exit / restart without checkpoint用例出现失败（2147.855ms）及父项失败，**不归L1/L2**。具体异常待runner结束输出后分析；旧执行挂起换thread与带Checkpoint恢复等子项通过，清理报告本轮记录/线程已移除。暂停后续实现，保留T2与尚未验证的T3 embedding端口/故障测试草稿；没有并行构建/安装/测试，没有更改既有测试断言/超时。
+
 ## 2026-11-27 S2.3-T1检查完成，按任务提交
 
 `pnpm run test:integration`完整126/126通过、0失败/跳过，587.864秒（data/s23-t1-integration.log），包含新语料用例和既有Checkpoint/fence、RabbitMQ、Langfuse、Outbox/DLX（原窗口180.812秒）、任务、岗位与文件回归。Docker Qdrant创建3865.7ms；既有L1/L2未因此解除。此前基础81/82的L1失败、首次Lint失败仍保留，不以完整集成通过覆盖。
