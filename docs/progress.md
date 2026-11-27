@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T3故障注入与broker专项复验
+
+新增test:faults串行矩阵，复用全部架构§6.3窗口现有断言，并增加真实PostgreSQL连接中断后的0 ACK/同输入重投、真实Qdrant断连的显式关键词降级与恢复、模型返回后保存失败的重复调用/持久预算，以及主动RabbitMQ重启后的确认消息重投。仅操作本项目，broker实验补充精确网络标签/成员校验与UUID清单；不改超时/业务重试/断言。
+
+基础142/142、83.999秒通过；故障矩阵首轮69/70、493.710秒（data/s33-t3-faults-second.log）。broker失败的清理异常为quorum队列不支持queue.delete(ifUnused)，掩盖了该轮主路径结果，不能宣称该轮完成重启。核验唯一清单队列为空且无consumer后精确清理；新fixture使用专属授权交换机、显式consumer检查及聚合失败记录。独立broker复验1/1、78.949秒通过（data/s33-t3-broker-fixed.log），真实重启同一实例、同messageId redelivered后ACK，清单cleaned=true。原失败保留，其他69项通过不代替后续阶段完整回归。
+
+串行typecheck/Lint/构建已通过。过程中一次后续性能fixture漏account.id导致build失败、两次新增脚本/清理Lint问题均已修正，未触及业务校验。所有模型仍为显式工程fixture；真实收费、人工质量、目标环境与L1/L2解除未执行，SocketTimeout未知问题保留。原生Qdrant6333未启停，前端尚未恢复。
+
 ## 2026-11-28 S3.3-T2质量指标与输入校验
 
 增加evaluation:quality离线脚本，计算引用位置/语义有效率、结构化正确率与字段覆盖、逐要求混淆矩阵/执行覆盖、unknown precision/recall、Recall@K和已知费用/token。数据/输出hash绑定，要求完整人工标注、全部冻结候选要求与全语料相关性，拒绝重复、缺失、降级、伪造provenance声明值和越界成员；声明真实性仍由维护者审核。未执行要求与未知费用不填零或冒充unknown。
