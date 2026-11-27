@@ -8,6 +8,10 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S3.1-T2 SAVE与报告终态事务完成
+
+新任务冻结reportVersion=1，图改用SAVE意图，消费完成事务核验完整语义/评分产物后写报告、task.reportId/终态/事件/attempt/DONE收据。失败报告不伪装成功；旧无reportVersion任务保留原图及组件身份。报告创建后的晚期收据失败断言报告0、任务RUNNING，恢复后报告1且模型调用不增加；提交后重投仍1份。共用基础128/128、类型/Lint、完整146/146及定向3/3通过，无新依赖或额外网络调用。
+
 ## 2026-11-27 S3.1-T1报告快照模型完成
 
 实现AnalysisReport及ReportRecomputeRequest，报告revision/root/source关系、完整内部输入快照、展示内容/hash和唯一finalize键。内容含结构化简历/原文位置、画像、冻结岗位/全部执行状态、评分/排名和PARTIAL覆盖/原因；响应Schema剥离owner/存储/执行令牌等内部字段。数据库触发器禁止UPDATE，派生报告保留来源。23条迁移generate/validate/deploy两次/status通过。

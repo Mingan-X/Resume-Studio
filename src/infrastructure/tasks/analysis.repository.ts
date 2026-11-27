@@ -56,7 +56,7 @@ export class AnalysisRepository {
         if (requestHash(saved) !== configRow.contentHash || configRow.contentHash !== configurationHash) throw new AnalysisInputStateError();
       } else await tx.analysisConfiguration.create({ data: { ownerId, version: configuration.configurationVersion, content: configuration, contentHash: configurationHash } });
       const snapshot = realAnalysisInputSchema.parse({ ...configuration, kind: 'analysis', ownerId, ...request,
-        configurationHash, resumeFileHash: document.fileHash, corpusHash: corpusRow.contentHash, rubricHash: rubricRow.contentHash, scoringPolicyHash: policyRow.contentHash });
+        configurationHash, resumeFileHash: document.fileHash, corpusHash: corpusRow.contentHash, rubricHash: rubricRow.contentHash, scoringPolicyHash: policyRow.contentHash, reportVersion:1 });
       const taskId = randomUUID(), eventId = randomUUID();
       await tx.analysisTask.create({ data: { id: taskId, ownerId, resumeVersionId: request.resumeVersionId,
         realResumeVersionId: request.resumeVersionId, corpusVersion: request.jobCorpusVersionId,

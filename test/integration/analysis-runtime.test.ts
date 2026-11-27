@@ -96,11 +96,13 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     const runtime = createAnalysisRuntime(database, identity, loadCheckpointConfig(process.env), model, embedding, vector, { allowSynthetic: true });
     assert.equal(await runtime.delivery.handle(seeded.message, new AbortController().signal), 'ack');
     const firstTask = await db.analysisTask.findUniqueOrThrow({ where: { id: seeded.taskId } });
-    assert.equal(firstTask.status, large ? 'PARTIAL' : 'SUCCEEDED'); assert.equal(firstTask.reportId, null);
+    assert.equal(firstTask.status, large ? 'PARTIAL' : 'SUCCEEDED'); assert.ok(firstTask.reportId);
+    assert.equal(await db.analysisReport.count({where:{ownerId,taskId:seeded.taskId}}),1);
     const summary = analysisSummarySchema.parse((await db.analysisSummary.findFirstOrThrow({ where: { taskId: seeded.taskId } })).content);
     assert.equal(summary.planned, large ? 420 : 3); assert.equal(summary.completed, large ? 400 : 3); assert.equal(summary.truncated, large ? 20 : 0);
     assert.equal(summary.failed, 0); assert.equal(summary.pending, 0); assert.ok(peakMatches <= 3);
     const before = calls; assert.equal(await runtime.delivery.handle(seeded.message, new AbortController().signal), 'ack'); assert.equal(calls, before);
+    assert.equal(await db.analysisReport.count({where:{ownerId,taskId:seeded.taskId}}),1);
     assert.equal(await db.consumerReceipt.count({ where: { ownerId, taskId: seeded.taskId, status: 'DONE' } }), 1);
     assert.equal(await db.nodeArtifact.count({ where: { ownerId, taskId: seeded.taskId } }), 12);
     const score = await db.scoreSet.findFirstOrThrow({ where: { ownerId, taskId: seeded.taskId, sourceScoreSetId: null } });
@@ -162,6 +164,7 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     try { await assert.rejects(runtime.delivery.handle(crash, new AbortController().signal), /TEST_RECEIPT_FAILURE/); }
     finally { runtime.store.completeAnalysis = originalComplete; }
     assert.equal((await db.analysisTask.findUniqueOrThrow({ where: { id: crash.taskId } })).status, 'RUNNING');
+    assert.equal(await db.analysisReport.count({where:{taskId:crash.taskId}}),0);
     assert.equal(await db.consumerReceipt.count({ where: { taskId: crash.taskId, status: 'DONE' } }), 0);
     const beforeRecovery = calls, originalSet = await db.candidateSet.findFirstOrThrow({ where: { taskId: crash.taskId } });
     await db.$executeRaw`UPDATE analysis_task SET lease_until=clock_timestamp()-interval '1 second' WHERE id=${crash.taskId}::uuid`;
@@ -170,6 +173,7 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     const replay = taskDispatchSchema.parse((await db.outboxEvent.findFirstOrThrow({ where: { ownerId, aggregateId: crash.taskId, payload: { path: ['dispatchGeneration'], equals: generation } } })).payload);
     assert.equal(await runtime.delivery.handle(replay, new AbortController().signal), 'ack'); assert.equal(calls, beforeRecovery);
     assert.equal((await db.analysisTask.findUniqueOrThrow({ where: { id: crash.taskId } })).status, 'SUCCEEDED');
+    assert.equal(await db.analysisReport.count({where:{taskId:crash.taskId}}),1);
     assert.deepEqual(await db.candidateSet.findFirstOrThrow({ where: { taskId: crash.taskId } }), originalSet);
   });
 });

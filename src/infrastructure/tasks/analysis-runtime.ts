@@ -122,6 +122,7 @@ export function createAnalysisRuntime(database: DatabaseService, identity: Ident
         matchingError: match.status === 'failed' ? match.code : null }); return { status: 'ok', artifactId: summary.id };
     },
     FINALIZE: async state => analysisNodeResultSchema.parse(state.outputs.JOIN),
+    SAVE: async state => analysisNodeResultSchema.parse(state.outputs.JOIN),
   };
   for (const name of Object.keys(nodes) as (keyof AnalysisGraphNodes)[]) {
     const work = nodes[name]; nodes[name] = async (state, context) => {
@@ -138,7 +139,7 @@ export function createAnalysisRuntime(database: DatabaseService, identity: Ident
   const graph = new AnalysisGraph(checkpoint, artifactRepository, nodes), config = consumerConfigSchema.parse({}), store = new TaskExecutionStore(database, config);
   const handler: TaskHandler = { capability: 'analysis', embeddingVersion: embedding.embeddingVersion, modelConfigVersion: model.modelConfigVersion,
     execute: async (claim, signal, budget) => {
-      const state = await graph.execute(claim, signal, budget), result = analysisNodeResultSchema.parse(state.outputs.FINALIZE);
+      const state = await graph.execute(claim, signal, budget), result = analysisNodeResultSchema.parse(realAnalysisInputSchema.parse(claim.snapshot).reportVersion?state.outputs.SAVE:state.outputs.FINALIZE);
       if (result.status !== 'ok') throw new TaskFailure('OUTPUT_INVALID');
       return analysisCompletionSchema.parse({ schemaVersion: 1, kind: 'analysis', inputHash: requestHash(claim.snapshot), summaryId: result.artifactId });
     },

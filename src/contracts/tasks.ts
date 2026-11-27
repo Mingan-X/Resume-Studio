@@ -65,6 +65,7 @@ export const realAnalysisInputSchema = z.object({
   resumeVersionId: uuid, asOfDate: z.iso.date(), jobCorpusVersionId: version,
   configurationHash: hash, resumeFileHash: hash, corpusHash: hash, rubricHash: hash,
   scoringPolicyHash: hash.optional(), // Absent only on pre-S2.5 persisted tasks, which retain the original graph.
+  reportVersion: z.literal(1).optional(), // Absent on historical tasks; only new tasks require report commit.
 }).strict().refine(value => value.embeddingVersion === value.indexTarget.embeddingVersion, 'Embedding version mismatch');
 export const analysisInputSnapshotSchema = z.discriminatedUnion('kind', [
   syntheticAnalysisInputSchema.extend({ ownerId: uuid }), realAnalysisInputSchema,

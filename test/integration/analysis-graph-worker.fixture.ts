@@ -43,7 +43,7 @@ async function run() {
       }
       const fixtureNode: AnalysisGraphNodes['LOAD'] = async () => ({ status: 'ok', artifactId: randomUUID() });
       const nodes: AnalysisGraphNodes = { LOAD: fixtureNode, PARSE: fixtureNode, EXTRACT: fixtureNode, VALIDATE: fixtureNode,
-        PROFILE: fixtureNode, RECALL: fixtureNode, SNAP: fixtureNode, MATCH: fixtureNode, SCORE: fixtureNode, RANK: fixtureNode, JOIN: fixtureNode, FINALIZE: fixtureNode };
+        PROFILE: fixtureNode, RECALL: fixtureNode, SNAP: fixtureNode, MATCH: fixtureNode, SCORE: fixtureNode, RANK: fixtureNode, JOIN: fixtureNode, SAVE:fixtureNode,FINALIZE: fixtureNode };
       for (const node of analysisNodeSchema.options) nodes[node] = async () => {
         process.send?.({ event: 'node', node }); return { status: 'ok', artifactId: randomUUID() };
       };
