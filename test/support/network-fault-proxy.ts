@@ -4,7 +4,7 @@ import { once } from 'node:events';
 
 // A test-owned TCP boundary to an already ownership-verified project endpoint.
 // No global firewall, service configuration or other process is changed.
-export async function networkFaultProxy(port: 55432 | 56333 | 6333) {
+export async function networkFaultProxy(port: 55432 | 55672 | 56333 | 6333) {
   const sockets = new Set<Socket>(); let blocked = false;
   const server = createServer(client => {
     if (blocked) { client.destroy(); return; }

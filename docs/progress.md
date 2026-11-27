@@ -8,6 +8,16 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T7部署准备与本地验证
+
+增加Linux单机Compose应用模板、Dockerfile、同源TLS/nginx/前端静态目录、私有env/JSON/证书挂载及七类固定角色监督；保留既有loopback端点和原归属检查。API/Worker不挂Docker socket，只有独立只读元数据代理持有，拒绝变更、其他项目、Env/日志输出。新增可选/ready检查数据库与两条业务队列，/health语义不变；Schema/API/OpenAPI/测试同步。发布/对账仍显式单owner配置，生命周期必须监督运行，未扩大为自动多账号调度。
+
+真实Docker CLI经过代理执行原PostgreSQL/RabbitMQ/Qdrant/全部Langfuse归属检查通过（data/s33-deployment-local-second.log）；就绪HTTP断连/503/恢复/存活独立专项通过（data/s33-readiness-isolated.log），最终完整153/153中该用例再次通过。基础145/145、typecheck、零警告Lint、构建及OpenAPI一致性通过；监督器拒绝__proto__非法角色且返回结构化码。Compose config --quiet在显式syntax-only文件下通过，未启动模板服务。
+
+首次部署专项0/2：就绪Schema漏兼容原heartbeat=10，Docker filters漏兼容CLI的布尔map格式；按实际配置/请求修正而不放宽端点/权限。随后代理通过，但就绪首次健康探针出现一次503；直接真实PG/AMQP检查及原断言独立复验、完整集成均通过，未捕获该次依赖拒绝根因，不将其认定为SocketTimeout、稳定性已修复或生产验证。两次失败日志原样保留。
+
+Docker Hub三次镜像元数据查询因连接失败退出，当前无Node/docker-cli/nginx本地镜像；未验证新镜像digest、Dockerfile构建或nginx -t，不使用任意镜像替换或修改全局网络。Linux信号/host networking、目标TLS/浏览器、真实模型配置与服务器部署按原授权留待统一验收。模板中的镜像占位符不能直接发布，真实Key/管理员凭证未写入库；详情见[发布运维](release-operations.md)。
+
 ## 2026-11-28 S3.3-T6安全修复与许可证审计完成
 
 pnpm audit首轮5 high/4 moderate，全部来自undici7.29.1及effect3.20.0。按官方registry公告修复范围定向覆盖7.30.1/3.22.1，生成锁文件后冻结安装成功（3分57.7秒）；直接依赖和严格peer策略不变。复查audit退出0、全部级别0，未使用忽略列表或接受未修复高危。两次许可证盘点均395条，EPL/BSD/双重与组合许可另核对发布包文本并记录源码来源，详见[依赖审计](dependency-audit.md)。原始本地路径/报告不入库。

@@ -10,6 +10,7 @@ export const healthResponseSchema = z.object({
   environment: z.enum(['development', 'test', 'production']),
 }).strict();
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
+export const readinessResponseSchema = z.object({ status: z.literal('ready') }).strict();
 
 export const errorResponseSchema = z.object({
   code: z.enum(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE', 'HTTP_ERROR', 'INTERNAL_ERROR', 'PAYLOAD_TOO_LARGE', 'UNSUPPORTED_FILE', 'MODEL_UNAVAILABLE', 'MODEL_OUTPUT_INVALID', 'MODEL_BUDGET_EXHAUSTED', 'INDEX_TARGET_UNAVAILABLE', 'ANALYSIS_UNAVAILABLE','UNAUTHENTICATED','FORBIDDEN','RATE_LIMITED','DATA_DELETION_PENDING']),

@@ -6,7 +6,7 @@ import { extendZodWithOpenApi, OpenAPIRegistry, OpenApiGeneratorV31 } from '@ast
 // Generation-only entry: runtime validators never import this dev dependency or its Zod extension.
 extendZodWithOpenApi(z);
 // ESM static imports would construct schemas before the generation-only extension is installed.
-const { healthQuerySchema, healthResponseSchema, errorResponseSchema } = await import('../dist/src/contracts/http.js');
+const { healthQuerySchema, healthResponseSchema, readinessResponseSchema, errorResponseSchema } = await import('../dist/src/contracts/http.js');
 const { taskPathSchema, taskQuerySchema, taskResponseSchema, cancelTaskRequestSchema, cancelTaskResponseSchema } = await import('../dist/src/contracts/task-api.js');
 const { resumeListQuerySchema, resumeListResponseSchema, resumeVersionPathSchema, resumeVersionResponseSchema } = await import('../dist/src/contracts/resumes.js');
 const { jobPathSchema, jobVersionPathSchema, jobListQuerySchema, jobListResponseSchema, jobVersionResponseSchema } = await import('../dist/src/contracts/job-api.js');
@@ -21,6 +21,7 @@ const {deletionPathSchema,deletionResponseSchema}=await import('../dist/src/cont
 const registry = new OpenAPIRegistry();
 registry.registerComponent('securitySchemes','sessionCookie',{type:'apiKey',in:'cookie',name:'__Host-resume_session',description:'AUTH_ENABLED=true时必需；写请求同时要求X-CSRF-Token及精确HTTPS Origin。'});
 const health = registry.register('HealthResponse', healthResponseSchema);
+const ready = registry.register('ReadinessResponse', readinessResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
 const task = registry.register('TaskResponse', taskResponseSchema);
 const cancel = registry.register('CancelTaskRequest', cancelTaskRequestSchema);
@@ -28,6 +29,9 @@ const accepted = registry.register('CancelTaskResponse', cancelTaskResponseSchem
 const headers = z.object({ 'x-request-id': z.uuid() });
 const response = (schema, description) => ({ description, headers, content: { 'application/json': { schema } } });
 const errors = { 400: response(error,'请求格式或Schema校验失败'), 404: response(error,'资源不可见或不存在'), 500: response(error,'安全的服务端错误') };
+registry.registerPath({ method: 'get', path: '/ready', operationId: 'getReadiness', summary: '数据库及业务队列就绪检查',
+  description: '仅READINESS_ENABLED=true时注册。200表示数据库查询及两条业务队列检查通过；1秒缓存，不检查模型、向量质量或Worker进度。部署代理不对公网转发此路径。',
+  request: { query: healthQuerySchema }, responses: { 200: response(ready, '依赖可用'), 400: errors[400], 503: response(error, '依赖暂不可用，不暴露内部详情') } });
 registry.registerPath({ method: 'get', path: '/health', operationId: 'getHealth',
   summary: '进程存活检查', description: '无查询参数；未知查询字段返回400。成功不表示外部依赖就绪。',
   request: { query: healthQuerySchema }, responses: { 200: response(health,'进程可响应'), 400: errors[400], 500: errors[500] } });

@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env*
+data
+logs
+coverage
+infra/.env*
+infra/release/secrets
+src/generated
+**/*.log

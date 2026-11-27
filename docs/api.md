@@ -78,6 +78,10 @@ S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence
 
 机器可读契约为[OpenAPI 3.1](openapi.json)，由 `pnpm run openapi:generate` 从相同运行时Zod Schema生成；`openapi:check`检测过期，禁止手改产物。未知查询字段、跨字段计数关系和取消事务规则见下文，不能只靠OpenAPI结构推断状态机。
 
+## GET /ready（S3.3-T7）
+
+仅READINESS_ENABLED=true且配置同一业务数据库/RabbitMQ时注册。无需会话；拒绝额外query。成功200返回`{"status":"ready"}`；数据库不可查询或analysis/job-index任一业务队列不可访问时返回503及统一INTERNAL_ERROR响应（retryable=true），不暴露依赖名称、连接或原始异常。相同进程并发探针合并且结果缓存1秒，数据库池最多1连接、连接/SQL各2秒，RabbitMQ连接/队列检查合计2秒；不会隐式创建队列。它不证明模型、embedding、Worker执行进度或全部业务可用。部署反向代理不对公网转发此路径。
+
 ## GET /health
 
 默认地址：`http://127.0.0.1:3000/health`。

@@ -171,6 +171,21 @@
         ],
         "additionalProperties": false
       },
+      "ReadinessResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
       "TaskEvent": {
         "type": "object",
         "properties": {
@@ -482,6 +497,72 @@
     "parameters": {}
   },
   "paths": {
+    "/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "数据库及业务队列就绪检查",
+        "description": "仅READINESS_ENABLED=true时注册。200表示数据库查询及两条业务队列检查通过；1秒缓存，不检查模型、向量质量或Worker进度。部署代理不对公网转发此路径。",
+        "responses": {
+          "200": {
+            "description": "依赖可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖暂不可用，不暴露内部详情",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "operationId": "getHealth",

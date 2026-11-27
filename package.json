@@ -12,6 +12,7 @@
     "evaluation:quality": "node dist/src/infrastructure/evaluation/quality.cli.js",
     "performance:tasks": "node --env-file=infra/.env dist/test/integration/task-performance.fixture.js",
     "backup:drill": "node --env-file=infra/.env --env-file=infra/.env.checkpoint scripts/restore-drill.mjs",
+    "test:deployment": "pnpm run build && node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/readiness.test.js dist/test/integration/docker-read-proxy.fixture.js",
     "test:faults": "pnpm run build && node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/observability.test.js dist/test/integration/tasks.test.js dist/test/integration/outbox.test.js dist/test/integration/consumer.test.js dist/test/integration/checkpoint.test.js dist/test/integration/checkpoint-fence.test.js dist/test/integration/analysis-extraction.test.js dist/test/integration/analysis-graph.test.js dist/test/integration/analysis-runtime.test.js dist/test/integration/reconciliation.test.js dist/test/integration/recall.test.js dist/test/integration/broker-restart.fixture.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
