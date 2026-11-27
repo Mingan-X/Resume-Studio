@@ -28,7 +28,7 @@ import { TaskExecutionStore } from '../../src/infrastructure/consumer/task-execu
 import { consumerConfigSchema } from '../../src/infrastructure/consumer/config.js';
 import { reconciliationConfigSchema } from '../../src/infrastructure/reconciliation/config.js';
 import { jobIndexTargetSchema } from '../../src/contracts/job-publication.js';
-import { taskDispatchSchema, jobIndexInputSnapshotSchema } from '../../src/contracts/tasks.js';
+import { taskDispatchSchema, jobIndexInputSnapshotSchema, budgetUsageSchema } from '../../src/contracts/tasks.js';
 import { indexCollectionSchema } from '../../src/contracts/job-index.js';
 import type { IndexCollection } from '../../src/contracts/job-index.js';
 import { indexCollectionName } from '../../src/modules/recall/job-chunks.js';
@@ -40,6 +40,7 @@ import { qdrantTestTarget } from '../support/native-qdrant.js';
 import { cleanIndexCollections } from '../support/index-cleanup.js';
 import type { TransactionDatabase } from '../../src/infrastructure/database/transaction-port.js';
 import type { Prisma } from '../../src/generated/prisma/client.js';
+import { TaskFailure } from '../../src/infrastructure/consumer/failure.js';
 
 await test('S2.3 real index delivery upserts idempotently, commits READY atomically and fences old targets', { timeout: 180_000 }, async t => {
   await ownedPostgres(); await ownedRabbit();
@@ -158,4 +159,38 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
   assert.equal(await runtime.store.reconcile(ownerId, 'job-index', rebuilt.taskId, reconciliationConfigSchema.parse({}), 'job-index'), 'recovered');
   await assert.rejects(runtime.store.completeJobIndex(claimed.claim, output), /LEASE_LOST/);
   assert.equal(jobIndexInputSnapshotSchema.parse(task.inputSnapshot).kind, 'job-index');
+
+  // Fail after the actual point write, as with a lost acknowledgement, and recover the same task.
+  const retryTask = await publications.ensureIndex(ownerId, draft.id, randomUUID(), target2);
+  const retryEvent = await db.outboxEvent.findFirstOrThrow({ where: { ownerId, aggregateId: retryTask.taskId } });
+  class LostReplyVector extends JobIndexVector {
+    private first = true;
+    override async upsert(...args: Parameters<JobIndexVector['upsert']>) {
+      await super.upsert(...args);
+      if (this.first) { this.first = false; throw new TaskFailure('UPSTREAM_5XX'); }
+    }
+  }
+  const retryVector = new LostReplyVector({ url: qdrant.config.qdrantUrl, apiKey: qdrant.config.qdrantApiKey }, qdrant.verify);
+  const retryRuntime = createJobIndexDelivery(database, identity, smallEmbedding, retryVector, { allowSynthetic: true });
+  assert.equal(await retryRuntime.delivery.handle(taskDispatchSchema.parse(retryEvent.payload), AbortSignal.timeout(30_000)), 'ack');
+  const waiting = await db.jobIndexTask.findFirstOrThrow({ where: { ownerId, id: retryTask.taskId } });
+  assert.equal(waiting.status, 'RETRY_WAIT');
+  assert.equal((await jobs.findVersion(ownerId, draft.id))?.indexStatus, 'PENDING');
+  assert.ok(waiting.retryAt && waiting.retryAt.getTime() > Date.now());
+  const resumedEvent = await db.outboxEvent.findFirstOrThrow({ where: { ownerId, aggregateId: retryTask.taskId,
+    payload: { path: ['dispatchGeneration'], equals: waiting.generation } } });
+  // Scheduling delays are already verified in retry.test; advance only this fixture's retry gate.
+  await db.jobIndexTask.update({ where: { ownerId, id: retryTask.taskId }, data: { retryAt: new Date(0) } });
+  assert.equal(await retryRuntime.delivery.handle(taskDispatchSchema.parse(resumedEvent.payload), AbortSignal.timeout(30_000)), 'ack');
+  const completed = await db.jobIndexTask.findFirstOrThrow({ where: { ownerId, id: retryTask.taskId } });
+  assert.equal(completed.status, 'SUCCEEDED');
+  assert.equal(budgetUsageSchema.parse(completed.budgetUsage).modelCalls, 2);
+  assert.equal(budgetUsageSchema.parse(completed.budgetUsage).tokens, 2 * policy.inputTokenReservation);
+  assert.equal(await db.taskAttempt.count({ where: { ownerId, jobIndexTaskId: retryTask.taskId } }), 2);
+  assert.equal((await client.count(indexCollectionName(nextSpec), { exact: true })).count, 1);
+  await new JobIndexRepository(database).assertCorpusReady(ownerId, 'one', nextSpec);
+  await vector.switchAlias(nextSpec, { signal: AbortSignal.timeout(15_000), deadline: Date.now() + 15_000 });
+  assert.equal((await vector.listAliases({ signal: AbortSignal.timeout(15_000), deadline: Date.now() + 15_000 }))
+    .find(item => item.collection_name === indexCollectionName(nextSpec))?.collection_name, indexCollectionName(nextSpec));
+  assert.equal((await client.count(indexCollectionName(spec), { exact: true })).count, 1);
 });

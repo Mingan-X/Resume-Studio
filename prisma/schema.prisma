@@ -208,6 +208,7 @@ model JobIndexTask {
   realJobVersionId String? @map("real_job_version_id") @db.Uuid
   realJobVersion JobVersion? @relation(fields: [ownerId, realJobVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
   indexTargets JobIndexTarget[]
+  indexRequests JobIndexRequest[]
   embeddingVersion String @map("embedding_version") @db.VarChar(64)
   indexVersion String @map("index_version") @db.VarChar(64)
   inputSnapshot Json @map("input_snapshot") @db.JsonB
@@ -312,6 +313,20 @@ model JobIndexTarget {
   indexVersion String @map("index_version") @db.VarChar(64)
   @@unique([ownerId, jobVersionId])
   @@map("job_index_target")
+}
+
+// A backfill request also persists when its target already exists (no new task).
+model JobIndexRequest {
+  ownerId String @map("owner_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  requestHash String @map("request_hash") @db.Char(64)
+  taskId String @map("task_id") @db.Uuid
+  task JobIndexTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: Cascade, onUpdate: NoAction)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([ownerId, idempotencyKey])
+  @@index([ownerId, taskId])
+  @@map("job_index_request")
 }
 
 // SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.

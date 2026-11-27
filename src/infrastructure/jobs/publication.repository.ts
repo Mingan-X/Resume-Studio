@@ -32,6 +32,7 @@ export class JobPublicationRepository {
     const hash = requestHash({ operation: 'publish-job-v1', jobVersionId: id });
     return this.database.client.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([ownerId, idempotencyKey])}, 22))::text`;
+      if (await tx.jobIndexRequest.findUnique({ where: { ownerId_idempotencyKey: { ownerId, idempotencyKey } } })) throw new IdempotencyConflictError();
       const prior = await tx.jobIndexTask.findUnique({ where: { ownerId_idempotencyKey: { ownerId, idempotencyKey } } });
       if (prior) {
         const snapshot = jobIndexInputSnapshotSchema.parse(prior.inputSnapshot);
@@ -78,8 +79,20 @@ export class JobPublicationRepository {
     const target = jobIndexTargetSchema.parse(rawTarget), hash = requestHash({ operation: 'ensure-job-index-v1', jobVersionId: id, target });
     return this.database.client.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([ownerId, idempotencyKey])}, 22))::text`;
+      const request = await tx.jobIndexRequest.findUnique({ where: { ownerId_idempotencyKey: { ownerId, idempotencyKey } } });
+      if (request) {
+        if (request.requestHash !== hash) throw new IdempotencyConflictError();
+        return { jobVersionId: id, taskId: request.taskId, created: false };
+      }
       const prior = await tx.jobIndexTask.findUnique({ where: { ownerId_idempotencyKey: { ownerId, idempotencyKey } } });
       if (prior && prior.requestHash !== hash) throw new IdempotencyConflictError();
+      // Adopt pre-migration created-task requests without touching the current target.
+      if (prior) {
+        const snapshot = jobIndexInputSnapshotSchema.parse(prior.inputSnapshot);
+        if (snapshot.kind !== 'job-index' || snapshot.ownerId !== ownerId || snapshot.jobVersionId !== id) throw new IdempotencyConflictError();
+        await tx.jobIndexRequest.create({ data: { ownerId, idempotencyKey, requestHash: hash, taskId: prior.id } });
+        return { jobVersionId: id, taskId: prior.id, created: false };
+      }
       await tx.$queryRaw`SELECT id FROM job_version WHERE owner_id=${ownerId}::uuid AND id=${id}::uuid FOR UPDATE`;
       const published = await readJobVersion(tx, ownerId, id);
       if (!published || published.status !== 'PUBLISHED') throw new Error('PUBLISHED_JOB_REQUIRED');
@@ -89,15 +102,18 @@ export class JobPublicationRepository {
       if (current) {
         const task = await tx.jobIndexTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: current.taskId } } });
         const original = jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
-        if (requestHash(original) === requestHash(snapshot)) return { jobVersionId: id, taskId: task.id, created: false };
+        if (requestHash(original) === requestHash(snapshot)) {
+          await tx.jobIndexRequest.create({ data: { ownerId, idempotencyKey, requestHash: hash, taskId: task.id } });
+          return { jobVersionId: id, taskId: task.id, created: false };
+        }
       }
-      if (prior) throw new IdempotencyConflictError(); // An old completed run must not silently retarget a newer run.
       const taskId = randomUUID(), eventId = randomUUID();
       await tx.jobIndexTask.create({ data: { id: taskId, ownerId, jobVersionId: id, realJobVersionId: id,
         embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion, inputSnapshot: snapshot,
         idempotencyKey, requestHash: hash,
         budgetUsage: budgetUsageSchema.parse({ schemaVersion: 1, attempts: 0, modelCalls: 0, tokens: 0, costMicros: 0, elapsedMs: 0 }),
       } });
+      await tx.jobIndexRequest.create({ data: { ownerId, idempotencyKey, requestHash: hash, taskId } });
       await tx.jobIndexTarget.upsert({ where: { ownerId_jobVersionId: { ownerId, jobVersionId: id } },
         create: { ownerId, jobVersionId: id, taskId, embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion },
         update: { taskId, embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion } });

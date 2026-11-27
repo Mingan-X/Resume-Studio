@@ -29,10 +29,12 @@ pnpm run index:backfill <ownerUuid> <corpusVersion> <runUuid>
 pnpm run index:alias <ownerUuid> <corpusVersion> <collectionSpecJson路径>
 ```
 
-补建只遍历指定冻结corpus，逐版本复用同目标任务或同事务新建任务/目标/Outbox并置PENDING。runUuid派生稳定幂等键，中断后沿用原run；新建任务时绑定请求，同键不同请求拒绝。已有目标相同的no-op返回尚未单独持久保存run键，旧no-op run隔离仍是审查遗留；不能宣称所有旧run均无法覆盖后来的目标。命令有10分钟总调度期限，每个数据库操作仍沿用原预算，不自动重试失败任务或重置预算。
+补建只遍历指定冻结corpus，逐版本复用同目标任务或同事务新建任务/目标/Outbox并置PENDING。runUuid派生稳定幂等键，中断后沿用原run；`JobIndexRequest`将每次请求与原taskId绑定，已有目标相同的no-op也保存记录，同键不同请求拒绝。相同请求重放返回首次taskId，不改动后来切换的新目标，也不增加任务/Outbox；历史已有创建任务可在首次重放时补记映射。发布与补建共用owner/key锁，拒绝跨操作复用已绑定的键。映射由数据库禁止UPDATE、owner/task复合外键限制，目标任务按保留策略删除时级联删除映射。新增迁移只加独立表/约束，回退应用可保留表，不删除既有任务或卷。
+
+命令有10分钟总调度期限，每个数据库操作仍沿用原预算，不自动重试失败任务或重置预算。未记录过的历史no-op请求无法追溯补写；发布新索引目标时应使用新的runUuid。
 
 切换前核对corpus成员全部仍发布、内容hash一致、当前目标SUCCEEDED/READY且索引产物匹配collection完整spec；随后核对目标集合和既有alias集合的metadata，再原子删除旧alias/创建新alias。真实命令只接受bailian配置。旧任务使用固定collection名，不跟随alias切换；alias只是管理指针，召回仍必须按冻结版本解析集合与回查PostgreSQL。别名切换不删除旧集合，删除有alias引用的集合被拒绝。
 
 新Qdrant适配器使用安装的官方1.20客户端Schema对应REST并核对服务端1.20版本，原VectorService/SDK兼容检查未改。原因：SDK有限timeout middleware会覆盖调用方signal；原生fetch可合并任务取消/总期限/单次5秒并禁止重定向，响应上限4MiB。未引入额外依赖。
 
-验证入口：[分块/标识测试](../test/job-index.test.ts)、[HTTP故障边界](../test/index-vector.test.ts)、[真实索引链路](../test/integration/job-index.test.ts)。不以mock或合成向量替代真实embedding、人工标注和最终部署验收。
+验证入口：[分块/标识测试](../test/job-index.test.ts)、[HTTP故障边界](../test/index-vector.test.ts)、[真实索引链路](../test/integration/job-index.test.ts)、[补建请求并发/重放/回滚](../test/integration/index-backfill.test.ts)。索引专项包含真实upsert后响应丢失、同task重试累计预算、幂等point、维数切换与旧集合保留。不以mock或合成向量替代真实embedding、人工标注和最终部署验收。

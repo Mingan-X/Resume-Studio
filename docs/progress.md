@@ -8,6 +8,20 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T4补建与索引故障边界检查完成
+
+数据库/索引专项`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/index-backfill.test.js dist/test/integration/job-index.test.js`2/2通过，42.161秒（data/s23-t4-resume-targeted.log），含补建no-op并发/重放/回滚及实际upsert后故障持久重试、预算累计、alias维数切换。`pnpm run test:integration`129/129通过、0失败/跳过，605.790秒（data/s23-t4-resume-integration.log）。每项精确清理报告完成，正式Rubric未动。原生6333未监听，native全量按用户约定未执行，不自行启停；历史基础92/93中的L1与此前所有失败保留。迁移/类型/Lint已通过，文档/diff检查通过；无依赖或HTTP变化。
+
+T4 no-op请求审查遗留已修正并按任务提交；真实百炼装配仍属于T7，不宣称真实向量质量。等待完整回归期间仅编写未构建的T5测试/实现草稿及读取T7官方文档，没有并行构建/测试。T5草稿单独保留，接着验证。阶段仍进行中，不提前合并/推送。
+
+## 2026-11-27 S2.3-T4接续开发：补建幂等与索引恢复边界
+
+用户继续开发授权后从干净feature/s2.3-job-recall、8931a30接续。按路线图T4补齐已记录的no-op请求缺少幂等绑定：新增JobIndexRequest独立不可变映射，已有同目标也持久绑定key/hash/task；重放返回首次任务不切回旧目标，发布与补建共用锁并拒绝跨操作复用key；新建任务/目标/Outbox/映射仍同事务。13号迁移202611270006_s23_index_request只新增表/约束，目标任务删除时级联映射；未记录的历史no-op无法追溯补写。
+
+新增数据库专项覆盖并发no-op、旧请求重放不覆盖新目标、跨owner/FK、UPDATE拒绝、请求记录SQL失败回滚与重入。扩展原真实索引测试：实际upsert后注入响应丢失，按同任务RETRY_WAIT重放、累计模型预算、点数不增、维数不同的集合完成后alias切换并保留旧集合。未改原超时/断言，沿用已授权Qdrant10秒。
+
+执行PostgreSQL归属核验通过；db:generate、db:validate、db:deploy两次、db:status均通过（13条）；typecheck、lint通过。`pnpm test`93项92通过/1项原API启动8秒L1，22.888秒（data/s23-t4-resume-unit.log），不覆盖此前L1。新数据库/索引专项运行中，结果后续追加。6333无原生监听，按既有授权记未执行，不自行启动。
+
 ## 2026-11-27 S2.3-T4授权修复收尾
 
 最终当前源码typecheck、零警告lint通过，文档相对文件链接4份107项及git diff --check通过。只读data/s23-repair-resources.mjs先核验PostgreSQL/RabbitMQ/Qdrant及六观测服务归属/健康，再读取：Job/JobVersion/JobIndexTask/JobCorpusVersion/Resume/FileAsset=0，4正式队列ready/unacked=0，Qdrant集合为空，rubric-v1 hash仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d。结果保存在忽略的data/s23-repair-resources.json。未删除旧孤立policy、正式Rubric或任何卷/本地配置。
