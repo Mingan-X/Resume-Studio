@@ -31,15 +31,18 @@ export class ObservabilityService implements OnModuleDestroy {
 
   callbacks(): CallbackHandler[] { return this.provider ? [new CallbackHandler()] : []; }
 
-  async run<T>(correlationId: string, name: ObservationName, action: () => Promise<T>): Promise<T> {
+  async run<T>(correlationId: string, name: ObservationName, action: () => Promise<T>,register?: (traceId:string)=>Promise<void>): Promise<T> {
     if (!this.provider) return action();
     const id = z.uuid().parse(correlationId);
     const safeName = z.enum(observationNames).parse(name);
     return context.with(context.active().setValue(correlationContext, id), () =>
       trace.getTracer('resume-studio').startActiveSpan(safeName, async span => {
-        try { return await action(); }
+        try {
+          if(register)try{await register(span.spanContext().traceId);}catch{span.setAttribute('resume-studio.skip-export',true);}
+          return await action();
+        }
         catch (error) { span.setStatus({ code: SpanStatusCode.ERROR }); throw error; }
-        finally { span.end(); }
+        finally { span.end();if(register)await this.flush(); }
       }));
   }
 

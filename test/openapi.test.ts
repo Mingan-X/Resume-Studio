@@ -28,8 +28,14 @@ await test('OpenAPI artifact is deterministic and stale/missing copies fail with
 await test('published contract includes actual HTTP operations and distinct task statuses without internal fields',async()=>{
   const document=z.object({openapi:z.literal('3.1.0'),paths:z.record(z.string(),z.record(z.string(),z.unknown())),
     components:z.object({schemas:z.record(z.string(),z.unknown())})}).parse(JSON.parse(await readFile('docs/openapi.json','utf8')) as unknown);
-  assert.deepEqual(Object.keys(document.paths).sort(),['/api/v1/analyses','/api/v1/analyses/options','/api/v1/analyses/{taskId}','/api/v1/jobs','/api/v1/jobs/{jobId}','/api/v1/jobs/{jobId}/versions/{versionId}','/api/v1/jobs/{jobId}/versions/{versionId}/confirm','/api/v1/jobs/{jobId}/versions/{versionId}/publish','/api/v1/jobs/{jobId}/versions/{versionId}/suggestions','/api/v1/reports','/api/v1/reports/{reportId}','/api/v1/reports/{reportId}/recompute','/api/v1/reports/{reportId}/revisions','/api/v1/resumes','/api/v1/resumes/{resumeId}/versions/{versionId}','/api/v1/tasks/{taskId}','/api/v1/tasks/{taskId}/cancel','/api/v1/tasks/{taskId}/events','/health']);
+  assert.deepEqual(Object.keys(document.paths).sort(),['/api/v1/analyses','/api/v1/analyses/options','/api/v1/analyses/{taskId}','/api/v1/auth/login','/api/v1/auth/logout','/api/v1/auth/me','/api/v1/auth/session','/api/v1/data-deletions','/api/v1/data-deletions/{requestId}','/api/v1/jobs','/api/v1/jobs/{jobId}','/api/v1/jobs/{jobId}/versions/{versionId}','/api/v1/jobs/{jobId}/versions/{versionId}/confirm','/api/v1/jobs/{jobId}/versions/{versionId}/publish','/api/v1/jobs/{jobId}/versions/{versionId}/suggestions','/api/v1/reports','/api/v1/reports/{reportId}','/api/v1/reports/{reportId}/recompute','/api/v1/reports/{reportId}/revisions','/api/v1/resumes','/api/v1/resumes/{resumeId}/versions/{versionId}','/api/v1/tasks/{taskId}','/api/v1/tasks/{taskId}/cancel','/api/v1/tasks/{taskId}/events','/health']);
   assert.ok(document.paths['/api/v1/analyses']?.post);
+  // Post-generation additions must contain OpenAPI JSON, never serialized Zod internals.
+  assert.doesNotMatch(JSON.stringify(document),/"~standard"|"def":|"_def":/);
+  for(const path of ['/api/v1/jobs','/api/v1/reports']){
+    const operation=z.object({responses:z.record(z.string(),z.object({content:z.record(z.string(),z.object({schema:z.record(z.string(),z.unknown())}))}))}).passthrough().parse(document.paths[path]?.get);
+    assert.deepEqual(operation.responses['401']?.content['application/json']?.schema,{$ref:'#/components/schemas/ErrorResponse'});
+  }
   assert.ok(document.paths['/api/v1/tasks/{taskId}']?.get);assert.ok(document.paths['/api/v1/tasks/{taskId}/cancel']?.post);
   const output=JSON.stringify(document.components.schemas.TaskResponse);
   for(const forbidden of ['fenceToken','ownerId','inputSnapshot','activeGraphThreadId','leaseOwner'])assert.ok(!output.includes(forbidden));

@@ -47,6 +47,7 @@ export async function verifyReportApi(database:DatabaseService,databaseUrl:strin
   assert.equal(analysisDetailSchema.parse(await(await fetch(`${base}/api/v1/analyses/${taskId}`)).json()).task.reportId,reportId);
   assert.ok(analysisOptionsSchema.parse(await(await fetch(`${base}/api/v1/analyses/options`)).json()).resumes.some(item=>item.resumeVersionId===original.content.input.resumeVersionId));
   ownerId=randomUUID();
+  for(const path of ['reports','analyses']){const response=await fetch(`${base}/api/v1/${path}`);assert.equal(response.status,200);assert.deepEqual(await response.json(),{items:[],nextCursor:null});}
   for(const path of [`reports/${reportId}`,`reports/${reportId}/revisions`,`tasks/${taskId}/events`,`analyses/${taskId}`]){const response=await fetch(`${base}/api/v1/${path}`);assert.equal(response.status,404);await response.body?.cancel();}
   const denied=await send(input,randomUUID());assert.equal(denied.status,404);await denied.body?.cancel();
   ownerId=owner;

@@ -38,6 +38,7 @@ export class PrivateSpanProcessor implements SpanProcessor {
 
   onEnd(span: ReadableSpan): void {
     if (!this.admitted.delete(span.spanContext().spanId)) return;
+    if(span.attributes['resume-studio.skip-export']===true){this.metrics.outstanding--;this.metrics.lose('processing',1);return;}
     try { this.delegate.onEnd(sanitizeSpan(span)); }
     catch { this.metrics.outstanding--; this.metrics.lose('processing', 1); }
   }

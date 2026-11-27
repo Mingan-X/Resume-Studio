@@ -45,7 +45,7 @@ await test('S1.4-T7 real paused workers, official checkpoints and fenced artifac
     const env = { ...process.env, S17_OWNER_ID: ownerId, S17_MESSAGE: JSON.stringify(message), S17_LABEL: label,
       S17_MODE: mode, ...(target ? { S17_TARGET_ID: target } : {}), LANGSMITH_TRACING: 'false', LANGCHAIN_TRACING_V2: 'false' };
     for (const key of ['CHECKPOINT_SETUP_URL','POSTGRES_ADMIN_PASSWORD','LANGSMITH_API_KEY','LANGCHAIN_API_KEY','NODE_OPTIONS']) delete env[key as keyof typeof env];
-    const child = fork(new URL('./checkpoint-fence-worker.fixture.js', import.meta.url), [], { env, silent: true, execArgv: [] });
+    const child = fork(new URL('./checkpoint-fence-entry.fixture.js', import.meta.url), [], { env, silent: true, execArgv: [] });
     const events: WorkerMessage[] = []; let invalid = false;
     child.stdout?.resume(); child.stderr?.resume();
     child.on('message', input => {
@@ -67,7 +67,8 @@ await test('S1.4-T7 real paused workers, official checkpoints and fenced artifac
         }
         await delay(20);
       }
-      throw new Error(`Worker event timed out: ${name}`);
+      const phase=events.some(item=>item.event==='initialized')?'initialized':events.some(item=>item.event==='loading')?'module-loading':'process-start';
+      throw new Error(`Worker event timed out: ${name}; phase=${phase}`);
     };
     const worker = { child, label, event, exited, suspended: false }; workers.push(worker); return worker;
   }

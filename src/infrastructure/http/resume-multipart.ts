@@ -36,7 +36,7 @@ export async function receiveResume(request: IncomingMessage, storage: StoragePo
     return { file: staged, filename, mime };
   } catch (error) {
     await pending;
-    if (staged) await storage.discard(staged).catch(() => undefined);
+    if (staged) await storage.discard(staged).catch(() => {throw new Error('UPLOAD_CLEANUP_UNCONFIRMED');});
     throw failure ?? error;
   } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); request.unpipe(parser); }
 }

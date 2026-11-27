@@ -13,11 +13,12 @@ import { OutboxPublisher } from './outbox.publisher.js';
 
 @Module({})
 export class OutboxModule {
-  static register(connection: Pick<InfrastructureConfig, 'databaseUrl' | 'rabbitmqUrl'>): DynamicModule {
+  static register(connection: Pick<InfrastructureConfig, 'databaseUrl' | 'rabbitmqUrl'>, identity?:IdentityPort): DynamicModule {
     const config = outboxConfigSchema.parse({});
     return {
       module: OutboxModule, imports: [IdentityModule],
       providers: [
+        ...(identity?[{provide:IDENTITY,useValue:identity}]:[]),
         { provide: INFRA_CONFIG, useValue: { databaseUrl: connection.databaseUrl } }, DatabaseService,
         { provide: OutboxStore, inject: [DatabaseService], useFactory: (database: DatabaseService) => new OutboxStore(database, config) },
         { provide: OutboxPublisher, inject: [OutboxStore, IDENTITY], useFactory: (store: OutboxStore, identity: IdentityPort) =>

@@ -8,7 +8,7 @@ import { ownedQdrant } from '../vector/ownership.js';
 import { JobIndexVector } from '../vector/job-index.vector.js';
 import type { ModelExecutor } from '../../modules/models/model-executor.js';
 import type { EmbeddingExecutor } from '../../modules/embeddings/embedding-executor.js';
-import { DevelopmentIdentity } from '../../modules/identity/identity.module.js';
+import { ServiceIdentity, PersistedDeliveryRouter, infrastructureIdentity, configuredServiceOwner } from '../consumer/service-identity.js';
 import { createAnalysisRuntime } from './analysis-runtime.js';
 import { ObservabilityService } from '../observability/observability.module.js';
 import { loadObservabilityConfig } from '../observability/config.js';
@@ -26,13 +26,13 @@ import { ConfirmedTaskPublisher } from '../messaging/confirmed-publisher.js';
 export async function runAnalysisWorker(mode: 'consume' | 'reconcile-once' | 'reconcile-watch', model: ModelExecutor, embedding: EmbeddingExecutor) {
   const config = loadInfrastructureConfig(process.env), checkpoint = loadCheckpointConfig(process.env);
   await ownedPostgres(); await ownedRabbit(); await ownedQdrant();
-  const database = new DatabaseService(config), identity = new DevelopmentIdentity(), observation = new ObservabilityService(loadObservabilityConfig(process.env));
+  const database = new DatabaseService(config), identity = new ServiceIdentity(), observation = new ObservabilityService(loadObservabilityConfig(process.env));
   const abort = new AbortController(), stop = () => abort.abort(); process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     const runtime = createAnalysisRuntime(database, identity, checkpoint, model, embedding,
       new JobIndexVector({ url: config.qdrantUrl, apiKey: config.qdrantApiKey }, ownedQdrant), { observation });
     if (mode === 'consume') {
-      const result = await new TaskConsumer(config.rabbitmqUrl, taskTopology(), runtime.delivery, new QuarantineStore(database, identity))
+      const result = await new TaskConsumer(config.rabbitmqUrl, taskTopology(), new PersistedDeliveryRouter(database,identity,runtime.delivery,process.env.APP_ENV==='production'), new QuarantineStore(database, infrastructureIdentity))
         .run('analysis', { windowMs: 600_000, maxMessages: 1 }, abort.signal);
       console.log(JSON.stringify({ code: 'ANALYSIS_CONSUMER_FINISHED', ...result }));
       if (!['limit','deadline','stopped'].includes(result.reason) || result.received !== result.acknowledged) process.exitCode = 1;
@@ -45,8 +45,9 @@ export async function runAnalysisWorker(mode: 'consume' | 'reconcile-once' | 're
         new OutboxPublisher(new OutboxStore(database, delivery), new ConfirmedTaskPublisher(config.rabbitmqUrl, taskTopology(), delivery.publishTimeoutMs), identity, delivery),
         identity, reconciliationConfigSchema.parse({}));
       const report = (summary: Awaited<ReturnType<ReconciliationService['runOnce']>>) => console.log(JSON.stringify({ code: 'ANALYSIS_RECONCILIATION', ...summary }));
-      if (mode === 'reconcile-watch') await service.watch(abort.signal, report);
-      else { const summary = await service.runOnce(abort.signal); report(summary);
+      const owner=await configuredServiceOwner(database,process.env);
+      if (mode === 'reconcile-watch') await identity.run(owner,()=>service.watch(abort.signal, report));
+      else { const summary = await identity.run(owner,()=>service.runOnce(abort.signal)); report(summary);
         if (summary.stopped || summary.tasks.some(item => ['error','delivery-failed','lock-held'].includes(item))
           || summary.publications.some(item => !['published','idle'].includes(item)) || (summary.outbox?.failed ?? 0) > 0) process.exitCode = 1; }
     }

@@ -9,6 +9,7 @@ import { TaskConsumer } from './task.consumer.js';
 import type { TaskExecutionStore } from './task-execution.store.js';
 
 async function main() {
+  if(process.env.APP_ENV==='production')throw new Error('SYNTHETIC_CONSUMER_DEVELOPMENT_ONLY');
   if (process.argv.length !== 3 && !(process.argv.length === 4 && process.argv[3] === 'checkpoint')) throw new Error('Expected task type and optional checkpoint mode.');
   const type = taskTypeSchema.parse(process.argv[2]);
   const config = loadInfrastructureConfig(process.env);

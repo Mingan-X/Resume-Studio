@@ -8,6 +8,120 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.2-T7阶段文档与交接提交
+
+T4=314cb7d、T5=427bf9a已本地保存；T7同步README/架构/部署/路线图/所有权/测试与handoff-s33，阶段待验收，禁止goal模式写入工程约定。最终资源核验为测试实体0、队列0、集合空，规则hash保持；OpenAPI一致性通过，本轮文档245处链接及新文档链接检查通过，最终diff检查通过。准备按授权--no-ff合并develop并推送，随后仅启动S3.3后端新会话；前端指定会话已核对存在且idle，尚未恢复，需等全部后端开发完成。
+
+## 2026-11-28 S3.2-T5删除执行器与接口收尾
+
+T4持久模型/到期扫描/屏障已保存314cb7d，T5补齐跨存储执行器、显式once/watch、真实会话请求/查询及前端契约，账号保留；文件/Checkpoint/Qdrant/trace真实专项与完整报告产物删除均通过，共用最终基础138/138、完整151/151。所有版本化历史/未知停止边界按data-lifecycle保留；没有启用后台自动清理现有开发数据。任务提交只是保存工程结果，阶段仍待维护者统一验收。
+
+## 2026-11-28 S3.2-T4/T5/T7收尾通过，待统一验收
+
+最终完整test:integration151/151、811.990秒（data/s32-lifecycle-integration-final.log），0失败/跳过；基础138/138、68.775秒，最终文件/观测/契约专项15/15、37.774秒，真实trace专项1/1、17.670秒，扩大数据库/图/删除/对账专项15/15、131.688秒。类型、零警告Lint、OpenAPI生成/一致性及32条迁移generate/validate/重复deploy/status通过。首轮147/151、观测冷启动失败及旧SocketTimeout完整保留，本轮通过不代表根因修复或目标环境L1/L2解除。
+
+T4实现账号范围的简历上传30天到期扫描、持久请求/步骤、fair checkedAt轮转、DB写入屏障及历史停止/清单保护；T5实现全部业务删除保留账号、取消后等待安全停止、精确文件/全部图线程/owner向量/可确认trace删除、故障重入和真实会话API；T7闭合Schema/OpenAPI/部署/测试/所有权与新会话交接。无新增依赖，不重复冻结安装。真实模型/人工质量/原生Qdrant手动未启用/目标服务器验证按原安排延后。
+
+32条迁移未修改原规则，清理只对本轮合成owner/线程/文件/集合/trace执行。完成后资源核验见data/s32-lifecycle-resources.json：账号/会话、删除请求/步骤、资源操作/trace/图线程与全部业务测试实体0；四正式队列ready/unacked=0、Qdrant集合空，原开发及基础设施主体保留，scoring-v1/rubric-v1 hash保持。阶段标待验收，接下来按任务提交及--no-ff合并推送，再创建S3.3新会话；master和前端未修改。
+
+## 2026-11-28 S3.2扩大定向复核15/15
+
+补充对账Worker诊断与旧账号历史保护后，typecheck、Lint、build通过；analysis-runtime、reconciliation、lifecycle三个文件15/15、131.688秒通过（data/s32-lifecycle-diagnostic-final.log）。上轮无法启动事务与worker failed本次未复现，未修改3秒连接/5秒SQL与事务上限或重试，不声称已定位根因。第32条迁移已部署；最后部署重复性/OpenAPI一致性和最终完整集成继续验证。所有旧失败保留，不以定向结果代替完整结果。
+
+## 2026-11-28 S3.2首次完整生命周期回归147/151
+
+test:integration完成147通过/4失败/0跳过、836.323秒（data/s32-lifecycle-integration-full.log）。失败为analysis-runtime小候选子用例在真实索引任务claim启动事务时报“Unable to start a transaction in the given time”，reconciliation活进程锁子用例收到worker failed，以及各自父测试；新生命周期、真实trace删除、会话API与原Checkpoint恢复均通过。不能将未诊断的failed直接认作SocketTimeout，已给对账fixture加入同样白名单socket诊断，类型/Lint/build后定向核验。旧完整结果保留。
+
+复核发现迁移前账号即使无analysis attempt也可能留下旧JD建议trace，新增第32条迁移将已有账号标历史不完整，新账号默认完整；清理时明确等待，真实开发/系统主体仍不自动清理。当前测试账号已精确清理，迁移不会重置正式业务数据；增加对应历史账号拒绝测试。没有新增模型调用、服务重试或放宽断言。
+
+## 2026-11-28 S3.2真实trace删除通过，进入完整集成回归
+
+原等待失败之后九项服务均达到healthy；真实Langfuse登记→可读→DELETE→observations为空的专项1/1、17.670秒通过（data/s32-lifecycle-trace-real.log）。失败时保留登记和删除意图的设计未放宽，异步首次空结果不算删除成功。最终文件/观测/契约专项15/15、37.774秒通过（data/s32-lifecycle-unit-verified.log），typecheck、Lint通过；完整test:integration已启动（data/s32-lifecycle-integration-full.log），结果另记。
+
+## 2026-11-28 S3.2基础回归与观测Worker等待
+
+基础138/138、68.775秒通过（data/s32-lifecycle-unit-full.log），文件删除崩溃恢复8/8、3.896秒通过；31条迁移重复deploy/status通过。观测第二次启动时Web已healthy，但Worker未在原4分钟窗口就绪，命令返回失败；只读检查显示Worker running、OOMKilled=false、CPU仍有活动，近期日志没有新error。保留进程继续初始化，不修改4分钟窗口或直接宣称就绪。后续真实trace与全量检查待健康确认；用户仅豁免原SocketTimeout，不以此覆盖其他行为错误。
+
+## 2026-11-28 S3.2观测依赖冷启动记录
+
+显式observability:up首轮因langfuse-clickhouse健康等待耗尽返回失败，web/worker未启动；随后只读核验该容器running/healthy、OOMKilled=false，原持久卷未重建。按已就绪依赖再次启动web/worker继续真实trace检查；不修改健康阈值、原请求超时或吞掉首轮失败。此时主机可用内存约3346MiB，与上次极低内存场景不同，不能混同SocketTimeout根因。
+
+## 2026-11-28 S3.2-T4/T5实现与扩大专项通过
+
+实现删除请求/步骤与checkedAt轮转、30天到期扫描、DB owner写入屏障、逐任务停止证据核验、历史线程登记、账号保留和跨存储删除；外部调用与事务分开，失败保留持久步骤，累计尝试/总期限不因重启重置。首轮真实数据库/文件/Checkpoint/Qdrant专项1/1、72.225秒通过（data/s32-lifecycle-targeted.log）；扩大报告revision/评分/排名删除和真实登录接口后5/5、143.252秒通过（data/s32-lifecycle-expanded.log）。上传补偿失败与Qdrant写入丢失回复保留未停止记录；保留期限等待活动任务完成，不中断既有分析。
+
+31条迁移generate/validate/deploy通过，类型/Lint通过；观测登记失败不影响业务但不导出无归属span，Langfuse删除先持久确认曾可读与提交，再验证observations为空，尚未可见不会误判删除。观测/契约专项7/7、1.754秒通过，真实Langfuse专项与完整阶段回归仍待完成。无新增依赖，未改变全局WSL/内存/代理配置；所有清理仅作用本轮测试owner及精确资源。
+
+## 2026-11-28 S3.2继续收尾授权
+
+维护者明确将未确认SocketTimeout作为已知问题记录，不再阻塞后续开发，授权完成S3.2并在阶段结束后新开会话按路线图继续后端；全部后端开发完成后恢复指定前端会话01a218e5-774c-71e3-b816-3d737a491283。所有会话禁止goal模式；内置工具缺失可自主修复。已发现所需原生会话工具，当前无需修复。开始T4/T5：持久删除请求/步骤、到期调度、阻止新任务、确认安全停止、全部存储清理与可恢复验证，保留账号。其他故障不借此豁免。
+
+## 2026-11-28 S3.2-T7根因排查收尾：诊断增强通过，未宣称根治
+
+最终typecheck、零警告Lint通过，基础136/136、103.086秒（data/s32-socket-diagnostics-unit.log）；checkpoint-fence、checkpoint、tasks三个真实数据库集成文件22/22、31.567秒通过（data/s32-socket-diagnostics-integration.log），0跳过。新增套接字诊断单元核对成功/拒绝、字节与隐私边界，原产品配置/服务期限/重试和恢复断言未改。文档文件/锚点与diff检查通过后保存本地诊断提交，不合并/推送阶段。
+
+data/s32-socket-final-state.json确认任务、attempt、事件、收据、Outbox、产物与合成索引目标均0；原开发/基础设施owner及scoring-v1/rubric-v1 hash保持。三业务服务healthy，六观测服务停止，未操作其他项目。明确未执行完整九服务集成：本轮观测启动导致主机可用内存约79MiB及Docker预检超时；原完整146/149和SocketTimeout根因待捕获状态保留。没有把冷启动超时或资源压力自动等同原亚秒级套接字故障，未解除L1/L2或推进T4/T5。
+
+## 2026-11-28 S3.2-T7负载对照：确认资源抖动，原SocketTimeout未复现
+
+恢复Docker引擎及本项目PostgreSQL后原恢复专项5/5、23.207秒通过。两批100轮双连接只读探针共400条连接成功，两批30新进程/正常退出与强杀交替共60轮成功；没有新P1008。完整观测profile启动时主机可用内存最低约79MiB、归属预检超时；重新核对精确容器标签后停止本轮六项观测，三项业务服务healthy。冷加载恢复专项0/5、210.472秒，均为claimed通知20秒耗尽；紧接着缓存对照5/5、57.243秒。全部失败保留，不能以暖轮通过覆盖冷启动失败或原SocketTimeout。
+
+已补充socket连接/收发字节/安全错误码及轻量Worker loading/initialized阶段诊断，产品代码和原预算/断言未改。详细证据、日志及确定程度见[专项诊断追加章节](research/s32-postgres-2026-11-28.md#维护者要求继续排查2026-11-28-01470212asiashanghai)。当前明确有低内存/分页/机械盘I/O导致的运行不稳定；没有证据把原315–796ms的SocketTimeout完全归因于它，不宣称根治、不调整全局WSL/网络/防火墙。最终基础及相关集成检查进行中。
+
+## 2026-11-28 S3.2-T7继续排查SocketTimeout根因
+
+维护者取消云电脑评估，明确要求先排查并修复PostgreSQL SocketTimeout；范围限定本阶段回归阻塞，不推进生命周期或迁移服务。当前分支干净起步，新增测试诊断采集Node socket连接是否完成、收发字节与白名单错误码/系统调用，不记录地址、凭证、SQL或原始异常。首轮data/s32-socket-root-diagnostic.log在ownedPostgres前置检查失败：Docker Desktop引擎未运行、55432无监听，尚未进入原故障窗口；这不是原SocketTimeout复现。按诊断需要启动本机Docker引擎后再核验本项目实例，不删除数据/配置或调整超时。
+
+## 2026-11-28 S3.2本地提交收尾，等待恢复门禁排除
+
+本地任务提交已保存：T1=3fb354f、T2=1d29eca、T3=b53dab0、T6=f809859；提交后工作区干净，未合并develop、未推送、未操作master/前端。此条仅补记实际提交，不改变阶段进行中或完整集成146/149的结果。依赖门禁排除前不启动T4/T5与S3.3；用户政策决定保持有效，无需再次确认相同政策。
+
+## 2026-11-28 S3.2-T1/T2本地实现保存
+
+T1账号/会话实现保存为3fb354f，T2会话业务身份与持久Outbox owner分派保存为1d29eca。二者属于阶段分支本地实现提交，不代表整体完成；未合并/推送。T3所有权矩阵、补充列表越权与白名单连接诊断，以及T6安全收尾随后分别保存。当前检查和资源核验沿用下方最终记录，完整集成阻塞未改变。
+
+## 2026-11-28 S3.2阻塞收尾检查与资源核验
+
+契约修复后typecheck、零警告Lint、openapi:check及OpenAPI专项2/2通过；基础最终134/134与认证/身份3/3保持，最新业务代码未再更改。209处本地文档文件/章节链接与git diff --check通过。准备按T1/T2/T3/T6保存本地实现提交；各提交共用上述完整工作区的验证，不把中间提交描述为独立部署/阶段验收通过。完整集成仍为146/149，恢复诊断仍3/5，不再无改动反复重跑以取得绿色。
+
+data/s32-resources.json核验账号/会话/全部业务产物/Outbox/收据/任务等均0；Owner仅原开发主体及迁移新增基础设施主体。scoring-v1 hash=8aa97248595f0e4f49bf4a04a961f0c512675ecb25bc8f4e77dae3457dd5d35c，rubric-v1 hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d且PENDING_REVIEW保持；四正式队列ready/unacked=0，Qdrant集合空。未删除卷/DB/配置；Checkpoint故障专项按其精确manifest确认线程清理。尚未合并/推送，T4/T5未实现，保留停止条件。
+
+## 2026-11-28 S3.2回归门禁阻塞，保留实现与诊断
+
+T1/T2/T3/T6实现继续留在feature/s3.2-identity-lifecycle，尚未提交/合并/推送，阶段保持进行中。最终基础134/134、100.114秒通过（data/s32-blocked-unit-final.log），认证/真实会话越权/Worker三项3/3、12.551秒通过（data/s32-blocked-auth-final.log），类型检查与零警告Lint通过；25条迁移已应用。真实登录上下文、来源/账号频率限制、JSON上限与安全头均有专项；生产仅是配置/HTTP装配验证，尚未公开部署。
+
+最新完整集成146/149、814.236秒，两个确认旧进程退出后的Checkpoint恢复子测试失败及父测试计数（data/s32-t1236-integration.log）。增加无敏感内容的driverKind诊断后定向3/5，claim阶段796ms复现SocketTimeout/P1008（data/s32-checkpoint-diagnostic.log）。本项目数据库只读检查无连接耗尽/锁等待；12次有界短连接探针均通过，不等于排除间歇连接问题。详见[诊断](research/s32-postgres-2026-11-28.md)。未增加数据库/解析超时、重试或修改恢复断言。
+
+最终契约复核发现生成后补充错误响应误用了Zod对象，产物含def；已改为纯OpenAPI $ref，新增产物不得包含Zod内部字段及401引用断言，独立检查结果另记。该问题只在未提交产物中，未推送或用于前端契约更新。
+
+按路线图“检查失败”规定：非已接受L1/L2且暂无有证据的最小修复，停止依赖恢复边界的T4/T5与后续S3.3，不删除数据、不跳过断言或冒充阶段通过。用户确认的30天起算/清理范围与保留账号政策已记录；生命周期执行器仍未实现或启用。真实模型/embedding、人工标注、原生Qdrant对照、目标服务器/L1/L2解除仍按原延后或本机未启动条件保留。
+
+## 2026-11-27 S3.2-T2/T3身份专项与T6安全检查
+
+业务API的SessionIdentity/全局CSRF Guard已接线，production缺会话配置拒绝启动；真实HTTP账号/身份专项2/2、12.476秒通过（data/s32-t2-auth-targeted.log），补充简历上传与逐路由越权后1/1、12.352秒通过（data/s32-t3-ownership-targeted.log）。共享真实Worker按持久Outbox核验消息及owner，生产不使用开发身份；专用基础设施owner承担无可信owner的Quarantine/dead事件，25条迁移deploy/status通过。Worker真实数据库并发/伪造/禁用账号专项1/1、12.057秒通过（data/s32-t2-worker-targeted.log）。发布与对账使用显式SERVICE_OWNER_ID。
+
+基础回归曾130/131（data/s32-t123-unit.log）：百炼HTTP桩40ms超时早于请求抵达，received=0而期望1。改为收到实际HTTP请求后推进模拟时钟40ms，保留超时与严格一次请求断言，未更改产品时限；专项1/1后基础131/131、56.775秒通过（data/s32-t123-unit-final.log）。随后T6增加ExpressAdapter直接导入导致集成构建TS7016（缺express声明），集成用例尚未运行（data/s32-t123-integration.log）；改用Nest公开HttpServer接口及getType/useBodyParser能力核验，无新依赖/类型断言/skipLibCheck。typecheck、Lint、build及安全HTTP两项通过；后续完整回归另记，不覆盖失败。
+
+T6已编写来源/owner限流、1MiB JSON、响应头和有界匿名会话清理；完整安全专项与全量仍待执行。没有启用到期删除或真实模型请求，没有调整原服务超时。T4/T5尚未实现，S3.2仍进行中。
+
+## 2026-11-27 S3.2-T1全量回归失败与定向诊断
+
+typecheck、零警告Lint、基础130/130通过（data/s32-t1-unit.log）；首次完整集成143通过/4失败/0跳过、788.841秒（data/s32-t1-integration.log）。两处实际失败为旧Worker暂停/新thread恢复中的新Worker领取P1008（安全诊断operation-timeout，claim阶段372ms）和DOCX上传15.267秒后422，其父测试各计一次失败。认证专项本次也通过。没有将这两项自动归入L1/L2，也没有放宽数据库、解析或测试期限。
+
+保持原dist代码和原超时，对上述两个文件作定向诊断11/11、48.042秒通过（data/s32-regression-diagnostic.log）；DOCX本次465.95ms，旧Worker/新thread边界通过。该结果仅证明未稳定复现，不撤销首次失败、不宣称根因已修复。S3.2仍进行中，T1不提前宣称完整回归通过；身份接线源码已开始，下一轮按变更重新执行基础/专项及完整回归。T1补齐同源Auth Schema/OpenAPI与API文档，CLI在失败路径也释放口令Buffer；无新增依赖。前条“参考官方文档”仅指文档目标，本轮web请求没有返回可核对正文，不声称完成在线来源核验。
+
+## 2026-11-27 S3.2-T1认证定向检查与D7删除补充
+
+T1模块/CLI已经实现scrypt口令、哈希会话、Secure/HttpOnly/SameSite Cookie、登录前CSRF引导、轮换/过期/登出、精确Origin校验及账号失败锁定；暂不改既有IdentityModule/production默认拒绝，T2另行装配。24条迁移generate/validate/deploy两次/status通过；初次Lint报测试清理变量prefer-const两项，改为精确created对象后继续检查。真实HTTP专项1/1、4.212秒通过（data/s32-t1-auth-targeted.log），只用合成账号，精确清理后不保留会话。无新增依赖。
+
+用户本轮确认D7补充：30天从简历版本上传起算，清理关联分析/报告/Checkpoint/可关联trace、岗位语料单独保留；主动删除全部业务数据含JD/语料/向量/自定义规则，保留账号供重新登录。已同步路线图与auth说明；此时生命周期执行器尚未实现/启用，不提前执行删除。
+
+## 2026-11-27 S3.2启动（S3.1已完整收尾）
+
+S3.1文档收尾46c8142已合并推送develop=45442d376dec8aea931273d789561624b99f9360，local/origin一致，旧本地阶段分支按-d清理、远端保留；最终文档122项本地链接通过，工作区干净。随后创建feature/s3.2-identity-lifecycle，先按T1实现认证模块/CLI与明确测试装配，T2再替换应用身份和生产配置，避免跨任务同时修改共享默认行为。
+
+已读D9本地账号/服务端会话/Cookie/CSRF与D7保留30天、当前IdentityPort/配置/数据库及API错误契约。参考Node crypto官方文档和OWASP Session Management/CSRF Cheat Sheet核对实现边界，不新增认证依赖，不选择第三方登录。T1尚未交付，公开服务仍禁止固定开发身份；后续生命周期只针对本项目可核验资源，不删除现有开发数据/配置解决问题。
+
 ## 2026-11-27 S3.1合并推送与当前文档收尾
 
 S3.1-T7=4ad7346以--no-ff合并develop，提交58997258510dbab6fc97cfa8f07ddeb07dd73342；推送后origin/develop一致，origin/feature/s3.1-reports-progress保留。合并树与通过回归的阶段分支完全一致，业务检查为基础128/128、全量146/146，资源核验无测试实体/队列/向量残留，正式评分政策及Rubric保持。

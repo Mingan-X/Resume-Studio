@@ -41,12 +41,14 @@ import { normalizeEmployment } from '../../modules/analysis/dates.js';
 import { JobCorpusRepository } from '../jobs/corpus.repository.js';
 import { ScoringRepository } from './scoring.repository.js';
 import { ScoringPolicyRepository } from './scoring-policy.repository.js';
+import {LifecycleRepository} from './lifecycle.repository.js';
 
 export function createAnalysisRuntime(database: DatabaseService, identity: IdentityPort, checkpoint: CheckpointConfig,
   model: ModelExecutor, embedding: EmbeddingExecutor, vector: JobIndexVector,
   options: { allowSynthetic?: boolean; observation?: Pick<ObservabilityService, 'run'> } = {}) {
   if (embedding.provenance === 'synthetic' && options.allowSynthetic !== true) throw new Error('OFFICIAL_EMBEDDING_REQUIRED');
-  const caller = new AnalysisModelCaller(model, options.observation), resumes = new ResumeRepository(database), jobs = new JobRepository(database);
+  const lifecycle=new LifecycleRepository(database);
+  const caller = new AnalysisModelCaller(model, options.observation,(owner,task,id)=>lifecycle.trace(owner,id,task)), resumes = new ResumeRepository(database), jobs = new JobRepository(database);
   const extractionRepository = new ResumeExtractionRepository(database, database.pool), extractionService = new ResumeExtractionService(resumes, extractionRepository, caller);
   const profiles = new ProfileRepository(database), profileService = new ProfileService(resumes, jobs, profiles, caller);
   const candidates = new CandidateRepository(database), recall = new RecallService(identity, new KeywordRecallRepository(database), new JobIndexRepository(database), embedding, vector);

@@ -12,7 +12,8 @@ import type { ObservabilityService } from '../../infrastructure/observability/ob
 /** Analysis adapter only: retry/repair belongs to ModelExecutor, accounting belongs to the fenced task store. */
 export class AnalysisModelCaller {
   constructor(private readonly model: ModelExecutor,
-    private readonly observability?: Pick<ObservabilityService, 'run'>) {}
+    private readonly observability?: Pick<ObservabilityService, 'run'>,
+    private readonly registerTrace?:(ownerId:string,taskId:string,traceId:string)=>Promise<void>) {}
 
   get modelConfigVersion() { return this.model.modelConfigVersion; }
 
@@ -64,6 +65,7 @@ export class AnalysisModelCaller {
       }
     };
     // Project observation applies the existing whitelist before enqueue; no raw LangChain callbacks are attached.
-    return this.observability ? this.observability.run(claim.message.taskId, input.stage, invoke) : invoke();
+    return this.observability ? this.observability.run(claim.message.taskId, input.stage, invoke,
+      this.registerTrace?(id)=>this.registerTrace!(claim.ownerId,claim.message.taskId,id):undefined) : invoke();
   }
 }

@@ -16,25 +16,30 @@ import { syntheticCompletionSchema } from '../../src/infrastructure/consumer/con
 import type { ExecutionClaim } from '../../src/infrastructure/consumer/contracts.js';
 import { requestHash } from '../../src/modules/tasks/request-hash.js';
 import { safeFailure as classifyFailure, safeFailureSchema } from '../support/safe-failure.js';
+import {captureSocketDiagnostics,socketDiagnosticSchema} from '../support/socket-diagnostics.js';
 
 export const claimIdentitySchema = z.object({ ownerId: z.uuid(), attemptId: z.uuid(), fenceToken: z.string().regex(/^\d+$/),
   startedAt: z.iso.datetime(), deadline: z.iso.datetime(), graph: z.object({ threadId: z.uuid(), generation: z.int().positive() }).optional() });
 export const fenceWorkerMessageSchema = z.discriminatedUnion('event', [
+  z.object({event:z.literal('loading')}),
+  z.object({event:z.literal('initialized')}),
   z.object({ event: z.literal('claimed'), identity: claimIdentitySchema }),
   z.object({ event: z.literal('paused'), location: z.enum(['checkpoint-write','before-invoke','index-write']), threadId: z.uuid().optional() }),
   z.object({ event: z.literal('late-checkpoint'), threadId: z.uuid() }),
   z.object({ event: z.literal('stale-writes'), artifactRejected: z.boolean(), terminalRejected: z.boolean(), indexRejected: z.boolean() }),
   z.object({ event: z.literal('finished'), result: z.enum(['ack','deferred','interrupted']) }),
   safeFailureSchema.extend({ event: z.literal('failed'), phase: z.enum(['startup', 'delivery']),
-    stage: z.enum(['startup', 'lock', 'claim', 'execute']), elapsedMs: z.int().nonnegative() }),
+    stage: z.enum(['startup', 'lock', 'claim', 'execute']), elapsedMs: z.int().nonnegative(),sockets:z.array(socketDiagnosticSchema).max(32).optional() }),
 ]);
 const send = (message: z.infer<typeof fenceWorkerMessageSchema>) => process.send?.(fenceWorkerMessageSchema.parse(message));
 let stage: 'startup' | 'lock' | 'claim' | 'execute' = 'startup', stageStart = performance.now();
+let sockets:ReturnType<typeof captureSocketDiagnostics>|undefined;
 function safeFailure(error: unknown, phase: 'startup' | 'delivery') {
-  send({ event: 'failed', phase, ...classifyFailure(error), stage, elapsedMs: Math.round(performance.now() - stageStart) });
+  send({ event: 'failed', phase, ...classifyFailure(error), stage, elapsedMs: Math.round(performance.now() - stageStart),...(sockets?{sockets:sockets.snapshot()}:{}) });
 }
 
 async function run() {
+  sockets=captureSocketDiagnostics();
   const ownerId = z.uuid().parse(process.env.S17_OWNER_ID), message = taskDispatchSchema.parse(JSON.parse(process.env.S17_MESSAGE ?? '') as unknown);
   const mode = z.enum(['late-checkpoint','before-invoke','normal','late-index','normal-index']).parse(process.env.S17_MODE);
   const database = new DatabaseService(loadInfrastructureConfig(process.env));
@@ -104,9 +109,11 @@ async function run() {
       send({ event: 'stale-writes', artifactRejected, terminalRejected, indexRejected });
     }
     send({ event: 'finished', result });
-  } finally { process.off('message', commands); await database.onModuleDestroy(); if (process.connected) process.disconnect(); }
+  } finally { process.off('message', commands); await database.onModuleDestroy(); sockets.close(); if (process.connected) process.disconnect(); }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+export async function runFenceWorker(){
+  send({event:'initialized'});
   try { await run(); } catch (error) { safeFailure(error, 'startup'); process.exitCode = 1; if (process.connected) process.disconnect(); }
 }
+if (process.argv[1] === fileURLToPath(import.meta.url)) await runFenceWorker();

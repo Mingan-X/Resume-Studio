@@ -134,14 +134,13 @@ export class LocalStorage implements StoragePort {
       value.sha256 = hash.digest('hex'); value.state = 'READY'; await this.save(value);
       return stagedFileSchema.parse({ operationId, storageKey, sha256: value.sha256, size: value.size });
     } catch (error) {
-      await handle?.close();
       // An I/O error during cleanup leaves the exact operation manifest for inspection.
-      await release().catch(() => undefined);
-      await this.removeStaging(operationId).catch(() => undefined);
+      try{await handle?.close();await release();await this.removeStaging(operationId);}
+      catch{throw new Error('UPLOAD_CLEANUP_UNCONFIRMED');}
       throw error;
     } finally {
       signal?.removeEventListener('abort', abort);
-      await release().catch(error => { if (!missing(error)) throw error; });
+      await release().catch(error => { if (!missing(error)) throw new Error('UPLOAD_CLEANUP_UNCONFIRMED'); });
     }
   }
 
@@ -194,6 +193,43 @@ export class LocalStorage implements StoragePort {
   }
 
   async inspect(operationId: string): Promise<Manifest> { return this.manifest(operationId); }
+
+  // Caller owns a durable deletion barrier and has confirmed all writers stopped.
+  async eraseOwned(storageKey:string,sha256:string,size:number,signal?:AbortSignal):Promise<void>{
+    signal?.throwIfAborted();
+    uuid.parse(storageKey);z.string().regex(/^[a-f0-9]{64}$/).parse(sha256);z.int().positive().parse(size);
+    const directory=join(this.root,'files',storageKey);
+    try{
+      await this.checked(directory,true);const names=await readdir(directory);
+      if(names.some(name=>name!=='payload'))throw new StorageError('INVALID_PATH');
+      if(names.includes('payload')){const bytes=await this.read(storageKey);if(bytes.length!==size||createHash('sha256').update(bytes).digest('hex')!==sha256)throw new StorageError('INVALID_STATE');
+        signal?.throwIfAborted();await unlink(await this.checked(join(directory,'payload'),false));}
+      await rmdir(directory);
+    }catch(error){if(!missing(error))throw error;}
+    const root=await this.checked(join(this.root,'staging'),true);
+    for(const id of await readdir(root)){
+      signal?.throwIfAborted();
+      uuid.parse(id);const path=await this.operation(id),marker=join(path,'deletion.json');let value:Manifest;
+      try{value=await this.manifest(id);}catch(error){
+        if(!missing(error))throw error;
+        try{value=manifestSchema.parse(JSON.parse(await readFile(await this.checked(marker,false),'utf8')) as unknown);}
+        catch(markerError){if(!missing(markerError))throw markerError;
+          if((await readdir(path)).every(name=>name==='lock'))continue;throw new StorageError('INVALID_STATE');}
+      }
+      if(value.operationId!==id)throw new StorageError('INVALID_STATE');if(value.storageKey!==storageKey)continue;
+      if(value.sha256!==sha256||value.size!==size)throw new StorageError('INVALID_STATE');
+      await this.recoverDeadLock(id);const release=await this.lock(id);
+      try{
+        try{const handle=await open(marker,'wx',0o600);try{await handle.writeFile(JSON.stringify(value));await handle.sync();}finally{await handle.close();}}
+        catch(error){if(!z.object({code:z.literal('EEXIST')}).safeParse(error).success)throw error;}
+        const names=(await readdir(path)).filter(name=>!['lock','deletion.json'].includes(name));
+        for(const name of names){if(name!=='payload'&&name!=='manifest.json'&&!/^[a-f0-9-]{36}\.json\.tmp$/.test(name))throw new StorageError('INVALID_PATH');await this.checked(join(path,name),false);}
+        for(const name of names){signal?.throwIfAborted();await unlink(await this.checked(join(path,name),false));}
+        await unlink(await this.checked(marker,false));
+      }finally{await release();}
+      await rmdir(await this.operation(id));
+    }
+  }
 
   async readStaged(input: StagedFile): Promise<Buffer> {
     const file = stagedFileSchema.parse(input), value = await this.manifest(file.operationId);

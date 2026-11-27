@@ -2,6 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ConfigValidationError, loadConfig } from '../src/modules/config/app-config.js';
 
+await test('production business routes require explicit session mode and a precise HTTPS origin', () => {
+  const env={APP_ENV:'production',HTTP_PORT:'3000',HTTP_HOST:'0.0.0.0',TASK_API_ENABLED:'true',AUTH_ENABLED:'true',
+    AUTH_ORIGIN:'https://resume.example',DATABASE_URL:'postgresql://resume_studio_test:synthetic@127.0.0.1:55432/resume_studio_s12_test'};
+  assert.equal(loadConfig('api',env).auth?.origin,env.AUTH_ORIGIN);
+  for(const patch of [{AUTH_ENABLED:'false'},{AUTH_ENABLED:'yes'},{AUTH_ORIGIN:'http://resume.example'},
+    {AUTH_ORIGIN:'https://resume.example/path'},{AUTH_ORIGIN:'https://resume.example/'},{AUTH_SESSION_SECONDS:'86401'},
+    {AUTH_ANONYMOUS_SECONDS:'0'}]) assert.throws(()=>loadConfig('api',{...env,...patch}),ConfigValidationError);
+});
+
 await test('API configuration converts the port and excludes unrelated secrets', () => {
   const result = loadConfig('api', { APP_ENV: 'test', HTTP_PORT: '3000', API_KEY: 'private-marker' });
   assert.deepEqual(result, { role: 'api', APP_ENV: 'test', HTTP_HOST: '127.0.0.1', HTTP_PORT: 3000 });

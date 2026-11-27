@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile,unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, relative } from 'node:path';
 import { Readable } from 'node:stream';
@@ -21,6 +21,18 @@ async function fixture() {
   } };
 }
 const input = (text: string) => Readable.from([Buffer.from(text)]);
+
+await test('lifecycle file deletion validates content, preserves neighbors and resumes after manifest removal',async()=>{
+ const f=await fixture();try{
+  const file=await f.storage.stage(input('delete')),other=await f.storage.stage(input('retain'));await f.storage.commit(file);await f.storage.commit(other);
+  await assert.rejects(f.storage.eraseOwned(file.storageKey,'0'.repeat(64),file.size),/INVALID_STATE/);
+  assert.equal((await f.storage.read(file.storageKey)).toString(),'delete');
+  const operation=join(f.root,'staging',file.operationId),manifest=await f.storage.inspect(file.operationId);
+  await writeFile(join(operation,'deletion.json'),JSON.stringify(manifest));await unlink(join(operation,'manifest.json'));
+  await f.storage.eraseOwned(file.storageKey,file.sha256,file.size);await f.storage.eraseOwned(file.storageKey,file.sha256,file.size);
+  assert.equal((await f.storage.read(other.storageKey)).toString(),'retain');assert.deepEqual(await readdir(join(f.root,'staging')),[other.operationId]);
+ }finally{await f.close();}
+});
 
 await test('storage streams exact bytes, uses unique keys, persists and never discards committed files', async () => {
   const f = await fixture();

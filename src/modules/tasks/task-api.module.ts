@@ -18,8 +18,8 @@ import {TaskEventsController,EventStreamLimits} from './task-events.controller.j
 
 @Module({})
 export class TaskApiModule {
-  static register(config: { databaseUrl: string }, analysisConfiguration: unknown = null): DynamicModule {
-    return { module: TaskApiModule, imports: [IdentityModule], controllers: [TaskController, AnalysisController,ReportController,TaskEventsController],
+  static register(config: { databaseUrl: string }, analysisConfiguration: unknown = null, sessionIdentity=false): DynamicModule {
+    return { module: TaskApiModule, imports: [sessionIdentity?IdentityModule.session():IdentityModule], controllers: [TaskController, AnalysisController,ReportController,TaskEventsController],
       providers: [{ provide: INFRA_CONFIG, useValue: config }, DatabaseService, TaskQueryRepository, TaskQueryService,
         AnalysisRepository, AnalysisCreationService,ReportRepository,ReportService,AnalysisQueryRepository,TaskEventRepository,EventStreamLimits, { provide: ANALYSIS_CONFIGURATION, useValue: analysisConfiguration }] };
   }

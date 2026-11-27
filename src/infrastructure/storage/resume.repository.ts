@@ -37,7 +37,7 @@ export class ResumeRepository implements StorageReferencePort {
       await tx.fileAsset.create({ data: { ...value.file, createdAt: new Date(value.file.createdAt) } });
       await tx.resume.create({ data: { id: value.resumeId, ownerId: value.ownerId } });
       await tx.resumeVersion.create({ data: { id: value.resumeVersionId, ownerId: value.ownerId,
-        resumeId: value.resumeId, version: 1, fileAssetId: value.file.id, fileHash: value.file.sha256 } });
+        resumeId: value.resumeId, version: 1, fileAssetId: value.file.id, fileHash: value.file.sha256,createdAt:new Date(value.file.createdAt) } });
       await tx.evidenceBlock.createMany({ data: value.blocks.map(block => ({
         ...block, ownerId: value.ownerId, sourceVersionId: value.resumeVersionId,
       })) });

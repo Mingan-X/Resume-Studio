@@ -21,15 +21,16 @@ const inspectSchema = z.array(z.object({
   Mounts: z.array(z.object({ Type: z.string(), Name: z.string().optional(), Destination: z.string() })),
 })).length(1);
 
-export async function assertObservabilityOwnership(requireHealthy = false): Promise<void> {
+export async function assertObservabilityOwnership(requireHealthy = false,signal?:AbortSignal): Promise<void> {
+  const options={timeout:10000,...(signal?{signal}:{})};
   try {
-    const resolved = await execute('docker', [...observabilityCompose, 'config', '--format', 'json'], { timeout: 10_000 });
+    const resolved = await execute('docker', [...observabilityCompose, 'config', '--format', 'json'], options);
     const volumes = z.object({ volumes: z.record(z.string(), z.object({ name: z.string() })) })
       .parse(JSON.parse(resolved.stdout) as unknown).volumes;
     for (const [service, mounts] of Object.entries(expectedMounts)) {
-      const result = await execute('docker', [...observabilityCompose, 'ps', '-a', '-q', service], { timeout: 10_000 });
+      const result = await execute('docker', [...observabilityCompose, 'ps', '-a', '-q', service], options);
       const id = z.string().regex(/^[a-f0-9]{64}$/).parse(result.stdout.trim());
-      const inspected = await execute('docker', ['inspect', id], { timeout: 10_000 });
+      const inspected = await execute('docker', ['inspect', id], options);
       const info = inspectSchema.parse(JSON.parse(inspected.stdout) as unknown)[0];
       if (!info || info.Config.Labels['com.docker.compose.project'] !== project
         || info.Config.Labels['com.docker.compose.service'] !== service
@@ -54,7 +55,7 @@ export async function assertObservabilityOwnership(requireHealthy = false): Prom
         const legacy = `resume-studio-observability_${key}`;
         if (mount.Type !== 'volume' || !mount.Name || !key || mount.Name !== configuredName
           || (configuredName !== `${project}_langfuse_${key}` && configuredName !== legacy)) throw new Error('mount');
-        const result = await execute('docker', ['volume', 'inspect', mount.Name], { timeout: 10_000 });
+        const result = await execute('docker', ['volume', 'inspect', mount.Name], options);
         const labels = z.array(z.object({ Labels: z.record(z.string(), z.string()) })).length(1)
           .parse(JSON.parse(result.stdout) as unknown)[0]?.Labels;
         const expectedProject = configuredName === legacy ? 'resume-studio-observability' : project;
@@ -63,7 +64,7 @@ export async function assertObservabilityOwnership(requireHealthy = false): Prom
           || labels['com.docker.compose.volume'] !== expectedKey) throw new Error('volume');
       }
     }
-    const network = await execute('docker', ['network', 'inspect', `${project}_observability`], { timeout: 10_000 });
+    const network = await execute('docker', ['network', 'inspect', `${project}_observability`], options);
     const labels = z.array(z.object({ Labels: z.record(z.string(), z.string()) })).length(1)
       .parse(JSON.parse(network.stdout) as unknown)[0]?.Labels;
     if (labels?.['com.docker.compose.project'] !== project || labels['com.docker.compose.network'] !== 'observability') throw new Error('network');
