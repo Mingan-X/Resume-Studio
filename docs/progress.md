@@ -8,6 +8,16 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3合并推送，S2.4接续
+
+S2.3-T9=0ce6ab55625f5ef8529205af4427904c295018d2已--no-ff合并develop，合并e0ccfa7aba565b89cd3f6e5ac22c904a7a9a4e63；origin/develop同值，origin/feature/s2.3-job-recall=0ce6ab5，推送成功。S2.3待维护者统一验收，真实调用/人工标注/原生对照与目标环境限制保留；master及前端未操作。合并后工作区干净，从develop创建feature/s2.4-profile-matching，按-d清理已合并本地S2.3分支，远端保留。
+
+S2.4状态进行中，仅阶段启动，尚无新业务代码。按用户已授权连续开发至S3.3、阶段间自主新会话继续的方式，准备新会话接续T1；本会话在交接后停止写工作区，不与新会话并发修改。新会话先读任务/架构/契约与实际代码，按任务检查/提交，真实模型T9继续按延后表处理，不重复确认D1–D11。
+
+交接要点：14条迁移已应用，9个Docker服务运行；最终基础103/103、全量131/131（782.746秒），OpenAPI/typecheck/Lint通过。Qdrant单请求10秒是用户明确授权的新规则，其余期限/断言保持；原生6333未监听不能启停。正式rubric-v1在开发owner下保持AI_DRAFT/PENDING_REVIEW与既有hash，不能删。最终资源核验只剩开发owner/正式Rubric，队列空、集合空；历史孤立policy仍保留。L1/L2及全部历次失败见前文，不能扩大归因。
+
+实现接口：JobCorpusRepository以owner/versionName存快照（不是自动latest）；RecallService与CandidateRepository已提供内部召回/冻结，SNAP接线时需真实TaskInput版本绑定。现analysisInputSnapshot仍仅synthetic，真实分析输入/创建HTTP、产物、图和临时finalize待S2.4。当前任务预算与fence/graph线程机制可复用，真实索引已显式按embeddingVersion选择能力；百炼仅HTTP桩、无正式Key/实际索引语料。只改启动文档无需重复业务测试，检查diff和链接后提交。
+
 ## 2026-11-27 S2.3-T9阶段回归完成，待统一验收
 
 S2.3非延后任务实现完成并按T1–T8提交；T9同步README、架构、部署/测试、需求与JD实现状态。已交付工程链路：100条合成JD与字典/语料快照、关键词/向量/RRF、版本集合/alias与真实索引任务处理器、补建请求幂等、冻结候选、百炼HTTP适配器及本地显式消费/对账、人工标注格式/Recall@K脚本。没有新增HTTP接口，分析图接线留S2.4。
