@@ -124,9 +124,13 @@ S2.1规划在上传请求内同步解析并持久化文本；PARSE按可信owner
 
 ### 4.2 另一个工作流：JD入库/索引
 
+S2.2实现草稿/要求编辑、确认与同事务PUBLISHED+JobIndexTask+当前目标+Outbox，以及本地HTTP列表/详情/发布/建议。JD抽取是请求内有界ModelPort调用，只返回经Schema/逐字引用校验的待确认建议，不写回草稿；未配置模型明确503。ChatOpenAI兼容适配器只完成HTTP桩验证，真实中转调用按统一验收延后。正式rubric-v1已导入、保持AI_DRAFT/PENDING_REVIEW。真实embedding索引处理器仍属S2.3，当前真实索引任务不被合成消费者完成或标READY。
+
+S2.2已接入[岗位/Rubric契约与持久化边界](jd-rubric.md)：JD证据复用引用校验，JobVersion发布内容及要求由数据库约束禁止原地修改；真实索引快照通过独立版本外键与旧合成任务兼容。下述调用链已实现到事务发布，embedding与Qdrant索引执行仍待S2.3，完整运行证据见[进度](progress.md)。
+
 JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人工或业务规则确认硬门槛/权重 → 在同一PostgreSQL事务内发布不可变JobVersion、创建JobIndexTask并写OutboxEvent（`job.index.requested.v1`）→ Worker embedding → Qdrant幂等upsert → 提交索引任务终态与该版本的indexStatus=READY。
 
-首版采用独立的JobIndexTask，归属JobVersion及目标embeddingVersion/indexVersion；它与AnalysisTask共享Outbox发布器、消息交付、幂等收据、执行尝试、租约/fencing和对账机制，但不复用分析任务的报告、画像或PARTIAL业务含义。JobIndexTask只负责已确认版本的索引生命周期，JD草稿抽取不伪装成简历分析任务；是否异步化草稿抽取可在JobModule内部实现时明确。Task在下文表示两类任务的基础设施概念，不是要求新增统一业务表或Agent Runtime。
+首版采用独立的JobIndexTask，归属JobVersion及目标embeddingVersion/indexVersion；它与AnalysisTask共享Outbox发布器、消息交付、幂等收据、执行尝试、租约/fencing和对账机制，但不复用分析任务的报告、画像或PARTIAL业务含义。JobIndexTask只负责已确认版本的索引生命周期，JD草稿抽取不伪装成简历分析任务；S2.2采用HTTP请求内同步受限调用，建议不写回已确认要求。Task在下文表示两类任务的基础设施概念，不是要求新增统一业务表或Agent Runtime。
 
 JobIndexTask记录自己的status、error、输入/目标版本、generation、fenceToken与租约。Qdrant写入后提交数据库状态仍有跨系统窗口：重投采用确定性point ID执行幂等upsert，只有持有当前fence的执行能更新对应JobVersion的索引状态；旧版本任务不能把新版本标为READY。普通索引服务无需为复用基础设施强行使用LangGraph或创建Checkpoint。
 
@@ -536,7 +540,7 @@ Resume-Studio-Backend/
     infrastructure/            # 已有数据库、消息、向量、HTTP与日志适配器
       checkpoint/              # 已有provision/setup、独立池、配置与归属校验
       observability/           # 已有模块、脱敏、导出器、配置与归属校验
-  prisma/                      # 诊断、任务/Outbox/收据/隔离区schema与迁移；简历/岗位业务表未实现
+  prisma/                      # 诊断、任务/Outbox/收据/隔离区及简历/岗位/Rubric schema与迁移
   test/                        # 已有配置、HTTP、进程、恢复和观测测试
     fixtures/                  # 合成观测图；不注册到API/Worker
     integration/               # 真实服务测试与恢复子进程fixture

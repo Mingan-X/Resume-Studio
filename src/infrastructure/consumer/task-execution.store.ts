@@ -123,6 +123,8 @@ export class TaskExecutionStore {
       if (!expired && (task.updatedAt.getTime() + config.staleMs > now.getTime() || (task.retryAt && task.retryAt > now))) return 'skipped';
       const snapshot = taskType === 'analysis' ? analysisInputSnapshotSchema.parse(task.inputSnapshot) : jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
       if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
+      // No real index executor is registered until S2.3. Do not spend recovery budget while waiting.
+      if (snapshot.kind !== 'synthetic') return 'handler-unavailable';
       const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
       const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
@@ -183,7 +185,7 @@ export class TaskExecutionStore {
     });
   }
 
-  async claim(owner: string, input: unknown): Promise<ClaimResult> {
+  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic'): Promise<ClaimResult> {
     const ownerId = ownerIdSchema.parse(owner), message = taskDispatchSchema.parse(input);
     const name = consumerName(message.taskType), type = dbType(message.taskType);
     return this.database.client.$transaction(async tx => {
@@ -215,6 +217,8 @@ export class TaskExecutionStore {
         return { kind: 'ack' };
       }
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
+      // Leave the task and delivery pending, without an attempt, receipt or ACK.
+      if (snapshot.kind !== capability) return { kind: 'deferred' };
       if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });
@@ -245,7 +249,7 @@ export class TaskExecutionStore {
       } : undefined;
       const leaseUntil = new Date(Math.min(now.getTime() + this.config.leaseMs, deadline.getTime()));
       const updated = await tx.$executeRaw(Prisma.sql`
-        UPDATE ${table(message.taskType)} SET status = 'RUNNING', stage = 'SYNTHETIC_RUNNING', retry_at = NULL,
+        UPDATE ${table(message.taskType)} SET status = 'RUNNING', stage = ${snapshot.kind === 'synthetic' ? 'SYNTHETIC_RUNNING' : 'INDEX_RUNNING'}, retry_at = NULL,
           fence_token = fence_token + 1, lease_owner = ${attemptId}::uuid, lease_until = ${leaseUntil},
           heartbeat_at = ${now}, updated_at = ${now}, budget_usage = ${JSON.stringify(budgetUsageSchema.parse({ ...usage, attempts: usage.attempts + 1 }))}::jsonb
           ${graph ? Prisma.sql`, active_graph_thread_id = ${graph.threadId}::uuid, graph_generation = ${graph.generation}` : Prisma.empty}
@@ -312,6 +316,7 @@ export class TaskExecutionStore {
   }
 
   async nodeArtifact(claim: ExecutionClaim, node: SyntheticNodeOutput['node'], output?: unknown): Promise<SyntheticNodeOutput | null> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     const inputHash = requestHash(claim.snapshot), componentVersion = 's17-synthetic-v1';
     const operationKey = requestHash({ ownerId: claim.ownerId, taskType: claim.message.taskType, taskId: claim.message.taskId,
       node, inputHash, componentVersion, schemaVersion: 1 });
@@ -336,6 +341,7 @@ export class TaskExecutionStore {
   }
 
   async publishSyntheticIndex(claim: ExecutionClaim, target: string): Promise<void> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     if (claim.message.taskType !== 'job-index') throw new Error('INDEX_TASK_REQUIRED');
     const snapshot = jobIndexInputSnapshotSchema.parse(claim.snapshot), id = z.uuid().parse(target);
     await this.database.client.$transaction(async tx => {
@@ -344,6 +350,26 @@ export class TaskExecutionStore {
         jobVersionId: snapshot.jobVersionId, embeddingVersion: snapshot.embeddingVersion, indexVersion: snapshot.indexVersion },
       data: { status: 'READY', completedByTaskId: claim.message.taskId } });
       if (result.count !== 1) throw new ExecutionLeaseLostError();
+    });
+  }
+
+  // S2.3 calls this only after successful vector upsert. No current production handler opts in.
+  async markJobIndexReady(claim: ExecutionClaim): Promise<void> {
+    const snapshot = jobIndexInputSnapshotSchema.parse(claim.snapshot);
+    if (claim.message.taskType !== 'job-index' || snapshot.kind !== 'job-index') throw new TaskFailure('UNSUPPORTED_INPUT');
+    await this.database.client.$transaction(async tx => {
+      await this.requireAuthority(tx, claim);
+      await tx.$queryRaw`SELECT id FROM job_version WHERE owner_id=${claim.ownerId}::uuid AND id=${snapshot.jobVersionId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT job_version_id FROM job_index_target WHERE owner_id=${claim.ownerId}::uuid AND job_version_id=${snapshot.jobVersionId}::uuid FOR UPDATE`;
+      await this.requireAuthority(tx, claim); // time spent waiting for version/target locks does not extend the lease
+      const changed = await tx.$executeRaw`UPDATE job_version AS version SET index_status='READY'
+        FROM job_index_target AS target
+        WHERE version.owner_id=${claim.ownerId}::uuid AND version.id=${snapshot.jobVersionId}::uuid AND version.status='PUBLISHED'
+          AND version.document->>'textHash'=${snapshot.contentHash}
+          AND target.owner_id=version.owner_id AND target.job_version_id=version.id
+          AND target.task_id=${claim.message.taskId}::uuid AND target.embedding_version=${snapshot.embeddingVersion}
+          AND target.index_version=${snapshot.indexVersion} AND ${claim.deadline} > clock_timestamp()`;
+      if (changed !== 1) throw new ExecutionLeaseLostError();
     });
   }
 
@@ -399,6 +425,7 @@ export class TaskExecutionStore {
   }
 
   async complete(claim: ExecutionClaim, output: unknown): Promise<void> {
+    if (claim.snapshot.kind !== 'synthetic') throw new TaskFailure('UNSUPPORTED_INPUT');
     const result = syntheticCompletionSchema.parse(output);
     if (result.inputHash !== requestHash(claim.snapshot)) throw new Error('SYNTHETIC_RESULT_INPUT_MISMATCH');
     await this.database.client.$transaction(async tx => {

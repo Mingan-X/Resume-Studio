@@ -59,6 +59,8 @@ model Owner {
   syntheticIndexTargets SyntheticIndexTarget[]
   fileAssets FileAsset[]
   resumes Resume[]
+  jobs Job[]
+  rubrics RubricVersion[]
 
   @@map("owner")
 }
@@ -188,6 +190,9 @@ model JobIndexTask {
   ownerId String @map("owner_id") @db.Uuid
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   jobVersionId String @map("job_version_id") @db.Uuid
+  realJobVersionId String? @map("real_job_version_id") @db.Uuid
+  realJobVersion JobVersion? @relation(fields: [ownerId, realJobVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  indexTargets JobIndexTarget[]
   embeddingVersion String @map("embedding_version") @db.VarChar(64)
   indexVersion String @map("index_version") @db.VarChar(64)
   inputSnapshot Json @map("input_snapshot") @db.JsonB
@@ -218,6 +223,80 @@ model JobIndexTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("job_index_task")
+}
+
+model Job {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  versions JobVersion[]
+  @@unique([ownerId, id])
+  @@index([ownerId, createdAt, id])
+  @@map("job")
+}
+
+model JobVersion {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  jobId String @map("job_id") @db.Uuid
+  job Job @relation(fields: [ownerId, jobId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  version Int
+  title String @db.VarChar(256)
+  city String? @db.VarChar(128)
+  level String? @db.VarChar(128)
+  skills String[]
+  document Json @db.JsonB
+  dimensionWeights Json @map("dimension_weights") @db.JsonB
+  hardRequirementsConfirmed Boolean @default(false) @map("hard_requirements_confirmed")
+  weightsConfirmed Boolean @default(false) @map("weights_confirmed")
+  status String @default("DRAFT") @db.VarChar(16)
+  contentHash String? @map("content_hash") @db.Char(64)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  indexStatus String @default("NOT_REQUESTED") @map("index_status") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  requirements JobRequirement[]
+  indexTasks JobIndexTask[]
+  indexTarget JobIndexTarget?
+  @@unique([jobId, version])
+  @@unique([ownerId, id])
+  @@map("job_version")
+}
+
+model JobRequirement {
+  ownerId String @map("owner_id") @db.Uuid
+  jobVersionId String @map("job_version_id") @db.Uuid
+  jobVersion JobVersion @relation(fields: [ownerId, jobVersionId], references: [ownerId, id], onDelete: Cascade, onUpdate: NoAction)
+  stableId String @map("stable_id") @db.VarChar(128)
+  ordinal Int
+  requirement Json @db.JsonB
+  @@id([jobVersionId, stableId])
+  @@unique([jobVersionId, ordinal])
+  @@index([ownerId, jobVersionId])
+  @@map("job_requirement")
+}
+
+model RubricVersion {
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  version String @db.VarChar(64)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@id([ownerId, version])
+  @@map("rubric_version")
+}
+
+model JobIndexTarget {
+  ownerId String @map("owner_id") @db.Uuid
+  jobVersionId String @id @map("job_version_id") @db.Uuid
+  jobVersion JobVersion @relation(fields: [ownerId, jobVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  taskId String @map("task_id") @db.Uuid
+  task JobIndexTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  embeddingVersion String @map("embedding_version") @db.VarChar(64)
+  indexVersion String @map("index_version") @db.VarChar(64)
+  @@unique([ownerId, jobVersionId])
+  @@map("job_index_target")
 }
 
 // SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.

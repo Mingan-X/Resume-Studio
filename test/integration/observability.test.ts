@@ -17,12 +17,22 @@ const observationSchema = z.object({
 }).passthrough();
 const responseSchema = z.object({ data: z.array(observationSchema) });
 
-await test('local Langfuse persists correlated callback/manual spans with no raw synthetic PII', { timeout: 90_000 }, async () => {
+await test('local Langfuse persists correlated callback/manual spans with no raw synthetic PII', { timeout: 90_000 }, async t => {
   const config = loadObservabilityConfig(process.env);
   assert.ok(config.enabled, 'Real Langfuse integration requires observability:init and running local services.');
   await assertObservabilityOwnership(true);
   const headers = { Authorization: `Basic ${Buffer.from(`${config.publicKey}:${config.secretKey}`).toString('base64')}` };
-  const projects = await fetch(`${config.baseUrl}/api/public/projects`, { headers, signal: AbortSignal.timeout(5000) });
+  // Identify the failing HTTP boundary without exposing URLs, credentials, bodies or raw exceptions.
+  async function request(stage: 'projects' | 'observations' | 'delete-trace', url: string | URL, method = 'GET') {
+    const start = performance.now();
+    try { return await fetch(url, { method, headers, signal: AbortSignal.timeout(5000) }); }
+    catch (error) {
+      const timeout = error instanceof Error && error.name === 'TimeoutError';
+      t.diagnostic(JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - start), timeout }));
+      throw error; // preserve the original failure; the diagnostic identifies its phase
+    }
+  }
+  const projects = await request('projects', `${config.baseUrl}/api/public/projects`);
   assert.equal(projects.status, 200);
   const projectList = z.object({ data: z.array(z.object({ id: z.string() })) }).parse(await projects.json());
   assert.deepEqual(projectList.data.map(project => project.id), ['resume-studio-diagnostics']);
@@ -49,7 +59,7 @@ await test('local Langfuse persists correlated callback/manual spans with no raw
     const deadline = Date.now() + 45_000;
     let observations: z.infer<typeof observationSchema>[] = [];
     while (Date.now() < deadline) {
-      const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
+      const response = await request('observations', url);
       assert.equal(response.status, 200);
       observations = responseSchema.parse(await response.json()).data;
       if (observations.length >= stats.exported) break;
@@ -67,9 +77,7 @@ await test('local Langfuse persists correlated callback/manual spans with no raw
     if (traceId) {
       // Only this invocation's random trace, in the verified diagnostics project.
       await assertObservabilityOwnership();
-      const response = await fetch(`${config.baseUrl}/api/public/traces/${encodeURIComponent(traceId)}`, {
-        method: 'DELETE', headers, signal: AbortSignal.timeout(5000),
-      });
+      const response = await request('delete-trace', `${config.baseUrl}/api/public/traces/${encodeURIComponent(traceId)}`, 'DELETE');
       assert.ok(response.ok || response.status === 404, 'Test trace deletion request failed.');
       await response.body?.cancel();
     }

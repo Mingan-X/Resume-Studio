@@ -18,6 +18,14 @@ await test('resume API requires explicit local identity, project database and ab
   }
 });
 
+await test('job API configuration accepts absent model settings but rejects public identity and relative secret files', () => {
+  const env = { APP_ENV: 'test', HTTP_PORT: '3000', JOB_API_ENABLED: 'true', DATABASE_URL: 'postgresql://resume_studio_test:synthetic@127.0.0.1:55432/resume_studio_s12_test' };
+  assert.ok(loadConfig('api', env).jobs);
+  for (const patch of [{ APP_ENV: 'production' }, { HTTP_HOST: '0.0.0.0' }, { JOB_API_ENABLED: 'yes' }, { JOB_MODEL_CONFIG_FILE: 'relative.json' }]) {
+    assert.throws(() => loadConfig('api', { ...env, ...patch }), ConfigValidationError);
+  }
+});
+
 await test('required and invalid configuration reports field names without values', () => {
   for (const env of [
     {}, { APP_ENV: 'test' }, { APP_ENV: 'private-marker', HTTP_PORT: 'private-marker' },

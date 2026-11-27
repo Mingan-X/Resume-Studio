@@ -12,12 +12,14 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1–S1.4。S2.1已完成阶段实现与回归（保留L2），待统一验收：本地PDF/DOCX上传、文本块/引用持久化、列表与版本详情、ParsedResume契约已实现，尚待阶段验收。画像、岗位管理、召回、匹配和报告尚未实现。**
+**已完成 S1.1–S1.4。S2.1待统一验收；S2.2岗位草稿/要求/发布、Rubric、模型适配器与HTTP已实现，待统一验收（保留L1/L2及真实调用延后）。真实索引、简历画像/匹配、评分和报告尚未实现。**
 
 S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败，重跑通过。S1.4 附已知环境限制L2：本机默认Docker Qdrant创建集合可能超过5秒客户端限制，使 `pnpm run test:integration` 的Qdrant诊断用例失败；原生Qdrant对照通过。两项限制都在部署服务器或硬件满足条件后重新验证，判断依据与处理规则见[开发进度](docs/progress.md)。
 
 已有能力：
 
+- JOB_API_ENABLED显式本地岗位API：草稿与要求编辑、完整权重/硬门槛确认、不可变发布及事务Outbox/真实JobIndexTask，列表和版本详情；S2.3前真实任务保持待执行，合成消费者不能标READY。
+- 正式rubric-v1（AI_DRAFT/PENDING_REVIEW）导入与六维完整等级加载；JD抽取建议经有界模型端口/证据校验且不写回草稿。OpenAI兼容ChatOpenAI适配器仅本地HTTP桩已验证，真实中转调用延后，缺配置明确不可用。
 - NestJS API 与独立 Worker 入口；Worker 当前为空进程，不消费业务任务。
 - 显式启用RESUME_API_ENABLED后，PDF/DOCX同步上传并隔离解析，按owner/key/文件SHA-256幂等；本地文件、不可变版本/文本块/解析产物分开保存，引用逐字校验。PDF仅可靠页码，DOCX段落/表格定位；扫描/加密/空文本与资源超限明确失败，不做OCR。
 - 简历列表/版本详情及同源OpenAPI；Storage暂存精确补偿与崩溃对账命令。ParsedResume只有契约与固定合成校验样例，语义EXTRACT仍属S2.4，上传响应没有结构化占位字段。
@@ -47,9 +49,9 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 
 | 用途 | 当前已接入 | 规划接入 |
 |---|---|---|
-| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 真实业务HTTP接口、生产认证 |
+| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 分析/报告HTTP接口、生产认证 |
 | 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；合成任务、事务Outbox、发布/消费/重试、隔离区、对账与Checkpoint联合隔离 | 真实业务产物与索引 |
-| AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x（合成图验证） | 业务工作流、模型适配 |
+| AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x（合成图验证）、ChatOpenAI 1.8.5（本地HTTP桩验证） | 业务分析图、真实模型验证 |
 | 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
 具体依赖以 package.json 和 pnpm-lock.yaml 为准；候选组合及兼容性边界见[依赖说明](docs/dependency-compatibility.md)。

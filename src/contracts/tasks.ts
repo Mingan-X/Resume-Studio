@@ -51,7 +51,10 @@ export const syntheticJobIndexInputSchema = z.object({
   componentVersion: version,
 }).strict();
 export const analysisInputSnapshotSchema = syntheticAnalysisInputSchema.extend({ ownerId: uuid });
-export const jobIndexInputSnapshotSchema = syntheticJobIndexInputSchema.extend({ ownerId: uuid });
+export const realJobIndexInputSchema = syntheticJobIndexInputSchema.extend({ kind: z.literal('job-index') });
+export const jobIndexInputSnapshotSchema = z.discriminatedUnion('kind', [
+  syntheticJobIndexInputSchema.extend({ ownerId: uuid }), realJobIndexInputSchema.extend({ ownerId: uuid }),
+]);
 export type AnalysisInputSnapshot = z.infer<typeof analysisInputSnapshotSchema>;
 export type JobIndexInputSnapshot = z.infer<typeof jobIndexInputSnapshotSchema>;
 

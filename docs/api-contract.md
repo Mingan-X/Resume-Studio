@@ -6,7 +6,7 @@
 
 ## 1. 契约真源
 
-- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误及任务查询/取消）
+- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误、任务查询/取消、简历与岗位接口）
 - 由同一组Schema生成[OpenAPI 3.1产物](openapi.json)，作为前端生成类型和客户端的输入；D8采用 `@asteasolutions/zod-to-openapi`，S1.4-T9已实现生成及过期检查。生成器是开发依赖，不参与API请求处理。
 - 前端只对接 [api.md](api.md) 与产物中已实现的接口，不按草案自行定义字段；字段级Zod校验与跨字段/事务业务约束仍以运行时为准。
 
@@ -16,6 +16,8 @@
 |---|---|---|
 | `/health` | 进程存活检查，不表示依赖就绪 | 已实现 |
 | `/api/v1/tasks/:taskId`、`/api/v1/tasks/:taskId/cancel` | 任务查询/取消 | S1.4-T8已实现，需显式启用本地开发模式 |
+| `/api/v1/resumes`及版本详情 | 上传、列表、文本证据 | S2.1已实现，本地显式启用 |
+| `/api/v1/jobs`及版本/确认/发布/建议 | 岗位管理与索引任务创建 | S2.2已实现，待统一验收 |
 | `/api/v1/...`其他路径 | 后续业务接口 | 规划 |
 
 - v1内只做向后兼容的变更：新增可选请求字段、新增响应字段、新增枚举值前先确认前端已能容忍未知值。
@@ -46,11 +48,13 @@
 | 头 | 方向 | 约定 | 状态 |
 |---|---|---|---|
 | `x-request-id` | 响应 | 服务端为每个请求生成UUID；忽略客户端提供的同名值；错误体中的requestId与之相同 | 已实现 |
-| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | S1.4-T2已实现应用服务及409错误映射；创建HTTP入口仍规划 |
-| `Content-Type` | 请求 | 取消接口要求 `application/json` 空对象；上传将用 `multipart/form-data` | 取消已实现；上传规划 |
+| `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | 应用服务、简历上传与岗位发布HTTP已实现；分析创建HTTP仍规划 |
+| `Content-Type` | 请求 | 取消/发布/建议接口要求 `application/json` 空对象；上传使用 `multipart/form-data` | 已实现 |
 | `Cookie` / `X-CSRF-Token` | 请求 | 会话Cookie与CSRF令牌，具体方案见决策D9 | 规划（S3.2） |
 
 ## 6. 错误响应
+
+S2.2新增可选details.fields（path/code，无原始值）与MODEL_UNAVAILABLE、MODEL_OUTPUT_INVALID、MODEL_BUDGET_EXHAUSTED、INDEX_TARGET_UNAVAILABLE；岗位接口实际状态码见api.md。字段校验通过运行时Zod执行，OpenAPI不能代替跨字段、owner与发布事务约束。
 
 当前结构（**已实现**）：
 
@@ -63,7 +67,7 @@
 }
 ```
 
-规划扩展字段：`taskId`（与任务相关的错误）和 `details`（字段级错误，形如 `{"fields":[{"path":"weights.techDepth","code":"NEGATIVE"}]}`）。`details` 不包含原始输入值。
+`details.fields`已实现，仅包含字段path/code，不包含原始输入值；具体code来自运行时校验。`taskId`（与任务相关的错误）仍为规划字段。
 
 - `message` 是可直接展示给用户的安全文案，不包含SQL、凭证、内部路径或堆栈。
 - 客户端按 `code` 分支处理，不解析 `message`。
@@ -78,7 +82,7 @@
 | 其他 | HTTP_ERROR | 其他HTTP异常 | 已实现 |
 | 401 | UNAUTHENTICATED | 未登录或会话过期 | 规划（S3.2） |
 | 403 | FORBIDDEN | 已登录但无权执行该操作 | 规划（S3.2） |
-| 409 | IDEMPOTENCY_CONFLICT | 同一所有者及任务类型下，同幂等键对应不同请求 | 已实现应用服务与HTTP错误映射；任务HTTP入口规划 |
+| 409 | IDEMPOTENCY_CONFLICT | 同一所有者及任务类型下，同幂等键对应不同请求 | 已实现应用服务、简历上传及岗位发布HTTP错误映射 |
 | 409 | INVALID_STATE | 已结束任务不允许再请求取消 | 已实现（S1.4-T8） |
 | 413 | PAYLOAD_TOO_LARGE | 上传超出大小限制；reason=FILE_TOO_LARGE | S2.1已接线 |
 | 422 | UNSUPPORTED_FILE | 文件类型、签名或内容不受支持（含扫描PDF、加密文件）；reason说明原因 | S2.1已接线 |
@@ -88,7 +92,7 @@
 
 ## 7. 异步任务
 
-分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；创建HTTP与SSE仍规划。
+分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；岗位发布已创建真实索引任务；分析创建HTTP与SSE仍规划。
 
 1. 创建：`POST` 返回 `202`，响应体含 `taskId` 与 `statusUrl`。
 2. 查询：`GET /api/v1/tasks/:taskId` 返回 `taskId`、`taskType`（ANALYSIS/JOB_INDEX）、`status`、`stage`、`progress: {completed, total}`（总量未知时 `total` 为null）、累计领取次数 `attempt`、`nextRetryAt`、`error`（任务错误白名单及安全文案）、`reportId`、`cancelRequested`。不返回owner/输入/租约/fence/图线程。当前合成任务无报告。
@@ -109,6 +113,8 @@
 **S2.1-T8已接线，阶段回归中**：`multipart/form-data`，唯一文件字段名 `file`，UUID Idempotency-Key必填。同owner/key绑定原始文件sha256，同字节返回原版本201，不同字节409；新key创建新Resume/version 1。同步解析成功才201，文件大小超限413，格式/签名/扫描/加密/损坏/空文本及解析限制422并带安全reason；不创建异步解析任务。大小上限10 MiB，30页仅适用于PDF；DOCX按文本量限制。客户端检查只用于提前提示；服务端校验签名并生成存储名，不使用客户端文件名作为路径。[Schema与解析边界](resume-evidence.md)已同步OpenAPI；PDF提供页码、DOCX提供段落/表格来源，详情不返回语义结构化占位字段。错误响应新增可选reason（仅文件失败），不含原始内容。
 
 ## 10. 报告与评分
+
+[岗位与Rubric领域契约](jd-rubric.md)定义六维ID、JD引用及权重校验；岗位HTTP接口已由S2.2-T9接入同源OpenAPI。
 
 **规划**（S2.5、S3.1）
 

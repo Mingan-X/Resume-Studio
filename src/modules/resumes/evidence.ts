@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { evidenceRefSchema, extractedDocumentSchema } from '../../contracts/evidence.js';
 import type { EvidenceRef, ExtractedDocument } from '../../contracts/evidence.js';
 import { parserOutputSchema } from '../parsing/contracts.js';
+import { jdDocumentSchema } from '../../contracts/jobs.js';
 
 export const textHash = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 export function extractedDocument(versionId: string, fileHash: string, raw: unknown): ExtractedDocument {
@@ -24,7 +25,7 @@ function boundary(text: string, offset: number): boolean {
 }
 export function validateEvidence(ownerId: string, storedOwnerId: string, rawDocument: unknown, rawRef: unknown): EvidenceRef {
   const owner = z.uuid().parse(ownerId), storedOwner = z.uuid().parse(storedOwnerId);
-  const document = extractedDocumentSchema.parse(rawDocument), ref = evidenceRefSchema.parse(rawRef);
+  const document = z.union([extractedDocumentSchema, jdDocumentSchema]).parse(rawDocument), ref = evidenceRefSchema.parse(rawRef);
   const block = document.blocks.find(block => block.id === ref.blockId);
   if (owner !== storedOwner || ref.sourceType !== document.sourceType || ref.sourceVersionId !== document.sourceVersionId
     || !block || ref.end > block.text.length || !boundary(block.text, ref.start) || !boundary(block.text, ref.end)

@@ -6,6 +6,14 @@
 
 ## 1. 当前工程依赖
 
+### S2.2-T8 OpenAI兼容适配器
+
+2026-11-27按D2接入@langchain/openai1.8.5（MIT、Node>=22、peer core^1.5.0，与当前1.5.1兼容），核对registry精确元数据及官方发布包README/类型/实现。使用ChatOpenAI、baseURL和显式JSON Schema，不改变提供商方向；替代方案是直接调用HTTP/OpenAI SDK，但D2任务要求LangChain适配器，未另建协议运行时。锁文件新增OpenAI SDK7.64.0并使既有LangSmith可选peer解析到该SDK，未升级既有直接core/graph/Zod版本。
+
+用途为ModelPort网络实现；成本是SDK/tokenizer传递依赖与版本兼容维护。SDK与LangChain两层maxRetries=0，所有业务重试由ModelExecutor负责。请求前再次脱敏，只允许HTTPS远端或loopback HTTP桩，拒绝重定向；响应字节/单次期限受限。拒绝环境开启的LangSmith/verbose/OpenAI日志，以免绕开白名单观测；不在日志或数据库保存Key/baseURL/原始异常。
+
+导入触发上游exactOptionalPropertyTypes错误，使用[仅声明补丁](../patches/@langchain__openai@1.8.5.patch)将zdrEnabled与modelKwargs可选字段允许undefined，覆盖d.ts/d.cts；不改运行JS，不启用skipLibCheck，不忽略peer。pnpm patch-commit及冻结安装成功。升级需复核补丁；完整供应链审计留S3.3。本地HTTP桩通过不证明任意中转站支持JSON Schema，真实验证按统一验收延后。
+
 | 组件 | 精确版本 | 验证/限制 |
 |---|---|---|
 | Node.js / pnpm | Node24.22.3；pnpm12.x，实测12.23.0 | Node由engines/.node-version固定；pnpm采用兼容范围，见[当前策略](deployment.md#包管理器版本策略)；其他12.x及Corepack自动选择未验证 |

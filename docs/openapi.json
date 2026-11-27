@@ -52,7 +52,11 @@
               "HTTP_ERROR",
               "INTERNAL_ERROR",
               "PAYLOAD_TOO_LARGE",
-              "UNSUPPORTED_FILE"
+              "UNSUPPORTED_FILE",
+              "MODEL_UNAVAILABLE",
+              "MODEL_OUTPUT_INVALID",
+              "MODEL_BUDGET_EXHAUSTED",
+              "INDEX_TARGET_UNAVAILABLE"
             ]
           },
           "message": {
@@ -82,6 +86,37 @@
               "PARSER_TIMEOUT",
               "PARSER_MEMORY_LIMIT"
             ]
+          },
+          "details": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "maxLength": 512
+                    },
+                    "code": {
+                      "type": "string",
+                      "maxLength": 64
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "code"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1592,6 +1627,4732 @@
           },
           "500": {
             "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "post": {
+        "operationId": "createJob",
+        "summary": "创建JD草稿",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "city": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "level": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "maxItems": 100
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200000
+                  }
+                },
+                "required": [
+                  "title",
+                  "city",
+                  "level",
+                  "skills",
+                  "body"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "新草稿版本",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "city": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "level": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "JD"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "chunkerVersion": {
+                          "type": "string",
+                          "enum": [
+                            "jd-text-v1"
+                          ]
+                        },
+                        "textHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "normalizationVersion",
+                        "chunkerVersion",
+                        "textHash",
+                        "blocks"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 400
+                    },
+                    "dimensionWeights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "weight"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hardRequirementsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "weightsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                      ]
+                    },
+                    "contentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "indexStatus": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_REQUESTED",
+                        "PENDING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "jobId",
+                    "version",
+                    "title",
+                    "city",
+                    "level",
+                    "skills",
+                    "document",
+                    "requirements",
+                    "dimensionWeights",
+                    "hardRequirementsConfirmed",
+                    "weightsConfirmed",
+                    "createdAt",
+                    "status",
+                    "contentHash",
+                    "publishedAt",
+                    "indexStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listJobs",
+        "summary": "owner范围岗位列表",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "稳定游标分页",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "latestVersion": {
+                            "type": "object",
+                            "properties": {
+                              "schemaVersion": {
+                                "type": "number",
+                                "enum": [
+                                  1
+                                ]
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "jobId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "version": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "city": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "level": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "skills": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "document": {
+                                "type": "object",
+                                "properties": {
+                                  "schemaVersion": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "sourceType": {
+                                    "type": "string",
+                                    "enum": [
+                                      "JD"
+                                    ]
+                                  },
+                                  "sourceVersionId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "normalizationVersion": {
+                                    "type": "string",
+                                    "enum": [
+                                      "text-v1"
+                                    ]
+                                  },
+                                  "chunkerVersion": {
+                                    "type": "string",
+                                    "enum": [
+                                      "jd-text-v1"
+                                    ]
+                                  },
+                                  "textHash": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  },
+                                  "blocks": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "ordinal": {
+                                          "type": "integer",
+                                          "minimum": 0
+                                        },
+                                        "text": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "textHash": {
+                                          "type": "string",
+                                          "pattern": "^[a-f0-9]{64}$"
+                                        },
+                                        "location": {
+                                          "oneOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "PDF"
+                                                  ]
+                                                },
+                                                "page": {
+                                                  "type": "integer",
+                                                  "exclusiveMinimum": 0
+                                                },
+                                                "bounds": {
+                                                  "type": [
+                                                    "object",
+                                                    "null"
+                                                  ],
+                                                  "properties": {
+                                                    "x": {
+                                                      "type": "number"
+                                                    },
+                                                    "y": {
+                                                      "type": "number"
+                                                    },
+                                                    "width": {
+                                                      "type": "number",
+                                                      "minimum": 0
+                                                    },
+                                                    "height": {
+                                                      "type": "number",
+                                                      "minimum": 0
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "x",
+                                                    "y",
+                                                    "width",
+                                                    "height"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "page",
+                                                "bounds"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "DOCX"
+                                                  ]
+                                                },
+                                                "paragraph": {
+                                                  "type": "integer",
+                                                  "minimum": 0
+                                                },
+                                                "table": {
+                                                  "type": [
+                                                    "object",
+                                                    "null"
+                                                  ],
+                                                  "properties": {
+                                                    "index": {
+                                                      "type": "integer",
+                                                      "minimum": 0
+                                                    },
+                                                    "row": {
+                                                      "type": "integer",
+                                                      "minimum": 0
+                                                    },
+                                                    "cell": {
+                                                      "type": "integer",
+                                                      "minimum": 0
+                                                    }
+                                                  },
+                                                  "required": [
+                                                    "index",
+                                                    "row",
+                                                    "cell"
+                                                  ],
+                                                  "additionalProperties": false
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "paragraph",
+                                                "table"
+                                              ],
+                                              "additionalProperties": false
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "kind": {
+                                                  "type": "string",
+                                                  "enum": [
+                                                    "TEXT"
+                                                  ]
+                                                },
+                                                "paragraph": {
+                                                  "type": "integer",
+                                                  "minimum": 0
+                                                }
+                                              },
+                                              "required": [
+                                                "kind",
+                                                "paragraph"
+                                              ],
+                                              "additionalProperties": false
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "id",
+                                        "ordinal",
+                                        "text",
+                                        "textHash",
+                                        "location"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "schemaVersion",
+                                  "sourceType",
+                                  "sourceVersionId",
+                                  "normalizationVersion",
+                                  "chunkerVersion",
+                                  "textHash",
+                                  "blocks"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "requirements": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "stableId": {
+                                      "type": "string",
+                                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                                    },
+                                    "dimension": {
+                                      "type": "string",
+                                      "enum": [
+                                        "technical_depth",
+                                        "engineering",
+                                        "business_understanding",
+                                        "project_impact",
+                                        "collaboration",
+                                        "growth"
+                                      ]
+                                    },
+                                    "kind": {
+                                      "type": "string",
+                                      "enum": [
+                                        "HARD",
+                                        "SOFT"
+                                      ]
+                                    },
+                                    "description": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 4000
+                                    },
+                                    "threshold": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "properties": {
+                                        "operator": {
+                                          "type": "string",
+                                          "enum": [
+                                            "gte",
+                                            "lte",
+                                            "eq"
+                                          ]
+                                        },
+                                        "value": {
+                                          "anyOf": [
+                                            {
+                                              "type": "number"
+                                            },
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 256
+                                            }
+                                          ]
+                                        },
+                                        "unit": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 64
+                                        }
+                                      },
+                                      "required": [
+                                        "operator",
+                                        "value",
+                                        "unit"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "weight": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    "sourceRef": {
+                                      "type": "object",
+                                      "properties": {
+                                        "sourceType": {
+                                          "type": "string",
+                                          "enum": [
+                                            "RESUME",
+                                            "JD"
+                                          ]
+                                        },
+                                        "sourceVersionId": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "blockId": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "start": {
+                                          "type": "integer",
+                                          "minimum": 0
+                                        },
+                                        "end": {
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0
+                                        },
+                                        "quote": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        }
+                                      },
+                                      "required": [
+                                        "sourceType",
+                                        "sourceVersionId",
+                                        "blockId",
+                                        "start",
+                                        "end",
+                                        "quote"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    "priority": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    }
+                                  },
+                                  "required": [
+                                    "stableId",
+                                    "dimension",
+                                    "kind",
+                                    "description",
+                                    "threshold",
+                                    "weight",
+                                    "sourceRef",
+                                    "priority"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 400
+                              },
+                              "dimensionWeights": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "dimension": {
+                                      "type": "string",
+                                      "enum": [
+                                        "technical_depth",
+                                        "engineering",
+                                        "business_understanding",
+                                        "project_impact",
+                                        "collaboration",
+                                        "growth"
+                                      ]
+                                    },
+                                    "weight": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    }
+                                  },
+                                  "required": [
+                                    "dimension",
+                                    "weight"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "hardRequirementsConfirmed": {
+                                "type": "boolean"
+                              },
+                              "weightsConfirmed": {
+                                "type": "boolean"
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "DRAFT",
+                                  "PUBLISHED"
+                                ]
+                              },
+                              "contentHash": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "publishedAt": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "date-time"
+                              },
+                              "indexStatus": {
+                                "type": "string",
+                                "enum": [
+                                  "NOT_REQUESTED",
+                                  "PENDING",
+                                  "READY",
+                                  "FAILED"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "schemaVersion",
+                              "id",
+                              "jobId",
+                              "version",
+                              "title",
+                              "city",
+                              "level",
+                              "skills",
+                              "document",
+                              "requirements",
+                              "dimensionWeights",
+                              "hardRequirementsConfirmed",
+                              "weightsConfirmed",
+                              "createdAt",
+                              "status",
+                              "contentHash",
+                              "publishedAt",
+                              "indexStatus"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "createdAt",
+                          "latestVersion"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}": {
+      "get": {
+        "operationId": "getJob",
+        "summary": "岗位最新版本",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "最新版本",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "city": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "level": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "JD"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "chunkerVersion": {
+                          "type": "string",
+                          "enum": [
+                            "jd-text-v1"
+                          ]
+                        },
+                        "textHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "normalizationVersion",
+                        "chunkerVersion",
+                        "textHash",
+                        "blocks"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 400
+                    },
+                    "dimensionWeights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "weight"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hardRequirementsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "weightsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                      ]
+                    },
+                    "contentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "indexStatus": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_REQUESTED",
+                        "PENDING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "jobId",
+                    "version",
+                    "title",
+                    "city",
+                    "level",
+                    "skills",
+                    "document",
+                    "requirements",
+                    "dimensionWeights",
+                    "hardRequirementsConfirmed",
+                    "weightsConfirmed",
+                    "createdAt",
+                    "status",
+                    "contentHash",
+                    "publishedAt",
+                    "indexStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/versions/{versionId}": {
+      "get": {
+        "operationId": "getJobVersion",
+        "summary": "岗位版本详情",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "含发布/索引状态与来源",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "city": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "level": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "JD"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "chunkerVersion": {
+                          "type": "string",
+                          "enum": [
+                            "jd-text-v1"
+                          ]
+                        },
+                        "textHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "normalizationVersion",
+                        "chunkerVersion",
+                        "textHash",
+                        "blocks"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 400
+                    },
+                    "dimensionWeights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "weight"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hardRequirementsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "weightsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                      ]
+                    },
+                    "contentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "indexStatus": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_REQUESTED",
+                        "PENDING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "jobId",
+                    "version",
+                    "title",
+                    "city",
+                    "level",
+                    "skills",
+                    "document",
+                    "requirements",
+                    "dimensionWeights",
+                    "hardRequirementsConfirmed",
+                    "weightsConfirmed",
+                    "createdAt",
+                    "status",
+                    "contentHash",
+                    "publishedAt",
+                    "indexStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "editJobDraft",
+        "summary": "编辑草稿或从发布版本派生新草稿",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "body"
+                        ]
+                      },
+                      "body": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200000
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "body"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "metadata"
+                        ]
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "city": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "level": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "skills": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "maxItems": 100
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "city",
+                          "level",
+                          "skills"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "metadata"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "requirement-upsert"
+                        ]
+                      },
+                      "requirement": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "requirement"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "requirement-delete"
+                        ]
+                      },
+                      "stableId": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "stableId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "weights"
+                        ]
+                      },
+                      "dimensionWeights": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "dimension": {
+                              "type": "string",
+                              "enum": [
+                                "technical_depth",
+                                "engineering",
+                                "business_understanding",
+                                "project_impact",
+                                "collaboration",
+                                "growth"
+                              ]
+                            },
+                            "weight": {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "dimension",
+                            "weight"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "dimensionWeights"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "编辑后的草稿",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "city": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "level": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "JD"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "chunkerVersion": {
+                          "type": "string",
+                          "enum": [
+                            "jd-text-v1"
+                          ]
+                        },
+                        "textHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "normalizationVersion",
+                        "chunkerVersion",
+                        "textHash",
+                        "blocks"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 400
+                    },
+                    "dimensionWeights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "weight"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hardRequirementsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "weightsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                      ]
+                    },
+                    "contentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "indexStatus": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_REQUESTED",
+                        "PENDING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "jobId",
+                    "version",
+                    "title",
+                    "city",
+                    "level",
+                    "skills",
+                    "document",
+                    "requirements",
+                    "dimensionWeights",
+                    "hardRequirementsConfirmed",
+                    "weightsConfirmed",
+                    "createdAt",
+                    "status",
+                    "contentHash",
+                    "publishedAt",
+                    "indexStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/versions/{versionId}/confirm": {
+      "post": {
+        "operationId": "confirmJob",
+        "summary": "确认硬要求与权重",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hardRequirementsConfirmed": {
+                    "type": "boolean"
+                  },
+                  "weightsConfirmed": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "hardRequirementsConfirmed",
+                  "weightsConfirmed"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "确认结果",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "city": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "level": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "properties": {
+                        "schemaVersion": {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        "sourceType": {
+                          "type": "string",
+                          "enum": [
+                            "JD"
+                          ]
+                        },
+                        "sourceVersionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "normalizationVersion": {
+                          "type": "string",
+                          "enum": [
+                            "text-v1"
+                          ]
+                        },
+                        "chunkerVersion": {
+                          "type": "string",
+                          "enum": [
+                            "jd-text-v1"
+                          ]
+                        },
+                        "textHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "blocks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "ordinal": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "textHash": {
+                                "type": "string",
+                                "pattern": "^[a-f0-9]{64}$"
+                              },
+                              "location": {
+                                "oneOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "PDF"
+                                        ]
+                                      },
+                                      "page": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0
+                                      },
+                                      "bounds": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "x": {
+                                            "type": "number"
+                                          },
+                                          "y": {
+                                            "type": "number"
+                                          },
+                                          "width": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          },
+                                          "height": {
+                                            "type": "number",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "x",
+                                          "y",
+                                          "width",
+                                          "height"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "page",
+                                      "bounds"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "DOCX"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      },
+                                      "table": {
+                                        "type": [
+                                          "object",
+                                          "null"
+                                        ],
+                                        "properties": {
+                                          "index": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "row": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          },
+                                          "cell": {
+                                            "type": "integer",
+                                            "minimum": 0
+                                          }
+                                        },
+                                        "required": [
+                                          "index",
+                                          "row",
+                                          "cell"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph",
+                                      "table"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "TEXT"
+                                        ]
+                                      },
+                                      "paragraph": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "paragraph"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ordinal",
+                              "text",
+                              "textHash",
+                              "location"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "schemaVersion",
+                        "sourceType",
+                        "sourceVersionId",
+                        "normalizationVersion",
+                        "chunkerVersion",
+                        "textHash",
+                        "blocks"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stableId": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                          },
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "HARD",
+                              "SOFT"
+                            ]
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "threshold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "operator": {
+                                "type": "string",
+                                "enum": [
+                                  "gte",
+                                  "lte",
+                                  "eq"
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                ]
+                              },
+                              "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              }
+                            },
+                            "required": [
+                              "operator",
+                              "value",
+                              "unit"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "sourceRef": {
+                            "type": "object",
+                            "properties": {
+                              "sourceType": {
+                                "type": "string",
+                                "enum": [
+                                  "RESUME",
+                                  "JD"
+                                ]
+                              },
+                              "sourceVersionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "blockId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0
+                              },
+                              "quote": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "sourceType",
+                              "sourceVersionId",
+                              "blockId",
+                              "start",
+                              "end",
+                              "quote"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "priority": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stableId",
+                          "dimension",
+                          "kind",
+                          "description",
+                          "threshold",
+                          "weight",
+                          "sourceRef",
+                          "priority"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 400
+                    },
+                    "dimensionWeights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "dimension": {
+                            "type": "string",
+                            "enum": [
+                              "technical_depth",
+                              "engineering",
+                              "business_understanding",
+                              "project_impact",
+                              "collaboration",
+                              "growth"
+                            ]
+                          },
+                          "weight": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "dimension",
+                          "weight"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hardRequirementsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "weightsConfirmed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "PUBLISHED"
+                      ]
+                    },
+                    "contentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "indexStatus": {
+                      "type": "string",
+                      "enum": [
+                        "NOT_REQUESTED",
+                        "PENDING",
+                        "READY",
+                        "FAILED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "id",
+                    "jobId",
+                    "version",
+                    "title",
+                    "city",
+                    "level",
+                    "skills",
+                    "document",
+                    "requirements",
+                    "dimensionWeights",
+                    "hardRequirementsConfirmed",
+                    "weightsConfirmed",
+                    "createdAt",
+                    "status",
+                    "contentHash",
+                    "publishedAt",
+                    "indexStatus"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/versions/{versionId}/publish": {
+      "post": {
+        "operationId": "publishJob",
+        "summary": "事务发布JD和索引任务",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "发布版本及待执行索引任务",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "taskId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "jobVersionId",
+                    "taskId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/versions/{versionId}/suggestions": {
+      "post": {
+        "operationId": "suggestJobRequirements",
+        "summary": "受限模型生成待人工确认建议，不写回草稿",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "jobId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "versionId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "校验过的建议及输入版本",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "jobVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "inputHash": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "promptVersion": {
+                      "type": "string",
+                      "enum": [
+                        "jd-extract-v1"
+                      ]
+                    },
+                    "modelConfigVersion": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$"
+                    },
+                    "suggestions": {
+                      "type": "object",
+                      "properties": {
+                        "requirements": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "stableId": {
+                                "type": "string",
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+                              },
+                              "dimension": {
+                                "type": "string",
+                                "enum": [
+                                  "technical_depth",
+                                  "engineering",
+                                  "business_understanding",
+                                  "project_impact",
+                                  "collaboration",
+                                  "growth"
+                                ]
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "HARD",
+                                  "SOFT"
+                                ]
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "threshold": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "operator": {
+                                    "type": "string",
+                                    "enum": [
+                                      "gte",
+                                      "lte",
+                                      "eq"
+                                    ]
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      }
+                                    ]
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  }
+                                },
+                                "required": [
+                                  "operator",
+                                  "value",
+                                  "unit"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "weight": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "sourceRef": {
+                                "type": "object",
+                                "properties": {
+                                  "sourceType": {
+                                    "type": "string",
+                                    "enum": [
+                                      "RESUME",
+                                      "JD"
+                                    ]
+                                  },
+                                  "sourceVersionId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "blockId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "start": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "end": {
+                                    "type": "integer",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "quote": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                },
+                                "required": [
+                                  "sourceType",
+                                  "sourceVersionId",
+                                  "blockId",
+                                  "start",
+                                  "end",
+                                  "quote"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "priority": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "stableId",
+                              "dimension",
+                              "kind",
+                              "description",
+                              "threshold",
+                              "weight",
+                              "sourceRef",
+                              "priority"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 400
+                        }
+                      },
+                      "required": [
+                        "requirements"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "usage": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "costMicros": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0
+                        },
+                        "currency": {
+                          "type": "string",
+                          "pattern": "^[A-Z]{3}$"
+                        }
+                      },
+                      "required": [
+                        "inputTokens",
+                        "outputTokens",
+                        "costMicros",
+                        "currency"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "jobVersionId",
+                    "inputHash",
+                    "promptVersion",
+                    "modelConfigVersion",
+                    "suggestions",
+                    "attempts",
+                    "usage"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或未确认/引用失效",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "模型输出或预算不满足",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "模型或索引目标未配置/暂不可用",
             "headers": {
               "x-request-id": {
                 "schema": {

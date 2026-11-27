@@ -9,6 +9,10 @@ extendZodWithOpenApi(z);
 const { healthQuerySchema, healthResponseSchema, errorResponseSchema } = await import('../dist/src/contracts/http.js');
 const { taskPathSchema, taskQuerySchema, taskResponseSchema, cancelTaskRequestSchema, cancelTaskResponseSchema } = await import('../dist/src/contracts/task-api.js');
 const { resumeListQuerySchema, resumeListResponseSchema, resumeVersionPathSchema, resumeVersionResponseSchema } = await import('../dist/src/contracts/resumes.js');
+const { jobPathSchema, jobVersionPathSchema, jobListQuerySchema, jobListResponseSchema, jobVersionResponseSchema } = await import('../dist/src/contracts/job-api.js');
+const { createJobDraftSchema, editJobDraftSchema } = await import('../dist/src/contracts/job-drafts.js');
+const { jobConfirmationSchema, jobPublicationResultSchema } = await import('../dist/src/contracts/job-publication.js');
+const { jdExtractionResultSchema } = await import('../dist/src/contracts/job-extraction.js');
 const registry = new OpenAPIRegistry();
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
@@ -37,6 +41,16 @@ registry.registerPath({ method: 'get', path: '/api/v1/resumes', operationId: 'li
   request: { query: resumeListQuerySchema }, responses: { 200: response(resumeListResponseSchema, 'createdAt/id降序游标分页'), ...errors } });
 registry.registerPath({ method: 'get', path: '/api/v1/resumes/{resumeId}/versions/{versionId}', operationId: 'getResumeVersion', summary: '读取简历版本与已存文本证据',
   request: { params: resumeVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(resumeVersionResponseSchema, '不可变文本与警告，不返回结构化占位'), ...errors } });
+const jobErrors = { ...errors, 409: response(error, '幂等冲突或未确认/引用失效'), 422: response(error, '模型输出或预算不满足'), 503: response(error, '模型或索引目标未配置/暂不可用') };
+const jsonBody = schema => ({ required: true, content: { 'application/json': { schema } } });
+registry.registerPath({ method: 'post', path: '/api/v1/jobs', operationId: 'createJob', summary: '创建JD草稿', request: { query: taskQuerySchema, body: jsonBody(createJobDraftSchema) }, responses: { 201: response(jobVersionResponseSchema, '新草稿版本'), ...jobErrors } });
+registry.registerPath({ method: 'get', path: '/api/v1/jobs', operationId: 'listJobs', summary: 'owner范围岗位列表', request: { query: jobListQuerySchema }, responses: { 200: response(jobListResponseSchema, '稳定游标分页'), ...jobErrors } });
+registry.registerPath({ method: 'get', path: '/api/v1/jobs/{jobId}', operationId: 'getJob', summary: '岗位最新版本', request: { params: jobPathSchema, query: taskQuerySchema }, responses: { 200: response(jobVersionResponseSchema, '最新版本'), ...jobErrors } });
+registry.registerPath({ method: 'get', path: '/api/v1/jobs/{jobId}/versions/{versionId}', operationId: 'getJobVersion', summary: '岗位版本详情', request: { params: jobVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(jobVersionResponseSchema, '含发布/索引状态与来源'), ...jobErrors } });
+registry.registerPath({ method: 'patch', path: '/api/v1/jobs/{jobId}/versions/{versionId}', operationId: 'editJobDraft', summary: '编辑草稿或从发布版本派生新草稿', request: { params: jobVersionPathSchema, query: taskQuerySchema, body: jsonBody(editJobDraftSchema) }, responses: { 200: response(jobVersionResponseSchema, '编辑后的草稿'), ...jobErrors } });
+registry.registerPath({ method: 'post', path: '/api/v1/jobs/{jobId}/versions/{versionId}/confirm', operationId: 'confirmJob', summary: '确认硬要求与权重', request: { params: jobVersionPathSchema, query: taskQuerySchema, body: jsonBody(jobConfirmationSchema) }, responses: { 200: response(jobVersionResponseSchema, '确认结果'), ...jobErrors } });
+registry.registerPath({ method: 'post', path: '/api/v1/jobs/{jobId}/versions/{versionId}/publish', operationId: 'publishJob', summary: '事务发布JD和索引任务', request: { params: jobVersionPathSchema, query: taskQuerySchema, headers: z.object({ 'idempotency-key': z.uuid() }), body: jsonBody(taskQuerySchema) }, responses: { 202: response(jobPublicationResultSchema, '发布版本及待执行索引任务'), ...jobErrors } });
+registry.registerPath({ method: 'post', path: '/api/v1/jobs/{jobId}/versions/{versionId}/suggestions', operationId: 'suggestJobRequirements', summary: '受限模型生成待人工确认建议，不写回草稿', request: { params: jobVersionPathSchema, query: taskQuerySchema, body: jsonBody(taskQuerySchema) }, responses: { 200: response(jdExtractionResultSchema, '校验过的建议及输入版本'), ...jobErrors } });
 const document = new OpenApiGeneratorV31(registry.definitions, { sortComponents: 'alphabetically' }).generateDocument({
   openapi: '3.1.0', info: { title: 'Resume Studio Backend', version: '0.1.0',
     description: '任务与简历路由分别通过TASK_API_ENABLED/RESUME_API_ENABLED启用；固定开发身份仅用于本地开发，不提供生产认证。' },
