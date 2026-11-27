@@ -75,6 +75,7 @@ model JobCorpusVersion {
   manifest Json @db.JsonB
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  candidateSets CandidateSet[]
 
   @@id([ownerId, version])
   @@map("job_corpus_version")
@@ -190,6 +191,7 @@ model AnalysisTask {
   events TaskEvent[]
   receipts ConsumerReceipt[]
   artifacts NodeArtifact[]
+  candidateSet CandidateSet?
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -274,6 +276,7 @@ model JobVersion {
   requirements JobRequirement[]
   indexTasks JobIndexTask[]
   indexTarget JobIndexTarget?
+  candidates Candidate[]
   @@unique([jobId, version])
   @@unique([ownerId, id])
   @@map("job_version")
@@ -327,6 +330,36 @@ model JobIndexRequest {
   @@id([ownerId, idempotencyKey])
   @@index([ownerId, taskId])
   @@map("job_index_request")
+}
+
+model CandidateSet {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @unique @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: Restrict, onUpdate: NoAction)
+  corpusVersion String @map("corpus_version") @db.VarChar(64)
+  corpus JobCorpusVersion @relation(fields: [ownerId, corpusVersion], references: [ownerId, version], onDelete: Restrict, onUpdate: NoAction)
+  status String @default("BUILDING") @db.VarChar(16)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  candidates Candidate[]
+  @@unique([ownerId, id])
+  @@unique([ownerId, taskId])
+  @@map("candidate_set")
+}
+
+model Candidate {
+  ownerId String @map("owner_id") @db.Uuid
+  setId String @map("set_id") @db.Uuid
+  set CandidateSet @relation(fields: [ownerId, setId], references: [ownerId, id], onDelete: Cascade, onUpdate: NoAction)
+  jobVersionId String @map("job_version_id") @db.Uuid
+  jobVersion JobVersion @relation(fields: [ownerId, jobVersionId], references: [ownerId, id], onDelete: Restrict, onUpdate: NoAction)
+  rank Int
+  content Json @db.JsonB
+  @@id([setId, jobVersionId])
+  @@unique([setId, rank])
+  @@map("candidate")
 }
 
 // SQL CHECK enforces one matching task FK; composite FKs also enforce ownership.

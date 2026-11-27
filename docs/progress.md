@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T6冻结候选实现与验证完成
+
+T6增加CandidateSet/Candidate及不可变冻结触发器：同task唯一、成员版本/排序唯一、owner复合外键，live fence/租约/graph/cancel/deadline下同事务校验corpus/成员内容并冻结；重放内容相同复用setId，冲突拒绝。load验证内容hash与逐行快照，查询文本脱敏，空候选如实保存；新增显式城市条件在冻结时再次检查。真实分析输入绑定/图恢复消费在S2.4接入，本阶段只验证已有合成任务上的数据库执行权。
+
+迁移generate/validate/deploy两次/status通过，14条已应用；typecheck、lint通过。基础最终103/103通过，12.853秒（data/s23-t6-t8-unit.log）；此前131/131完整集成已覆盖主要冻结实现，最终城市校验专项`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/candidates.test.js`1/1通过，39.429秒（data/s23-t6-final-targeted.log）。无HTTP/依赖变更，无额外安装；文档与diff检查通过。按T6提交，阶段终检继续覆盖最终代码。
+
 ## 2026-11-27 S2.3-T5完成验证，T6/T7共用回归通过
 
 `pnpm run test:integration`131/131通过、0失败/跳过，793.182秒（data/s23-t5-t7-integration.log），包含补建、候选冻结、索引重试/版本隔离、真实召回/清理及既有全部用例；Docker集合创建6047.8ms，Outbox DLX181.909秒。之前清理失败及HTTP桩超时完整保留，不归L1/L2。各用例本轮资源精确清理成功。
