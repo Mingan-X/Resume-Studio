@@ -5,12 +5,15 @@ import { JsonTraceSerializer } from '@opentelemetry/otlp-transformer';
 import type { ObservabilityConfig } from './config.js';
 
 export type LossReason = 'capacity' | 'expired' | 'transport' | 'shutdown' | 'processing';
+type TransportFailure = { stage: 'serialize' | 'request' | 'acknowledgement';
+  reason: 'timeout' | 'http' | 'connection' | 'invalid-ack' | 'payload'; status: number | null; elapsedMs: number };
 export class ObservationMetrics {
   accepted = 0;
   exported = 0;
   outstanding = 0;
   peakOutstanding = 0;
   lost: Record<LossReason, number> = { capacity: 0, expired: 0, transport: 0, shutdown: 0, processing: 0 };
+  lastTransportFailure: TransportFailure | null = null;
 
   lose(reason: LossReason, count: number): void {
     this.lost[reason] += count;
@@ -18,7 +21,8 @@ export class ObservationMetrics {
 
   snapshot() {
     return { accepted: this.accepted, exported: this.exported, outstanding: this.outstanding,
-      peakOutstanding: this.peakOutstanding, lost: { ...this.lost } };
+      peakOutstanding: this.peakOutstanding, lost: { ...this.lost },
+      lastTransportFailure: this.lastTransportFailure ? { ...this.lastTransportFailure } : null };
   }
 }
 
@@ -70,9 +74,12 @@ export class BoundedLangfuseExporter implements SpanExporter {
       this.controller = new AbortController();
       const timer = setTimeout(() => this.controller?.abort(), Math.max(1, remaining));
       let reason: LossReason | undefined;
+      const started = performance.now();
+      let stage: TransportFailure['stage'] = 'serialize', status: number | null = null;
       try {
         const payload = JsonTraceSerializer.serializeRequest(live.flatMap(item => item.spans));
         if (!payload || payload.byteLength > 128 * 1024) throw new Error('Bounded payload exceeded.');
+        stage = 'request';
         const response = await fetch(`${this.config.baseUrl}/api/public/otel/v1/traces`, {
           method: 'POST', redirect: 'error', signal: this.controller.signal,
           headers: { 'Content-Type': 'application/json',
@@ -81,7 +88,9 @@ export class BoundedLangfuseExporter implements SpanExporter {
             'x-langfuse-sdk-version': '6.1.1', 'x-langfuse-public-key': this.config.publicKey },
           body: Buffer.from(payload),
         });
+        status = response.status;
         if (!response.ok) { await response.body?.cancel(); throw new Error('Export rejected.'); }
+        stage = 'acknowledgement';
         // Consume a bounded OTLP acknowledgement; partial rejection counts as loss.
         const chunks: Uint8Array[] = [];
         let bytes = 0;
@@ -94,7 +103,12 @@ export class BoundedLangfuseExporter implements SpanExporter {
           const ack = JsonTraceSerializer.deserializeResponse(Buffer.concat(chunks));
           if (Number(ack.partialSuccess?.rejectedSpans ?? 0) > 0) throw new Error('Partial rejection.');
         }
-      } catch { reason = this.stopped ? 'shutdown' : 'transport'; }
+      } catch {
+        reason = this.stopped ? 'shutdown' : 'transport';
+        if (!this.stopped) this.metrics.lastTransportFailure = { stage, status, elapsedMs: Math.round(performance.now() - started),
+          reason: stage === 'serialize' ? 'payload' : this.controller.signal.aborted ? 'timeout'
+            : stage === 'acknowledgement' ? 'invalid-ack' : status === null ? 'connection' : 'http' };
+      }
       finally { clearTimeout(timer); this.controller = undefined; }
       for (const item of live) this.finish(item, reason);
     }

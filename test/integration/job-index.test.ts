@@ -22,6 +22,7 @@ import { JobCorpusRepository } from '../../src/infrastructure/jobs/corpus.reposi
 import { JobIndexRepository } from '../../src/infrastructure/jobs/index.repository.js';
 import { createJobIndexDelivery } from '../../src/infrastructure/jobs/index-runtime.js';
 import { JobIndexVector } from '../../src/infrastructure/vector/job-index.vector.js';
+import { QDRANT_REQUEST_TIMEOUT_MS } from '../../src/infrastructure/vector/request-budget.js';
 import { TaskConsumer } from '../../src/infrastructure/consumer/task.consumer.js';
 import { TaskExecutionStore } from '../../src/infrastructure/consumer/task-execution.store.js';
 import { consumerConfigSchema } from '../../src/infrastructure/consumer/config.js';
@@ -47,7 +48,7 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
   const database = new DatabaseService(baseline), db = database.client, ownerId = randomUUID();
   const identity = { getOwnerId: () => Promise.resolve(ownerId) }, specs: IndexCollection[] = [], confirmed = new Set<string>();
   const vector = new JobIndexVector({ url: qdrant.config.qdrantUrl, apiKey: qdrant.config.qdrantApiKey }, qdrant.verify);
-  const client = new QdrantClient({ url: qdrant.config.qdrantUrl, apiKey: qdrant.config.qdrantApiKey, timeout: 5000 });
+  const client = new QdrantClient({ url: qdrant.config.qdrantUrl, apiKey: qdrant.config.qdrantApiKey, timeout: QDRANT_REQUEST_TIMEOUT_MS });
   const topology = taskTopology(`s12.t4.${randomUUID().replaceAll('-', '')}`);
   const connection = await connect(baseline.rabbitmqUrl, { timeout: 5000 }); connection.on('error', () => {});
   const channel = await connection.createChannel(); channel.on('error', () => {});
@@ -83,7 +84,7 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
     embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion, dimensions: 8, provenance: 'synthetic',
     chunkerVersion: target.chunkerVersion, componentVersion: target.componentVersion });
   specs.push(spec); save();
-  // Collection setup is explicit and retains its original five-second transport deadline.
+  // Authorized 10s request ceiling remains bounded by the original 15s setup deadline.
   await vector.ensure(spec, { deadline: Date.now() + 15_000, signal: AbortSignal.timeout(15_000) });
   confirmed.add(indexCollectionName(spec)); save();
   assert.throws(() => createJobIndexDelivery(database, identity, embedding, vector), /OFFICIAL_EMBEDDING_REQUIRED/);

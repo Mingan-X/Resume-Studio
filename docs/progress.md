@@ -8,6 +8,44 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T4授权修复收尾
+
+最终当前源码typecheck、零警告lint通过，文档相对文件链接4份107项及git diff --check通过。只读data/s23-repair-resources.mjs先核验PostgreSQL/RabbitMQ/Qdrant及六观测服务归属/健康，再读取：Job/JobVersion/JobIndexTask/JobCorpusVersion/Resume/FileAsset=0，4正式队列ready/unacked=0，Qdrant集合为空，rubric-v1 hash仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d。结果保存在忽略的data/s23-repair-resources.json。未删除旧孤立policy、正式Rubric或任何卷/本地配置。
+
+修复效果：Qdrant单请求10秒在本轮真实5318.2ms创建及5.5秒HTTP桩上验证通过，任务总deadline/取消保持；完整128/128通过解除“最新Docker完整回归失败”这一当前阻塞。原生对照未执行、历史L1冷启动及T4功能审查余项仍保留，不代表S2.3阶段已完成或生产性能保证。阶段分支本地提交保存修复；未合并/推送、未操作master/前端或发送第三方消息。
+
+## 2026-11-27 S2.3-T4 Qdrant授权修复完整回归通过
+
+`pnpm run test:integration`128/128通过、0失败/跳过，604.423秒（data/s23-repair-integration.log）。Docker基础集合创建5318.2ms，实测超过旧5秒、在授权10秒内成功；新索引链路、Checkpoint/fence、Langfuse及所有原回归通过，Outbox死信窗口182.122秒。支持本次Qdrant预算调整，不能解释所有历史异常或宣称L1/L2永久解除。Worker/观测本轮仅增强安全诊断，旧UNKNOWN和传输丢失未复现，不称已定位根因。
+
+之前基础93项92通过/1项L1冷启动失败、服务缺失专项7/7失败继续保留；服务就绪后专项11/11通过不覆盖这些历史。没有调整非Qdrant时限/断言，无依赖、迁移或HTTP契约变化，不重复安装/迁移/OpenAPI独立命令（基础原OpenAPI测试通过）。原生Qdrant6333未监听，本轮`test:integration:native-qdrant`未执行，不自行启动；原生对照是阶段余项，不能据本次Docker全量称S2.3整阶段完成。T4 no-op backfill run审查遗留、T5未验证草稿与T6–T9仍按此前记录待续。
+
+最后typecheck/lint、资源归属/残留与文档检查在收尾执行，结果后续追加。只保存当前阶段修复提交，不合并未完成阶段，不操作master/前端。
+
+## 2026-11-27 S2.3修复专项通过，完整回归启动
+
+`infra:up`与`observability:up`成功，九服务全部healthy后重跑四文件专项：11/11通过、0失败/跳过，136.426秒（data/s23-repair-targeted-ready.log）。Checkpoint/fence全部子项、新索引真实队列/upsert/READY/回滚/旧目标隔离、Langfuse均通过；Docker基础集合创建2647.5ms。本轮新索引集合/alias/队列/DB及恢复线程清理报告完成。Worker UNKNOWN与观测丢失未复现，只能记录本轮通过，不能宣称历史根因被诊断增强修复。
+
+已启动`pnpm run test:integration`（data/s23-repair-integration.log）完整门禁，结果待追加。只读检查6333无监听，原生Qdrant未启动，按用户管理约定不自行启停，原生全量对照待服务可用后执行。
+
+## 2026-11-27 S2.3修复期间恢复测试服务
+
+Docker Desktop官方启动后经历starting，随后running；engine版本29.9.3。只读Compose清单显示本项目九容器均exited。使用既有受控`pnpm run infra:up`（项目/服务检查）成功启动本项目PostgreSQL/RabbitMQ/Qdrant并等待healthy；随后执行`pnpm run observability:up`，脚本在启动前核对容器、网络及持久卷归属，启动本项目六观测服务。未删除卷/数据库、修改本地凭证或操作原生Qdrant。启动过程不证明此前间歇超时根因已修复，服务就绪后仍须原断言专项及完整回归。
+
+## 2026-11-27 S2.3修复基础检查及服务缺失记录
+
+`pnpm run typecheck`、`pnpm run lint`通过；`pnpm test`93项92通过/1失败，56.141秒（data/s23-repair-unit.log），唯一原API启动8秒L1；新增5.5秒Qdrant响应、取消/总deadline、安全cause及观测传输分类断言通过，未放宽非Qdrant限制。
+
+四文件专项（checkpoint-fence/infrastructure/job-index/observability，data/s23-repair-targeted.log）7项0通过/7失败，13.261秒：Docker Desktop Linux engine pipe不存在，PostgreSQL/RabbitMQ连接拒绝、实例归属核验无法通过，未进入索引/图/观测业务验证。与此前运行中的间歇故障区分，不标修复失败或通过；无本轮集合/owner/队列创建。`docker version`确认engine不可用后，使用官方`docker desktop start --detach --timeout 30`成功发起启动，待项目实例/健康/归属核验后继续。未操作原生Qdrant。
+
+## 2026-11-27 S2.3-T4按维护者新授权开始修复
+
+维护者明确指示“Qdrant这个可以适当放宽超时限制。开始修复吧”。在干净feature/s2.3-job-recall、b6b5c71基础上继续；仅Qdrant请求上限从5秒调到10秒，依据已确认6.459/5.673秒服务端响应。SDK、新索引适配器及索引测试客户端共用常量；原总deadline/取消、15秒初始化与清理总期限、数据库/RabbitMQ/Langfuse时限及父测试断言不变。路线图新增授权例外，历史L2原5秒性能核对不自动解除。
+
+同时补充Worker fixture的lock/claim/execute阶段耗时与白名单cause分类（不输出raw异常），Langfuse的最后传输失败阶段/原因/状态/耗时（不改变导出/失效行为）。目的是定位非Qdrant失败，不把诊断增强称为已修复。新增测试验证旧5秒以上响应可接受、总期限/取消仍有效、安全诊断不泄露异常内容；观测原故障用例增加分类断言。
+
+本轮typecheck、lint通过；基础测试正在运行，专项及完整回归结果后续追加。没有开启并行构建/安装/测试、改变服务配置、启停原生进程或操作master/前端。
+
 ## 2026-11-27 S2.3-T4修复可行性只读复核
 
 维护者询问是否可以修复后，核对feature/s2.3-job-recall基线c1ca520、工作区干净，读取现有规范/失败记录/相关实现，并在项目归属核验后只读提取历史服务日志。Qdrant服务端两次集合PUT最终200，但耗时6.459秒/5.673秒，确实超过原5秒客户端预算；当前Docker I/O等待明显。不能因此把Worker UNKNOWN或Langfuse transport失效全部认定为磁盘根因。C盘仅3.39GiB可用，不足直接容纳历史约22.1GiB的Docker VHD；未迁移/删除配置或启停服务。详见[修复可行性复核](research/s23-repair-assessment-2026-11-27.md)。

@@ -1,5 +1,9 @@
 # 测试与验证
 
+2026-11-27经维护者明确授权，Qdrant SDK/索引适配器单请求上限从5秒改为10秒（依据服务端6.459秒/5.673秒创建记录）。默认Docker与原生对照使用相同新上限，操作/任务总期限、父测试期限及CRUD/维数/归属/fence断言不变。下述历史“原5秒”记录保留为旧验证条件；独立清理HTTP仍为5秒、清理总期限15秒。API、数据库、RabbitMQ和Langfuse超时未放宽；L2原性能目标不因此自动解除。
+
+同轮修复增加安全诊断：Checkpoint Worker测试fixture在失败时输出lock/claim/execute阶段、耗时及有界cause白名单分类；观测metrics记录最后一次传输失败的stage/reason/status/elapsedMs，不保留错误正文、URL或凭证。诊断不新增重试、不改变导出丢失语义；`safe-failure.test`与原观测故障测试验证分类和隐私边界。`index-vector.test`以5.5秒HTTP响应验证授权后的上限，并保留更早总deadline及取消拒绝测试。
+
 S2.3语料的确定性生成、技能字典与真实数据库专项见[岗位语料说明](job-recall.md#验证)；运行结果以[进度](progress.md)为准。
 
 当前测试使用 TypeScript 编译产物和 Node 内置 test runner，Nest testing用于创建应用上下文；没有额外的测试转换器。真实集成测试默认连接独立的本项目容器；维护者明确授权的原生Qdrant仅用于下述显式对照入口，不使用其他项目实例。

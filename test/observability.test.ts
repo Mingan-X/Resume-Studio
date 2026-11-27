@@ -99,6 +99,9 @@ await test('unavailable, slow and rejecting collectors cannot fail the graph; lo
       await service.flush();
       assert.ok(performance.now() - started < 2000);
       assert.ok((service.stats()?.lost.transport ?? 0) > 0);
+      assert.equal(service.stats()?.lastTransportFailure?.reason,
+        mode === 'slow' ? 'timeout' : mode === 'reject' ? 'http' : mode === 'partial' ? 'invalid-ack' : 'connection');
+      assert.doesNotMatch(JSON.stringify(service.stats()), /private backend error|sk-lf-/);
       assert.equal(service.stats()?.outstanding, 0);
       if (mode !== 'closed') assert.ok(received > 0, 'Fault must be exercised over the HTTP transport.');
     } finally { await service.onModuleDestroy(); if (mode !== 'closed') await server.close(); }

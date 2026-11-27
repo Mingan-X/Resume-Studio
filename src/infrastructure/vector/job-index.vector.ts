@@ -3,6 +3,7 @@ import { indexCollectionSchema, indexPointPayloadSchema } from '../../contracts/
 import { indexAlias, indexCollectionName } from '../../modules/recall/job-chunks.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
 import { TaskFailure } from '../consumer/failure.js';
+import { QDRANT_REQUEST_TIMEOUT_MS } from './request-budget.js';
 
 export type IndexCall = { signal: AbortSignal; deadline: number };
 const pointSchema = z.object({ id: z.uuid(), vector: z.array(z.number()).min(1).max(8192), payload: indexPointPayloadSchema }).strict();
@@ -35,7 +36,7 @@ export class JobIndexVector {
     call.signal.throwIfAborted();
     const remaining = call.deadline - Date.now();
     if (remaining <= 0) throw new TaskFailure('DEADLINE_EXCEEDED');
-    const signal = AbortSignal.any([call.signal, AbortSignal.timeout(Math.min(5000, remaining))]);
+    const signal = AbortSignal.any([call.signal, AbortSignal.timeout(Math.min(QDRANT_REQUEST_TIMEOUT_MS, remaining))]);
     try {
       const response = await fetch(`${this.url}${path}`, { method, headers: { 'api-key': this.apiKey, 'content-type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal, redirect: 'error' });
