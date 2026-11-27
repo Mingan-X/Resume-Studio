@@ -42,4 +42,8 @@ await test('contact masking preserves UTF-16 ranges and line breaks', () => {
   const clean = redactContactText(text);
   assert.equal(clean.length, text.length); assert.equal(clean.split('\n').length, text.split('\n').length);
   assert.ok(clean.startsWith('😀 TypeScript')); assert.ok(!clean.includes('test_user')); assert.ok(!clean.includes('example.invalid'));
+  const id = '12345678-1234-4123-a123-123456789012';
+  assert.equal(redactContactText(JSON.stringify({ blockId: id }), false), JSON.stringify({ blockId: id }));
+  const numericId = '00000000-0000-4000-8000-000000000001';
+  assert.equal(redactContactText(JSON.stringify({ sourceVersionId: numericId }), false), JSON.stringify({ sourceVersionId: numericId }));
 });

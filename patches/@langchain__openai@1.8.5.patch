@@ -1,0 +1,44 @@
+diff --git a/dist/types.d.cts b/dist/types.d.cts
+index 0b7459586d9ca87728649a16681c405b1fd5b946..d73c31492fbc5a4446d363bf838e8db3725fe8ef 100644
+--- a/dist/types.d.cts
++++ b/dist/types.d.cts
+@@ -56,7 +56,7 @@ export declare interface OpenAIBaseInput {
+    * https://platform.openai.com/docs/api-reference/completions/create |
+    * `openai.createCompletion`} that are not explicitly specified on this class.
+    */
+-  modelKwargs?: Record<string, any>;
++  modelKwargs?: Record<string, any> | undefined;
+   /**
+    * List of stop words to use when generating
+    * Alias for `stopSequences`
+@@ -155,7 +155,7 @@ export interface OpenAIChatInput extends OpenAIBaseInput {
+    *
+    * @default false
+    */
+-  zdrEnabled?: boolean;
++  zdrEnabled?: boolean | undefined;
+   /**
+    * Service tier to use for this request. Can be "auto", "default", or "flex" or "priority".
+    * Specifies the service tier for prioritization and latency optimization.
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 6251ae829c4f146ca314f428d1a79df16dff1ab2..0a326abedbcb1cffd5d7606df5e64b9387d26170 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -56,7 +56,7 @@ export declare interface OpenAIBaseInput {
+    * https://platform.openai.com/docs/api-reference/completions/create |
+    * `openai.createCompletion`} that are not explicitly specified on this class.
+    */
+-  modelKwargs?: Record<string, any>;
++  modelKwargs?: Record<string, any> | undefined;
+   /**
+    * List of stop words to use when generating
+    * Alias for `stopSequences`
+@@ -155,7 +155,7 @@ export interface OpenAIChatInput extends OpenAIBaseInput {
+    *
+    * @default false
+    */
+-  zdrEnabled?: boolean;
++  zdrEnabled?: boolean | undefined;
+   /**
+    * Service tier to use for this request. Can be "auto", "default", or "flex" or "priority".
+    * Specifies the service tier for prioritization and latency optimization.

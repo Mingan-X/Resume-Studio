@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T8兼容模型适配器本地验证完成（真实中转延后）
+
+ChatOpenAI1.8.5的ModelPort实现从本地受控配置读取baseURL/Key/model/modelConfigVersion，不入库；显式JSON Schema、禁用LangChain和OpenAI两层自动重试、请求signal/timeout与响应字节上限、禁止重定向。发送前遮盖常见联系方式且保留证据UUID/UTF-16位置；未知usage/cost为null，SDK/HTTP原始异常不出日志。环境开启LangSmith/verbose/OpenAI调试时失败关闭，观测使用项目白名单span。
+
+官方registry与发布包文档核对Node>=22/core^1.5.0/MIT，现有组合兼容；新增SDK7.64.0解析在锁文件，原直接core/graph/Zod版本不变。首次导入typecheck发现上游可选zdrEnabled/modelKwargs声明不兼容，新增仅d.ts/d.cts补丁允许undefined，未改运行JS、skipLibCheck或peer策略；patch-commit与冻结安装通过。T7期间的安装/编译交叉失败已独立记录。
+
+本地真实HTTP桩专项1/1通过（1.745秒），覆盖请求JSON Schema/模型名、脱敏、429/503/400、非法JSON/结构化不符、响应超限、超时/取消、缺usage；断言每次失败只有一次网络请求。最终typecheck、零警告lint、pnpm test80/80（10.675秒）、OpenAPI check通过，65个本地文档链接有效。真实Key/中转站能力验证未执行，按延后表留统一验收，不宣称真实模型可用。依赖与风险见dependency-compatibility。
+
 ## 2026-11-27 S2.2-T7模型端口与JD建议完成，T8适配器准备
 
 T7共享LangChain消息/Schema的ModelPort与有界ModelExecutor，分类重试+jitter、单次及总期限、调用/token/费用预留、并发和一次修复共用预算；未结束调用保留并发槽防止重叠重试，持久预算接口待S2.4接任务fence。JD只读取授权草稿，等长遮盖联系方式，按原文和发送文本双重校验引用；不写回草稿、确认或要求。观测使用既有白名单extract span；未知usage/cost保持null，不填0。

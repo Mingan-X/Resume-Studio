@@ -3,4 +3,5 @@ allowBuilds:
   prisma: true
 patchedDependencies:
   '@langchain/core@1.5.1': patches/@langchain__core@1.5.1.patch
+  '@langchain/openai@1.8.5': patches/@langchain__openai@1.8.5.patch
   langsmith@0.14.0: patches/langsmith@0.14.0.patch
