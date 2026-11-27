@@ -223,6 +223,7 @@ model AnalysisTask {
   candidateSet CandidateSet?
   profile ProfileAssessment?
   matchPlan MatchPlan?
+  summary AnalysisSummary?
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -230,6 +231,19 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model AnalysisSummary {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("analysis_summary")
 }
 
 model MatchPlan {

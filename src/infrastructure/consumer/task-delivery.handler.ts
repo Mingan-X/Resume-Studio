@@ -30,7 +30,7 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 }
 
 export class TaskDeliveryHandler {
-  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'> & Partial<Pick<TaskExecutionStore, 'completeJobIndex'>>,
+  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'> & Partial<Pick<TaskExecutionStore, 'completeJobIndex' | 'completeAnalysis'>>,
     private readonly identity: IdentityPort, private readonly handler: TaskHandler,
     private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
@@ -109,6 +109,9 @@ export class TaskDeliveryHandler {
         if (output?.kind === 'job-index') {
           if (!this.store.completeJobIndex) throw new TaskFailure('UNSUPPORTED_INPUT');
           await this.store.completeJobIndex(claim, output);
+        } else if (output?.kind === 'analysis') {
+          if (!this.store.completeAnalysis) throw new TaskFailure('UNSUPPORTED_INPUT');
+          await this.store.completeAnalysis(claim, output);
         } else await this.store.complete(claim, output);
       }
       signal.throwIfAborted();

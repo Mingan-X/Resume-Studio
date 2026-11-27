@@ -2,13 +2,14 @@ import { z } from 'zod';
 import { taskDispatchSchema, quarantineCodeSchema } from '../../contracts/tasks.js';
 import type { TaskDispatch, TaskType, AnalysisInputSnapshot, JobIndexInputSnapshot } from '../../contracts/tasks.js';
 import { jobIndexCompletionSchema } from '../../contracts/job-index.js';
+import { analysisCompletionSchema } from '../../contracts/analysis-summary.js';
 
 export const syntheticCompletionSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal('synthetic'),
   inputHash: z.string().regex(/^[a-f0-9]{64}$/), completedUnits: z.literal(1),
 }).strict();
 export type SyntheticCompletion = z.infer<typeof syntheticCompletionSchema>;
-export const taskCompletionSchema = z.discriminatedUnion('kind', [syntheticCompletionSchema, jobIndexCompletionSchema]);
+export const taskCompletionSchema = z.discriminatedUnion('kind', [syntheticCompletionSchema, jobIndexCompletionSchema, analysisCompletionSchema]);
 export type TaskCompletion = z.infer<typeof taskCompletionSchema>;
 export const syntheticNodeOutputSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal('synthetic'), node: z.enum(['first','second','index']),

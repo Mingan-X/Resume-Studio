@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T8汇总/进度与T3生产装配闭合保存
+
+T7保存03842b1。T8保存AnalysisSummary与SUCCEEDED/PARTIAL/FAILED规则、真实阶段/计数事件、临时finalize、消费终态/attempt/DONE收据同事务及budget elapsed；S3.1之前reportId=null，不伪造报告。任务执行权和完整冻结输入在产物/事件/完成事务中核对，终态提交再次复核已有节点产物及汇总内容。
+
+同时闭合T3实际节点装配和tasks:consume:analysis/analysis:reconcile入口：仅本地development/test，缺配置先安全拒绝，不加载运行模块；model/embedding版本匹配才领取。每会话最多1个分析，岗位分支并发3。已将T4–T7领域服务接到真实图，测试模型仅显式注入；不发起真实Key/付费调用。
+
+共用基础118/118、类型/Lint/OpenAPI通过；新增CLI模块加载拒绝测试通过。完整专项3/3（105.851秒）验证原子终态故障注入：收据写入失败时任务仍RUNNING且DONE=0，恢复复用原CandidateSet、模型次数不增加；同时验证运行中取消和重投，以及正式Rubric副本等级映射。完整test:integration仍在运行，已知Langfuse projects超时仍属未解决门禁；本提交保存实现与测试，不标阶段完成或推送。新增summary迁移已部署，全仓20条；数据库测试只清理当前manifest资源。流程/边界详见[分析工作流](analysis-workflow.md)。
+
 ## 2026-11-27 S2.4-T7逐项匹配与400条持久预算保存
 
 T6保存3a3db3e。T7保存MatchPlan/RequirementExecution、完整计划快照与不可变终态行、LangGraph Send岗位分支并发3/批次10、语义ID完整性及逐字证据校验、任职年月指标纯函数。按候选顺序/priority/stableId一次分配最多400条唯一要求，超额保留BUDGET，失败保留FAILED，未知语义仍unknown且不冒充失败；所有行保留，不静默删除。每次模型尝试另走累计预算账本。仅明确employment_months/years指标由代码算，含糊单位/无日期返回unknown；月份值不是精确到日的保证。

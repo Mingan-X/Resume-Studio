@@ -19,6 +19,7 @@ import { executionLockKey } from './task-execution.lock.js';
 import type { ReconciliationConfig } from '../reconciliation/config.js';
 import { jobIndexCompletionSchema } from '../../contracts/job-index.js';
 import { indexCollectionName } from '../../modules/recall/job-chunks.js';
+import { AnalysisSummaryRepository } from '../tasks/analysis-summary.repository.js';
 
 const table = (type: TaskType) => type === 'analysis' ? Prisma.sql`analysis_task` : Prisma.sql`job_index_task`;
 const dbType = (type: TaskType): 'ANALYSIS' | 'JOB_INDEX' => type === 'analysis' ? 'ANALYSIS' : 'JOB_INDEX';
@@ -111,6 +112,7 @@ async function finishCancellation(tx: Prisma.TransactionClient, ownerId: string,
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
 
+  completeAnalysis(claim: ExecutionClaim, output: unknown) { return new AnalysisSummaryRepository(this.database).complete(claim, output); }
 
   async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' | 'analysis' = 'synthetic', embeddingVersion?: string, modelConfigVersion?: string) {
     const ownerId = ownerIdSchema.parse(owner), taskId = z.uuid().parse(id).toLowerCase();
