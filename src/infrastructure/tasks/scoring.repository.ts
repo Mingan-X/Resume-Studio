@@ -65,9 +65,11 @@ export class ScoringRepository {
     });
   }
   async recompute(owner: string, sourceId: string, rawOverrides: unknown) {
+    return this.database.client.$transaction(tx=>this.recomputeWithin(tx,owner,sourceId,rawOverrides));
+  }
+  async recomputeWithin(tx:Prisma.TransactionClient,owner: string, sourceId: string, rawOverrides: unknown) {
     const ownerId = z.uuid().parse(owner), sourceScoreSetId = z.uuid().parse(sourceId);
     const overrides = scoreSetSchema.shape.weightOverrides.min(1).parse(rawOverrides);
-    return this.database.client.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([ownerId,sourceScoreSetId])}, 26))::text`;
       const source = await tx.scoreSet.findFirst({ where: { ownerId, id: sourceScoreSetId } }); if (!source) throw new Error('SCORE_SET_NOT_FOUND');
       const original = scoreSetSchema.parse(source.content); if (requestHash(original) !== source.contentHash) throw new Error('SCORE_SET_INVALID');
@@ -79,6 +81,5 @@ export class ScoringRepository {
       if (content.judgmentSetHash !== original.judgmentSetHash || content.candidateSetId !== original.candidateSetId || content.policyHash !== original.policyHash) throw new Error('RECOMPUTE_INPUT_CHANGED');
       const score = await saveScore(tx, ownerId, content, source.id), ranking = await saveRanking(tx, ownerId, score.id, score.content);
       return { score, ranking };
-    });
   }
 }

@@ -8,6 +8,10 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S3.1-T4调权重算HTTP与revision完成
+
+POST reports/:reportId/recompute要求UUID Idempotency-Key和完整变更岗位权重，复用T6评分内核并在同事务保存新ScoreSet/排名/report revision与请求绑定；原报告/基础task.reportId不变。并发同key只1个revision、不同正文409、非法权重400含details、跨owner404、模型预算不变已由真实HTTP验证。共用基础128/128、全量146/146、类型/Lint及OpenAPI通过；无新增依赖，真实模型/前端真实联调仍按原安排。
+
 ## 2026-11-27 S3.1-T3报告查询接口完成
 
 GET reports列表/detail/revisions按owner读取不可变快照，游标createdAt/id降序；报告响应包含前端展示所需全部分数/贡献/覆盖/证据位置/错误原因，不暴露owner或输入内部配置。实际HTTP验证报告刷新、API重建后逐字不变，越权404、revision分页；共用基础128/128、全量146/146及OpenAPI通过。共用HTTP专项和最终OpenAPI随T6集成提交，当前分步提交不作为单独部署发布。

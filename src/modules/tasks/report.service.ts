@@ -8,4 +8,5 @@ export class ReportService {
  private async owner(){return ownerIdSchema.parse(await this.identity.getOwnerId());}
  async get(id:string){return this.reports.get(await this.owner(),id);}
  async list(query:unknown,sourceId?:string){return this.reports.list(await this.owner(),query,sourceId);}
+ async recompute(id:string,key:unknown,body:unknown){return this.reports.recompute(await this.owner(),id,key,body);}
 }
