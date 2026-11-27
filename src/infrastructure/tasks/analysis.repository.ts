@@ -5,6 +5,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import type { TransactionDatabase } from '../database/transaction-port.js';
 import { textHash } from '../../modules/resumes/evidence.js';
+import { scoringPolicySchema } from '../../contracts/scoring.js';
 import { createAnalysisRequestSchema } from '../../contracts/analyses.js';
 import { analysisConfigurationSchema, realAnalysisInputSchema, analysisInputSnapshotSchema,
   idempotencyKeySchema, budgetUsageSchema, taskDispatchSchema } from '../../contracts/tasks.js';
@@ -36,7 +37,10 @@ export class AnalysisRepository {
       const documentRow = await tx.extractedDocument.findFirst({ where: { ownerId, sourceVersionId: request.resumeVersionId } });
       const corpusRow = await tx.jobCorpusVersion.findUnique({ where: { ownerId_version: { ownerId, version: request.jobCorpusVersionId } } });
       const rubricRow = await tx.rubricVersion.findUnique({ where: { ownerId_version: { ownerId, version: configuration.rubricVersion } } });
-      if (!documentRow || !corpusRow || !rubricRow) throw new TaskNotFoundError();
+      const policyRow = await tx.scoringPolicy.findUnique({ where: { ownerId_version: { ownerId, version: configuration.scoringVersion } } });
+      if (!documentRow || !corpusRow || !rubricRow || !policyRow) throw new TaskNotFoundError();
+      const policy = scoringPolicySchema.parse(policyRow.content);
+      if (policy.version !== configuration.scoringVersion || requestHash(policy) !== policyRow.contentHash) throw new AnalysisInputStateError();
       const document = extractedDocumentSchema.parse(documentRow.document), corpus = corpusManifestSchema.parse(corpusRow.manifest);
       const rubric = rubricVersionSchema.parse(rubricRow.content);
       if (document.sourceVersionId !== request.resumeVersionId || document.fileHash !== documentRow.fileHash
@@ -52,11 +56,12 @@ export class AnalysisRepository {
         if (requestHash(saved) !== configRow.contentHash || configRow.contentHash !== configurationHash) throw new AnalysisInputStateError();
       } else await tx.analysisConfiguration.create({ data: { ownerId, version: configuration.configurationVersion, content: configuration, contentHash: configurationHash } });
       const snapshot = realAnalysisInputSchema.parse({ ...configuration, kind: 'analysis', ownerId, ...request,
-        configurationHash, resumeFileHash: document.fileHash, corpusHash: corpusRow.contentHash, rubricHash: rubricRow.contentHash });
+        configurationHash, resumeFileHash: document.fileHash, corpusHash: corpusRow.contentHash, rubricHash: rubricRow.contentHash, scoringPolicyHash: policyRow.contentHash });
       const taskId = randomUUID(), eventId = randomUUID();
       await tx.analysisTask.create({ data: { id: taskId, ownerId, resumeVersionId: request.resumeVersionId,
         realResumeVersionId: request.resumeVersionId, corpusVersion: request.jobCorpusVersionId,
         rubricVersion: configuration.rubricVersion, configurationVersion: configuration.configurationVersion,
+        scoringPolicyVersion: configuration.scoringVersion,
         activeGraphThreadId: taskId, inputSnapshot: snapshot, idempotencyKey: key, requestHash: hash,
         budgetUsage: budgetUsageSchema.parse({ schemaVersion: 1, attempts: 0, modelCalls: 0, tokens: 0, costMicros: 0, elapsedMs: 0 }),
       } });

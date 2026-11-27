@@ -94,6 +94,8 @@ API入口组合 Controller、应用服务和领域模块；Worker入口组合消
 
 ### 4.1 简历分析图
 
+S2.5补充：新任务创建冻结ScoringPolicy的版本/hash，MATCH后执行SCORE/RANK，JOIN核对评分与排名后仍使用临时finalize；S3.1再接最终报告。旧S2.4快照缺scoringPolicyHash时保留原图和节点组件身份，不原地改写快照。评分/重算持久化与边界见[评分说明](scoring.md)。
+
 S2.4已增加真实分析输入、创建HTTP及同事务Outbox，并接入下图EXTRACT/PROFILE/召回/MATCH/JOIN工程链路，验证范围见[分析流程](analysis-workflow.md)与[进度](progress.md)。SCORE/RANK与报告SAVE分别待S2.5/S3.1；当前JOIN后由临时FINALIZE准备AnalysisSummary，再由消费处理器同事务提交任务终态/收据，reportId=null。输入和配置冻结见[分析输入](analysis-input.md)。真实corpus身份沿用owner/versionName；真实外键与旧synthetic快照分开约束。
 
 ```mermaid
@@ -443,7 +445,7 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 ## 8. 评分引擎设计
 
-以下为**待确认的评分政策**，全部普通TS纯函数，不含模型调用。输入包括冻结判断、岗位要求和ScoringPolicy；输出总分、每项贡献、覆盖率、eligible/pending/ineligible、警告和规则版本。
+S2.5按D7及2026-11-27补充确认实现评分政策，全部普通TS纯函数，不含模型调用。输入包括冻结判断、岗位要求和ScoringPolicy；输出总分、每项贡献、覆盖率、eligible/pending/ineligible、警告和规则版本。实现与验证边界见[评分说明](scoring.md)和[进度](progress.md)。
 
 ### 8.1 画像
 
@@ -461,13 +463,13 @@ embedding模型变化时不能在同collection混入不同维数：新建version
 
 `c(met)=1，c(partial)=0.5，c(unmet)=0，c(unknown)=0`；系数在ScoringPolicy中版本化。
 
-`score = 100 × Σ(a_i × c_i)`；`coverage = Σ已知判断a_i`；`upperBound = min(100, score + 100 × Σunknown a_i)`。
+`score = 100 × Σ(a_i × c_i)`；`coverage = Σ已知判断a_i`（接口数值用百分数0–100）；`upperBound = min(100, score + 100 × Σunknown或未完成要求a_i)`。未完成仍保留FAILED/BUDGET/PENDING执行状态，不伪造unknown判断；当前贡献0且保留分母/上界。
 
 每条contribution=a_i×c_i×100，最终显示四舍五入到两位；排序使用固定精度值与稳定jobVersionId，并明确精度策略。权重以受限整数基点/有理数计算，避免平台locale与任意浮点round顺序产生漂移。没有有效要求时score=null、不可推荐；零总权重属于非法输入，应拒绝评分并记录错误，不能除零、默认补权重或给100。
 
 例：同一维三条要求P=2/1/1，判断met/partial/unknown，则score=62.5，coverage=75%，upperBound=87.5；第三条仍显示“证据不足”，不是“不满足”。修改权重重算只读此判断集合；任何新模型分析是新评估版本。
 
-硬门槛单独处理：确定性证据明确不满足 → ineligible；未知 → pending；全部明确满足且软要求可计分 → eligible。只有eligible进入默认Top10；pending另列待核实，不用0分伪装资格判断。没有足够eligible岗位就少于10条，并说明原因。
+硬门槛单独处理：明确硬要求unmet→ineligible；否则硬要求partial/unknown或任意未完成要求→pending；全部硬要求met、有有效要求且全部执行完成→eligible。此处partial及未完成规则由维护者于S2.5明确确认。0权重仍检查硬门槛；软要求不自动升级硬门槛。只有eligible进入默认Top10；pending另列待核实，不用0分伪装资格判断。没有足够eligible岗位就少于10条，并说明原因。首次W来自ScoringPolicy（默认六维等权）、P来自冻结岗位，调权时使用显式完整权重快照。
 
 报告保留所有精判候选的判断与分数，不能只保存Top10，否则调权无法让第11名进入榜单。重算的范围仍是原CandidateSet，若要找新岗位必须重新召回。至少测试权重归一化、未知覆盖率、硬门槛、空要求、负权重/NaN拒绝、重复ID、同分排序和重算无模型调用。
 

@@ -26,6 +26,8 @@ import { rubricVersionSchema } from '../../src/contracts/rubric.js';
 import { AnalysisSummaryRepository } from '../../src/infrastructure/tasks/analysis-summary.repository.js';
 import type { TransactionDatabase } from '../../src/infrastructure/database/transaction-port.js';
 import { reconciliationConfigSchema } from '../../src/infrastructure/reconciliation/config.js';
+import { scoreSetSchema, rankingResultSchema } from '../../src/contracts/scoring.js';
+import { ScoringRepository } from '../../src/infrastructure/tasks/scoring.repository.js';
 import type { IndexCollection } from '../../src/contracts/job-index.js';
 import { indexCollectionName } from '../../src/modules/recall/job-chunks.js';
 import { analysisConfiguration } from '../support/analysis-inputs.js';
@@ -100,7 +102,20 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     assert.equal(summary.failed, 0); assert.equal(summary.pending, 0); assert.ok(peakMatches <= 3);
     const before = calls; assert.equal(await runtime.delivery.handle(seeded.message, new AbortController().signal), 'ack'); assert.equal(calls, before);
     assert.equal(await db.consumerReceipt.count({ where: { ownerId, taskId: seeded.taskId, status: 'DONE' } }), 1);
-    assert.equal(await db.nodeArtifact.count({ where: { ownerId, taskId: seeded.taskId } }), 10);
+    assert.equal(await db.nodeArtifact.count({ where: { ownerId, taskId: seeded.taskId } }), 12);
+    const score = await db.scoreSet.findFirstOrThrow({ where: { ownerId, taskId: seeded.taskId, sourceScoreSetId: null } });
+    const scoreContent = scoreSetSchema.parse(score.content);
+    const ranking = rankingResultSchema.parse((await db.rankingSnapshot.findUniqueOrThrow({ where: { scoreSetId: score.id } })).content);
+    assert.equal(scoreContent.results.length, large ? 2 : 1); assert.ok(summary.scoreSetId && summary.rankingId);
+    assert.equal(ranking.top10.length, 1); // With 420 requirements, the incompletely matched candidate is pending.
+    if (large) assert.equal(ranking.pending.length, 1);
+    const countBeforeRecompute = calls;
+    const changed = await new ScoringRepository(database).recompute(ownerId, score.id, [{ jobVersionId: scoreContent.results[0]!.jobVersionId,
+      weights: { ...scoreContent.results[0]!.weightsSnapshot, dimensionWeights: scoreContent.policy.dimensionWeights.map(item => ({ ...item, weight: item.dimension === 'engineering' ? 2 : 1 })) } }]);
+    assert.equal(calls, countBeforeRecompute); assert.equal(changed.score.content.judgmentSetHash, scoreContent.judgmentSetHash);
+    assert.notEqual(changed.score.id, score.id); assert.deepEqual((await db.scoreSet.findUniqueOrThrow({ where: { id: score.id } })).content, score.content);
+    await assert.rejects(new ScoringRepository(database).recompute(randomUUID(), score.id, []));
+    await assert.rejects(db.scoreSet.update({ where: { id: score.id }, data: { content: {} } }));
     assert.equal((await db.taskEvent.findMany({ where: { ownerId, taskId: seeded.taskId }, orderBy: { seq: 'desc' } }))[0]?.stage, firstTask.status);
     assert.ok(budgetUsageSchema.parse(firstTask.budgetUsage).modelCalls >= 3);
     const profile = await db.profileAssessment.findFirstOrThrow({ where: { taskId: seeded.taskId } });

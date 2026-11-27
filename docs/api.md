@@ -10,6 +10,8 @@
 
 `jobCorpusVersionId` 使用既有语料的版本名（owner＋version复合身份），不是合成任务中的UUID，也不隐式选择latest。可信owner来自IdentityPort。简历必须已有成功保存的ExtractedDocument；语料和Rubric必须属于该owner。配置由服务端绝对路径 `ANALYSIS_CONFIG_FILE` 加载，字段见[分析配置说明](analysis-input.md)，客户端不能提交owner、预算、模型或规则配置。
 
+S2.5起，新任务还要求owner下已导入配置指定的scoringVersion，冻结政策内容hash；缺失仍返回资源不存在404。评分在分析图中执行，reportId仍为null，评分结果/重算HTTP在S3.1接入；请求正文和202响应保持不变。部署顺序见[部署说明](deployment.md)，不从请求读取任意政策或owner。
+
 202返回 `{"taskId":"<UUID>","statusUrl":"/api/v1/tasks/<UUID>"}`。任务、冻结输入与Outbox同事务提交；查询复用任务GET。相同owner/key/正文返回原taskId，即使服务端配置已更换或停用；不同正文409 IDEMPOTENCY_CONFLICT。非法字段400、资源不存在或越权404、同配置版本内容改变409 INVALID_STATE、未配置分析503 ANALYSIS_UNAVAILABLE。响应不携带内部配置或凭证。S2.4业务图通过显式真实分析消费命令执行；合成消费者不会领取或成功完成真实分析。S3.1报告接入前SUCCEEDED/PARTIAL只表示相应语义产物已提交，reportId=null；阶段/计数及失败语义见[分析流程](analysis-workflow.md)。
 
 ## 岗位草稿、发布与建议（S2.2）

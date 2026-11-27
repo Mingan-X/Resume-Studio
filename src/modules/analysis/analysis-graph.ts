@@ -1,5 +1,5 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
-import { analysisGraphStateSchema, analysisNodeResultSchema } from '../../contracts/analysis-graph.js';
+import { analysisGraphStateSchema, analysisNodeResultSchema, analysisNodeSchema } from '../../contracts/analysis-graph.js';
 import type { AnalysisGraphState, AnalysisNode, AnalysisNodeResult } from '../../contracts/analysis-graph.js';
 import { realAnalysisInputSchema } from '../../contracts/tasks.js';
 import type { UsageReservation } from '../../contracts/tasks.js';
@@ -15,7 +15,7 @@ export type AnalysisGraphNodes = Record<AnalysisNode, (state: AnalysisGraphState
 }) => Promise<AnalysisNodeResult>>;
 const dependencies: Record<AnalysisNode, AnalysisNode[]> = {
   LOAD: [], PARSE: ['LOAD'], EXTRACT: ['PARSE'], VALIDATE: ['EXTRACT'], PROFILE: ['VALIDATE'],
-  RECALL: ['VALIDATE'], SNAP: ['RECALL'], MATCH: ['SNAP'], JOIN: ['PROFILE', 'MATCH'], FINALIZE: ['JOIN'],
+  RECALL: ['VALIDATE'], SNAP: ['RECALL'], MATCH: ['SNAP'], SCORE: ['MATCH'], RANK: ['SCORE'], JOIN: ['PROFILE', 'RANK'], FINALIZE: ['JOIN'],
 };
 
 export function mergeAnalysisOutputs(left: AnalysisGraphState['outputs'], right: AnalysisGraphState['outputs']) {
@@ -38,6 +38,10 @@ export class AnalysisGraph {
   async execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }) {
     if (claim.message.taskType !== 'analysis' || !claim.graph) throw new TaskFailure('UNSUPPORTED_INPUT');
     const snapshot = realAnalysisInputSchema.parse(claim.snapshot), inputHash = requestHash(snapshot);
+    const scored = !!snapshot.scoringPolicyHash;
+    const activeNodes = analysisNodeSchema.options.filter(node => scored || !['SCORE','RANK'].includes(node));
+    const priorNodes = (name: AnalysisNode) => !scored && name === 'JOIN' ? ['PROFILE','MATCH'] as const : dependencies[name];
+    const componentVersion = scored ? 'analysis-scoring-v1' : 'analysis-graph-v1';
     if (snapshot.ownerId !== claim.ownerId) throw new TaskFailure('UNSUPPORTED_INPUT');
     const guard = () => { signal.throwIfAborted(); if (Date.now() >= claim.deadline.getTime()) throw new TaskFailure('DEADLINE_EXCEEDED'); };
     guard();
@@ -57,12 +61,12 @@ export class AnalysisGraph {
       const node = (name: AnalysisNode) => async (raw: typeof state.State) => track(async () => {
         guard(); const current = analysisGraphStateSchema.parse(raw);
         if (current.taskId !== claim.message.taskId || current.inputHash !== inputHash) throw new TaskFailure('INPUT_INVALID');
-        const inputs = dependencies[name].map(dependency => {
+        const inputs = priorNodes(name).map(dependency => {
           const result = current.outputs[dependency]; if (!result) throw new TaskFailure('INPUT_INVALID');
           return { node: dependency, result };
         });
         const identity = { node: name, branchKey: 'root', inputHash: requestHash({ inputHash, inputs }),
-          componentVersion: 'analysis-graph-v1', schemaVersion: 1, promptVersion: snapshot.promptVersion, modelConfigVersion: snapshot.modelConfigVersion };
+          componentVersion, schemaVersion: 1, promptVersion: snapshot.promptVersion, modelConfigVersion: snapshot.modelConfigVersion };
         const existing = await this.artifacts.node(claim, identity); guard();
         if (existing) return { outputs: { [name]: existing.result } };
         const result = analysisNodeResultSchema.parse(await this.nodes[name](current, { claim, signal, budget })); guard();
@@ -70,13 +74,15 @@ export class AnalysisGraph {
         if (!saved) throw new Error('ANALYSIS_NODE_MISSING');
         return { outputs: { [name]: saved.result } };
       });
-      const graph = new StateGraph(state)
+      const builder = new StateGraph(state)
         .addNode('LOAD', node('LOAD')).addNode('PARSE', node('PARSE')).addNode('EXTRACT', node('EXTRACT'))
         .addNode('VALIDATE', node('VALIDATE')).addNode('PROFILE', node('PROFILE')).addNode('RECALL', node('RECALL'))
         .addNode('SNAP', node('SNAP')).addNode('MATCH', node('MATCH')).addNode('JOIN', node('JOIN')).addNode('FINALIZE', node('FINALIZE'))
         .addEdge(START, 'LOAD').addEdge('LOAD', 'PARSE').addEdge('PARSE', 'EXTRACT').addEdge('EXTRACT', 'VALIDATE')
-        .addEdge('VALIDATE', 'PROFILE').addEdge('VALIDATE', 'RECALL').addEdge('RECALL', 'SNAP').addEdge('SNAP', 'MATCH')
-        .addEdge(['PROFILE', 'MATCH'], 'JOIN').addEdge('JOIN', 'FINALIZE').addEdge('FINALIZE', END).compile({ checkpointer: session.saver });
+        .addEdge('VALIDATE', 'PROFILE').addEdge('VALIDATE', 'RECALL').addEdge('RECALL', 'SNAP').addEdge('SNAP', 'MATCH');
+      const graph = (scored ? builder.addNode('SCORE', node('SCORE')).addNode('RANK', node('RANK'))
+        .addEdge('MATCH','SCORE').addEdge('SCORE','RANK').addEdge(['PROFILE','RANK'],'JOIN') : builder.addEdge(['PROFILE','MATCH'],'JOIN'))
+        .addEdge('JOIN', 'FINALIZE').addEdge('FINALIZE', END).compile({ checkpointer: session.saver });
       const invocation = { configurable: { thread_id: claim.graph.threadId }, durability: 'sync' as const, recursionLimit: 32,
         maxConcurrency: 3, signal };
       const prior = await track(() => session.saver.getTuple(invocation)); guard();
@@ -87,10 +93,10 @@ export class AnalysisGraph {
       const result = analysisGraphStateSchema.parse(await graph.invoke(prior ? null : { schemaVersion: 1,
         taskId: claim.message.taskId, inputHash, outputs: {} }, invocation)); guard();
       // A checkpoint is recovery state; every returned node must still have a matching committed business artifact.
-      for (const name of Object.keys(dependencies) as AnalysisNode[]) {
+      for (const name of activeNodes) {
         const identity = { node: name, branchKey: 'root', inputHash: requestHash({ inputHash,
-          inputs: dependencies[name].map(dependency => ({ node: dependency, result: result.outputs[dependency] })) }),
-          componentVersion: 'analysis-graph-v1', schemaVersion: 1, promptVersion: snapshot.promptVersion, modelConfigVersion: snapshot.modelConfigVersion };
+          inputs: priorNodes(name).map(dependency => ({ node: dependency, result: result.outputs[dependency] })) }),
+          componentVersion, schemaVersion: 1, promptVersion: snapshot.promptVersion, modelConfigVersion: snapshot.modelConfigVersion };
         const saved = await this.artifacts.node(claim, identity); guard();
         if (!saved || requestHash(saved.result) !== requestHash(result.outputs[name])) throw new TaskFailure('OUTPUT_INVALID');
       }
