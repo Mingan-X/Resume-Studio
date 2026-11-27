@@ -63,8 +63,20 @@ model Owner {
   rubrics RubricVersion[]
   jobCorpora JobCorpusVersion[]
   analysisConfigurations AnalysisConfiguration[]
+  scoringPolicies ScoringPolicy[]
 
   @@map("owner")
+}
+
+model ScoringPolicy {
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  version String @db.VarChar(64)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@id([ownerId, version])
+  @@map("scoring_policy")
 }
 
 // Immutable published-version manifest; skills retain their original dictionary snapshot.

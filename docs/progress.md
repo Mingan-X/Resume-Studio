@@ -8,6 +8,28 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.5-T1评分契约与版本完成
+
+完成ScoringPolicy/权重/精确分数与结果契约、owner/version不可变政策存储、严格hash读写及BigInt有理数支持。拒绝缺维、重复、未知维度/要求、负数/非有限数、零总权重；科学计数法/小数精确转换和half-up边界有测试。政策数据库专项验证并发幂等、越权、不同内容冲突及UPDATE拒绝。T1迁移先独立generate/validate/deploy两次/status通过；最终全仓22条迁移复核通过。
+
+共用最终typecheck、零警告lint、基础126/126（data/s25-unit-final.log，68.675秒）及完整集成146/146（data/s25-integration.log，681.725秒）通过，0失败/跳过；OpenAPI一致性通过。之前PrismaP1012修正已保留下文。无新增依赖，不重复冻结安装；真实模型/原生Qdrant及目标环境未执行项按原记录保留。按任务拆分提交，验证针对完整阶段工作区，不声称每个中间提交重复跑过全量。
+
+## 2026-11-27 S2.5定向集成通过与默认政策导入
+
+定向集成14/14、94.462秒通过（data/s25-integration-targeted.log），包含创建/真实12节点恢复、完整Qdrant＋假模型分析、政策版本与数据库重算。原第11名通过实际重算进入首位，原ScoreSet/CandidateSet保持；并发同请求返回同一派生产物、跨owner/未结束任务拒绝、排名INSERT故障回滚新ScoreSet；模型调用数不增加。原终态事务回滚恢复、取消/400预算用例随新SCORE/RANK通过。
+
+迁移前保存的旧task在迁移后新Worker下执行原10节点、SCORE/RANK产物0，data/s25-legacy-verify.log通过；manifest cleaned=true，精确owner和Checkpoint已清理。本次验证是旧快照无Checkpoint启动兼容，不声称测过任意历史Checkpoint跨版本迁移。没有改旧任务快照、旧节点组件身份。
+
+显式导入开发owner的正式scoring-v1成功，再次导入replay=true；hash=8aa97248595f0e4f49bf4a04a961f0c512675ecb25bc8f4e77dae3457dd5d35c，D7六维等权、1/0.5/0/0及本轮pending政策已固化。该记录应保留，不能在测试清理中删除。OpenAPI一致性通过，无新HTTP或依赖变化。最终基础和全量阶段回归继续执行，结果未出前不改待验收状态。
+
+## 2026-11-27 S2.5实施、D7补充与定向检查
+
+维护者在本轮明确回复：硬要求partial列pending；有FAILED/BUDGET/PENDING未完成要求的候选暂不进Top10、列pending（明确硬unmet仍优先ineligible）；首次评分维度权重来自ScoringPolicy、默认六维等权。已同步D7与scoring说明，不替维护者选择这些业务边界。要求相对权重继续来自冻结岗位，显式调权保持完整权重校验。
+
+T1契约/不可变版本存储/BigInt有理数、T2评分、T3资格、T4稳定Top10已实现，数学专项7/7、0.553秒通过（data/s25-math-targeted.log）；示例62.5/75/87.5、100次与置换重复、零维度/要求/非法数、unknown、未完成、硬条件0权重、11名换榜等通过。基础125/125、50.832秒通过（data/s25-unit.log）。当前T5–T7在继续接线，尚未完成/提交。
+
+Prisma21条评分政策迁移generate/validate/deploy两次/status通过；新评分结果迁移首次generate报P1012（一对一关系缺ownerId/scoreSetId复合unique），补齐后再次generate/类型/Lint通过，validate/deploy两次/status成功，全仓22条。新增分析创建冻结scoringPolicyHash及FK，旧快照不原地修改；为迁移前真实创建的合成owner任务保留manifest（data/s25-legacy-manifest.json），将以新Worker验证原10节点图兼容后精确清理。未使用真实模型Key、未增加依赖或放宽其他测试期限。
+
 ## 2026-11-27 S2.5启动与范围核对
 
 用户指示继续任务。fetch确认develop与origin/develop均fe2578ee39d3d50a3c2ca3ef26ca5fb42263f128，工作区干净；按CONTRIBUTING创建feature/s2.5-scoring-ranking。已阅读S2.5-T1–T8、D7、架构§8和现有MatchPlan/执行状态、图恢复与汇总实现。S2.4已合并且最终基础118/118、集成144/144通过；真实模型/质量及目标环境延后不重新要求决策。
