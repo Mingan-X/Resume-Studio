@@ -504,6 +504,8 @@ S1.4-T9由独立脚本使用 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI
 
 ## 10. 可观测性、隐私与部署门槛
 
+S3.2-T1/T2已增加本地账号与PostgreSQL会话，生产业务路由由全局会话/CSRF Guard保护；内部请求Symbol传owner给request-scoped IdentityPort。真实Worker从持久Outbox核验消息后分派owner，发布/对账按私有配置明确owner。规则与验证边界见[认证](auth.md)及[所有权审计](ownership-audit.md)；本节历史“开发固定主体/尚未认证”仅适用于未启用会话的本地模式。生命周期仍按T4/T5实施。
+
 目标业务链路：API生成request trace，W3C traceparent经Outbox/Rabbit传播；每次attempt关联taskId，图节点、检索、工具和模型各有span。LangChain调用挂Langfuse CallbackHandler；普通解析/算分用OTel手工span，不能只追模型而看不到普通代码耗时。当前HTTP requestId仅用于请求日志，尚未实现上述跨进程传播。
 
 当前S1.3只观测合成图：SDK回调及手工span共享trace/correlationId，队列白名单化，输入/输出替换为REDACTED，媒体上传关闭；按需ObservabilityModule未接入API/空Worker业务路径。观测最大容量128（可配置），最多16个span/批、128KiB、单请求在途，单批默认2秒并无重试，排队最多4秒；丢失计数可读取并在flush/关闭时输出。详见部署与测试文档。以下模型观测仍属目标设计。

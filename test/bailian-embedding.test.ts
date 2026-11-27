@@ -9,6 +9,7 @@ import { EmbeddingExecutor } from '../src/modules/embeddings/embedding-executor.
 await test('S2.3 Bailian HTTP adapter validates formats/order/dimensions, redacts contacts and has no internal retry', async t => {
   let mode: 'ok' | 'base64' | 'wrong-dimension' | 'duplicate' | 'nan' | 'rate' | 'server' | 'json' | 'redirect' | 'oversize' | 'slow' = 'ok';
   let received = 0, followed = 0; const captures: unknown[] = [];
+  let slowReceived: (()=>void)|undefined;
   const server = createServer((request, response) => {
     received++;
     if (request.url === '/redirect-target') { followed++; response.end('{}'); return; }
@@ -19,7 +20,7 @@ await test('S2.3 Bailian HTTP adapter validates formats/order/dimensions, redact
       const body: unknown = JSON.parse(Buffer.concat(parts).toString('utf8')); captures.push(body);
       const input = z.object({ input: z.array(z.string()), model: z.literal('text-embedding-v4'), dimensions: z.literal(64), encoding_format: z.literal('float') }).parse(body);
       response.setHeader('content-type', 'application/json');
-      if (mode === 'slow') return;
+      if (mode === 'slow') { slowReceived?.(); return; }
       if (mode === 'rate') { response.writeHead(429).end('private upstream'); return; }
       if (mode === 'server') { response.writeHead(503).end('private upstream'); return; }
       if (mode === 'json') { response.end('invalid json private upstream'); return; }
@@ -63,6 +64,15 @@ await test('S2.3 Bailian HTTP adapter validates formats/order/dimensions, redact
   const executor = new EmbeddingExecutor(port, { singleTimeoutMs: 40, totalTimeoutMs: 1000, maxAttempts: 1,
     retryBaseMs: 1, retryCapMs: 2, maxConcurrent: 1, inputTokenReservation: 1024, costReservationMicros: 10,
     maxTokens: 1024, maxCostMicros: 10, currency: 'CNY' });
-  received = 0; await assert.rejects(executor.run(texts), /TIMEOUT|UNSETTLED/); assert.equal(received, 1);
+  // A timeout can correctly fire before the OS schedules a localhost request. Advance
+  // only the executor clock after receipt; still require exactly one actual HTTP call.
+  const arrived=new Promise<void>(resolve=>{slowReceived=resolve;});
+  const watchdog=AbortSignal.timeout(2000);
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+  try {
+    received=0;const timed=assert.rejects(executor.run(texts,{signal:watchdog}),/TIMEOUT|UNSETTLED/);
+    await Promise.race([arrived,once(watchdog,'abort').then(()=>{throw new Error('HTTP fixture receipt timed out');})]);
+    t.mock.timers.tick(40);await timed;assert.equal(received,1);
+  } finally {t.mock.timers.reset();slowReceived=undefined;}
   await assert.rejects(port.embed(['长'.repeat(3000)], AbortSignal.timeout(2000)), /BUDGET_EXHAUSTED/);
 });
