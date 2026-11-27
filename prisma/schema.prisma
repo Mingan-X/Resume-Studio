@@ -221,6 +221,7 @@ model AnalysisTask {
   receipts ConsumerReceipt[]
   artifacts NodeArtifact[]
   candidateSet CandidateSet?
+  profile ProfileAssessment?
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -228,6 +229,19 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model ProfileAssessment {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("profile_assessment")
 }
 
 // S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.

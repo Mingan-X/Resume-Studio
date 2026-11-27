@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T5六维画像实现保存
+
+T4保存a3bc285。T5保存PROFILE子图（模型判断→校验/确定性映射）、六维完整状态Schema、Rubric等级/feature/rubricRefs/逐字引用校验及ProfileAssessment不可变产物。unknown的level和score均null；模型score字段被拒绝，合法等级由冻结Rubric映射分值，画像不提供岗位verdict。单元拒绝缺维/伪造/跨版本证据/额外分数；完整工程专项使用正式Rubric的独立测试owner副本验证等级2映射40与其余五维unknown/null。
+
+最近完整业务链路专项3/3、105.851秒通过（data/s24-runtime-targeted-3.log），包含新增画像子图、事务收据故障恢复、运行中取消；修正前新CLI测试env类型TS2339仅阻断build，未进入专项，失败保留。基础118/118、typecheck/Lint通过，本轮全量画像链路也通过。新增profile_assessment迁移已部署且重复deploy无pending；正式开发owner Rubric未修改。真实模型/正式审核延后，共用Langfuse全量失败尚未解决，阶段不合并。
+
 ## 2026-11-27 S2.4-T4抽取与跨任务缓存实现保存
 
 T3基础保存3f8f054。T4保存授权文本抽取、一次修复/证据校验、等长PII遮盖、resumeVersion/prompt/model/schema不可变缓存、跨任务会话锁和年月区间归一化。原文指令仅数据，缺失字段null/空数组，未知年月不补月份；asOfDate只参与任务计算，不污染跨任务缓存。数据库缓存专项1/1、抽取/日期单元通过，最终共用基础118/118、类型/Lint及OpenAPI通过；本轮全量中的抽取专项也通过。
