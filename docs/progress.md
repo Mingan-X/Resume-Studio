@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T5隔离备份恢复通过
+
+增加backup:drill与[备份恢复/回滚步骤](backup-recovery.md)。本地最终runId=7db8f66e-abc3-40a1-b041-257b2d6ecb72通过：业务库45张表、Checkpoint库4张表逐表行数/规范行hash一致，官方合成图41→42及本轮关系数据随备份恢复；LocalStorage合成文件恢复SHA-256一致，RabbitMQ definitions导入隔离实例后逐条匹配。两个目标复用来源镜像ID，network=none、仅tmpfs、无共享卷，串行建立并核验移除；源实例未被覆盖。本轮owner/Checkpoint已精确清理，manifest cleaned=true，归档与合成文件副本保留在忽略的data/s33-restore目录。
+
+首次9e430661在文件复制阶段失败：新存储已创建files/staging目录，errorOnExist拒绝覆盖；改为只复制精确UUID子目录，保留新目录归属标记。第二次cb6131b0业务/Checkpoint/文件均通过，但隔离RabbitMQ的.erlang.cookie报eacces而启动失败；目标tmpfs改用从同镜像核验的服务UID/GID，启动及管理命令统一服务身份。两次失败清单均cleaned=true，未删现有卷/数据库/配置，未提高超时。第三次日志data/s33-t5-restore-third.log、退出0。
+
+官方PostgreSQL16 pg_dump文档已核对；工具使用原项目归属检查并补充网络核验。该脚本最多64MiB归档缓冲，仅用于本地演练，不作为生产流式备份工具。角色/ACL恢复、目标服务器演练、真实embedding从SQL重建Qdrant、Langfuse完整灾备和正式RPO/RTO仍按文档/原授权待验收；不以tmpfs目标代表真实磁盘性能。依赖安全修复后的阶段完整回归随后执行。
+
 ## 2026-11-28 S3.3-T4本地创建性能
 
 增加带真实production会话/CSRF/HTTP/数据库的performance:tasks。1份合成简历、1条JD，并发1，预热5次后50次新幂等键请求全部202且Schema通过；p50=38.60ms、p95=49.81ms、最大105.15ms、均值38.76ms。核对56个分析及56条分析Outbox，未调用模型/embedding/消费者，精确owner与账号/会话均清理。环境、分母、nearest-rank算法和局限见[性能记录](performance.md)，本地manifest c8bfbcd1-6dd6-4f40-85ba-42a50e418edb cleaned=true。
