@@ -1,5 +1,24 @@
 # HTTP API
 
+## 岗位草稿、发布与建议（S2.2）
+
+需JOB_API_ENABLED=true，可信owner来自本地IdentityPort；仅development/test及loopback允许启用。响应不返回owner、执行令牌、凭证或内部索引快照。
+
+| 路径（均在/api/v1下） | 行为 |
+|---|---|
+| POST /jobs | JSON title/city/level/skills/body创建草稿，201返回版本 |
+| GET /jobs | limit默认20/最大100、cursor；createdAt/id降序，返回各岗位latestVersion及nextCursor |
+| GET /jobs/:jobId | 返回当前owner岗位的最新版本 |
+| GET /jobs/:jobId/versions/:versionId | 版本详情含正文证据、要求、确认标记、status及indexStatus |
+| PATCH /jobs/:jobId/versions/:versionId | kind=body/metadata/requirement-upsert/requirement-delete/weights，正文见同源Schema；编辑发布版生成新草稿 |
+| POST /jobs/:jobId/versions/:versionId/confirm | JSON hardRequirementsConfirmed/weightsConfirmed，200；完整校验要求与权重 |
+| POST /jobs/:jobId/versions/:versionId/publish | JSON空对象和UUID Idempotency-Key；202返回jobVersionId/taskId；发布、索引任务、Outbox同事务 |
+| POST /jobs/:jobId/versions/:versionId/suggestions | JSON空对象；200返回受校验建议、输入哈希及prompt/model/schema版本，不自动写回要求 |
+
+上述除列表外不接受查询字段，POST/PATCH要求application/json；所有资源路径同时校验jobId和versionId，越权404。Schema错误400 VALIDATION_ERROR带details.fields[{path,code}]，不返回输入值/原始异常；未确认发布、引用因正文编辑失效等409 INVALID_STATE；同key不同版本409 IDEMPOTENCY_CONFLICT。缺模型503 MODEL_UNAVAILABLE，缺索引目标503 INDEX_TARGET_UNAVAILABLE；无假模型兜底。模型校验失败422 MODEL_OUTPUT_INVALID、预算耗尽422 MODEL_BUDGET_EXHAUSTED。已发布岗位索引保持PENDING，S2.3处理器接入前不标READY。
+
+本地HTTP桩不代表真实中转可用；真实模型验证按统一验收延后。公开服务认证由S3.2交付，本阶段仍只允许本地可信开发身份。
+
 S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence.md)，上传/查询路由通过RESUME_API_ENABLED显式启用。
 
 S2.2-T1已定义[岗位、JD引用与Rubric领域契约](jd-rubric.md)，岗位HTTP与OpenAPI路由尚待T9接入。

@@ -6,7 +6,7 @@
 
 ## 1. 契约真源
 
-- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误及任务查询/取消）
+- 后端 `src/contracts/` 中的Zod Schema是请求与响应结构的唯一来源。运行时校验和类型都从它派生。**已实现**（health、统一错误、任务查询/取消、简历与岗位接口）
 - 由同一组Schema生成[OpenAPI 3.1产物](openapi.json)，作为前端生成类型和客户端的输入；D8采用 `@asteasolutions/zod-to-openapi`，S1.4-T9已实现生成及过期检查。生成器是开发依赖，不参与API请求处理。
 - 前端只对接 [api.md](api.md) 与产物中已实现的接口，不按草案自行定义字段；字段级Zod校验与跨字段/事务业务约束仍以运行时为准。
 
@@ -16,6 +16,8 @@
 |---|---|---|
 | `/health` | 进程存活检查，不表示依赖就绪 | 已实现 |
 | `/api/v1/tasks/:taskId`、`/api/v1/tasks/:taskId/cancel` | 任务查询/取消 | S1.4-T8已实现，需显式启用本地开发模式 |
+| `/api/v1/resumes`及版本详情 | 上传、列表、文本证据 | S2.1已实现，本地显式启用 |
+| `/api/v1/jobs`及版本/确认/发布/建议 | 岗位管理与索引任务创建 | S2.2已接线，阶段回归中 |
 | `/api/v1/...`其他路径 | 后续业务接口 | 规划 |
 
 - v1内只做向后兼容的变更：新增可选请求字段、新增响应字段、新增枚举值前先确认前端已能容忍未知值。
@@ -51,6 +53,8 @@
 | `Cookie` / `X-CSRF-Token` | 请求 | 会话Cookie与CSRF令牌，具体方案见决策D9 | 规划（S3.2） |
 
 ## 6. 错误响应
+
+S2.2新增可选details.fields（path/code，无原始值）与MODEL_UNAVAILABLE、MODEL_OUTPUT_INVALID、MODEL_BUDGET_EXHAUSTED、INDEX_TARGET_UNAVAILABLE；岗位接口实际状态码见api.md。字段校验通过运行时Zod执行，OpenAPI不能代替跨字段、owner与发布事务约束。
 
 当前结构（**已实现**）：
 

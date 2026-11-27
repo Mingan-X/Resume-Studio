@@ -1,5 +1,15 @@
 # 本地部署
 
+## S2.2 岗位与模型本地装配
+
+JOB_API_ENABLED=true启用岗位路由，DATABASE_URL仍限制本项目本地开发库。JOB_MODEL_CONFIG_FILE和JOB_INDEX_TARGET_FILE为可选绝对路径，文件放入被忽略的data目录；未配置时对应建议/发布操作503，不阻止读取草稿。文件内容经严格Zod校验，大小上限64KiB，错误仅输出字段名，不打印Key。模型连接参数不入库，任务只引用版本标识。
+
+模型文件包含connection和execution。connection必需baseURL、apiKey、model、modelConfigVersion、timeoutMs、currency，可选maxResponseBytes（默认1MiB）；远端要求HTTPS，本地HTTP只允许loopback。execution必需singleTimeoutMs、totalTimeoutMs、maxAttempts、maxRetries、maxTokens、maxCostMicros、currency、inputTokenReservation、maxOutputTokens、costReservationMicros、retryBaseMs、retryCapMs、maxConcurrent，按实测预算填写，不自动选真实模型或费用上限。全部重试和一次修复共享预算；无可信价格时费用返回null，预留额度不冒充实测费用。禁止开启LANGSMITH_TRACING/LANGCHAIN_TRACING/LANGCHAIN_TRACING_V2/LANGCHAIN_VERBOSE或OpenAI debug/info日志；观测走本项目脱敏span。
+
+索引目标文件包含embeddingVersion/indexVersion/chunkerVersion/componentVersion及taskBudget；具体目标由S2.3百炼适配器确认，未配置前不伪造正式目标。测试的http-fixture/fixture-only目标仅存在于测试注入和精确清理记录，不写成本地默认文件。
+
+正式Rubric v1已导入开发owner（00000000-0000-4000-8000-000000000001），状态PENDING_REVIEW；部署新库时显式rubric:import再rubric:load核验，禁止把SYNTHETIC当默认版本。修改规则/审核状态发布新版本。
+
 ## S2.1-T2 本地文件暂存与回收
 
 StoragePort与本地适配器已定义；上传装配仍待T8。STORAGE_ROOT须为专用绝对目录，首次初始化只接受空目录，写入项目/路径归属标记；后续必须匹配标记。目录须由运行账号独占，禁止其他主体修改。路径、junction/symlink及文件硬链接检查不构成对恶意本机管理员的防护。

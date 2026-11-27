@@ -119,4 +119,27 @@ export class JobRepository {
     if (content.version !== row.version || requestHash(content) !== row.contentHash) throw new Error('INVALID_RUBRIC_HASH');
     return { content, contentHash: row.contentHash };
   }
+  async latestVersion(owner: string, job: string) {
+    const ownerId = z.uuid().parse(owner), jobId = z.uuid().parse(job);
+    return this.database.client.$transaction(async tx => {
+      const row = await tx.jobVersion.findFirst({ where: { ownerId, jobId }, orderBy: { version: 'desc' }, select: { id: true } });
+      return row ? readJobVersion(tx, ownerId, row.id) : null;
+    }, { isolationLevel: 'RepeatableRead' });
+  }
+  async list(owner: string, limit: number, cursor?: { createdAt: string; id: string }) {
+    const ownerId = z.uuid().parse(owner);
+    return this.database.client.$transaction(async tx => {
+      const rows = await tx.job.findMany({ where: { ownerId, ...(cursor ? { OR: [{ createdAt: { lt: new Date(cursor.createdAt) } },
+        { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } }] } : {}) },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
+        include: { versions: { orderBy: { version: 'desc' }, take: 1, select: { id: true } } } });
+      const result = [];
+      for (const row of rows) {
+        const versionId = row.versions[0]?.id, value = versionId ? await readJobVersion(tx, ownerId, versionId) : null;
+        if (!value) throw new Error('JOB_VERSION_MISSING');
+        result.push({ id: row.id, createdAt: row.createdAt.toISOString(), latestVersion: value });
+      }
+      return result;
+    }, { isolationLevel: 'RepeatableRead' });
+  }
 }

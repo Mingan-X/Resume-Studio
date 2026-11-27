@@ -43,7 +43,7 @@ export class JobPublicationRepository {
       if (!draft) throw new Error('JOB_NOT_FOUND');
       if (draft.status !== 'DRAFT' || !draft.hardRequirementsConfirmed || !draft.weightsConfirmed) throw new Error('JOB_NOT_CONFIRMED');
       jobScoringInputSchema.parse({ requirements: draft.requirements, dimensionWeights: draft.dimensionWeights });
-      if (rawTarget === undefined) throw new Error('JOB_INDEX_TARGET_UNAVAILABLE');
+      if (rawTarget === undefined || rawTarget === null) throw new Error('JOB_INDEX_TARGET_UNAVAILABLE');
       const target = jobIndexTargetSchema.parse(rawTarget), taskId = randomUUID(), eventId = randomUUID();
       const snapshot = jobIndexInputSnapshotSchema.parse({ schemaVersion: 1, kind: 'job-index', ownerId,
         visibility: 'private', jobVersionId: id, contentHash: draft.document.textHash,

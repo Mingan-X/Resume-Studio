@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T9岗位HTTP实现与专项验证，阶段回归中
+
+新增POST/GET jobs、版本详情/PATCH编辑、confirm/publish/suggestions路由，可信owner检查jobId/versionId一致，版本响应不返回owner/内部执行字段。发布202返回jobVersionId/taskId，草稿编辑发布版派生新版本；列表稳定cursor。字段错误details仅path/code，无原始值；伪造引用400、越权404、未确认409、缺模型/索引目标503，不注册假模型兜底。JOB_API_ENABLED仅本地开发，配置文件绝对路径、严格Schema、Key/URL不入库。
+
+检查：首次typecheck因optional配置的exactOptionalPropertyTypes失败，修正为允许显式undefined；首次lint未使用投影变量失败，修正后通过。最终typecheck、零警告lint、OpenAPI generate/check通过；真实HTTP/PostgreSQL专项6/6通过（5.035秒），覆盖草稿→要求→确认→发布→PENDING任务、幂等、分页、跨owner、字段安全错误、建议不变更数据库与真实API装配。后补建议通过实际HTTP路由测试，最终基础80/80通过（10.675秒）；新增模型依赖冻结安装通过，7份文档65个本地链接有效。
+
+阶段pnpm run test:integration已启动（data/s22-stage-integration.log）。当前既有Checkpoint/fence与消费者多个用例失败，未归L1/L2，待完整异常及清理结果；T9保存实现但不宣称阶段回归通过。真实中转API Key/实际模型支持、人工标注及目标机器验证仍延后；S2.3真实索引未开始，发布任务保持待执行。T10及阶段合并/推送尚未完成。
+
 ## 2026-11-27 S2.2-T8兼容模型适配器本地验证完成（真实中转延后）
 
 ChatOpenAI1.8.5的ModelPort实现从本地受控配置读取baseURL/Key/model/modelConfigVersion，不入库；显式JSON Schema、禁用LangChain和OpenAI两层自动重试、请求signal/timeout与响应字节上限、禁止重定向。发送前遮盖常见联系方式且保留证据UUID/UTF-16位置；未知usage/cost为null，SDK/HTTP原始异常不出日志。环境开启LangSmith/verbose/OpenAI调试时失败关闭，观测使用项目白名单span。
