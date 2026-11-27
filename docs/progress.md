@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.5-T6冻结判断重算服务完成
+
+RecomputeService从可信IdentityPort获取owner，不接受请求owner或连接模型；只在已结束成功/部分成功任务的原候选与判断上重算，显式权重严格校验，派生ScoreSet关联source且不覆盖历史，评分和排名同事务保存。数据库专项验证11候选完整保存、原11名进入首位、模型预算仍0、并发重放同ID、越权/未知候选/未结束任务拒绝，以及排名INSERT失败回滚新增ScoreSet。原ScoreSet/CandidateSet逐字不变。
+
+共用最终类型/Lint、基础126/126及全量146/146通过，定向14/14已覆盖。HTTP端点留S3.1；本任务无新依赖/迁移，没有真实模型调用。
+
 ## 2026-11-27 S2.5-T5 SCORE/RANK接线与版本绑定完成
 
 新AnalysisTask冻结scoringPolicyHash/版本外键，缺owner政策拒绝创建，旧请求幂等仍先读原任务；旧快照保持原10节点图，实测迁移前task在新Worker下10节点/0评分节点且已清理。新任务MATCH→SCORE→RANK再JOIN，12节点有恢复/取消/事务回滚验证；同任务基础评分唯一，ScoreSet完整保留policy/hash/weights/贡献/coverage/资格，RankingSnapshot按scoreSet唯一不可改，完成事务核验产物及判断hash。
