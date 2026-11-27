@@ -1,5 +1,7 @@
 # 本地部署
 
+S3.1部署前应用报告迁移并generate/build；报告查询、重算、分析选择列表、SSE随现有TASK_API_ENABLED启用，固定开发身份仍禁止production。SSE反向代理需禁用缓冲，服务发送X-Accel-Buffering:no；连接期限/心跳/上限和数据回退说明见[报告说明](reports.md)。不删除旧产物或配置来解决迁移/环境问题。
+
 S2.5评分政策/结果迁移须先部署，再用`pnpm run scoring:import-default <ownerId>`为已存在的本地主体显式导入scoring-v1，最后启用新API/Worker。新任务创建冻结政策版本/hash，缺对应owner政策会拒绝创建；不自动更换版本。评分与重算均不调用模型，旧S2.4无scoringPolicyHash任务仍保留原图路径；具体兼容/回退及命令见[评分说明](scoring.md)。
 
 S2.4业务图与Worker配置/命令见[分析流程](analysis-workflow.md#本地执行与验证)。新ResumeExtraction/ProfileAssessment/MatchPlan/RequirementExecution/AnalysisSummary及NodeArtifact版本列保持既有合成任务兼容；先应用迁移，再部署业务执行入口。回退时停用新分析消费与创建，保留新表和产物，不删除数据或配置。

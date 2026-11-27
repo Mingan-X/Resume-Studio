@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S3.1-T7阶段回归通过，待统一验收
+
+最终typecheck、零警告Lint、基础128/128、53.183秒通过（data/s31-unit-final.log）；完整test:integration146/146、685.647秒通过（data/s31-integration.log），0失败/跳过，新增HTTP/SSE断言嵌入完整业务父测试因此全量计数不增加。23条迁移generate/validate/deploy两次/status通过，OpenAPI生成和一致性通过；首次refine/omit运行错误和基础失败保留，未调整有效断言或服务期限。无新增依赖，未重复冻结安装。
+
+资源核验data/s31-resources.json：仅开发Owner=1，所有业务/报告/recompute请求测试实体0，四正式队列ready/unacked=0，Qdrant集合空；scoring-v1与rubric-v1原hash保持，Rubric仍AI_DRAFT/PENDING_REVIEW。没有删除卷/DB/配置，所有测试仅清理其明确owner/manifest。真实模型联调/人工质量/目标服务器仍按原延后，原生Qdrant未监听不自行启停、native未执行。
+
+任务提交T1=e4b81c9、T2=8b4463f、T3=ba57847、T4=5e20296、T5=a466607、T6=c2aa83c。最终文档说明同事务报告、旧任务兼容、响应投影、分页/重算幂等、SSE每进程额度及真实验证边界；10份文档233项本地链接与最终diff检查通过。阶段改待验收，按授权--no-ff合并推送develop后继续S3.2；不操作master或前端。
+
 ## 2026-11-27 S3.1-T6前端选择/历史接口及契约闭合完成
 
 补齐GET analyses列表/detail/options，解析成功简历版本及冻结corpus分别游标分页，配置只投影版本概要。对照前端只读固定提交a8aea7c的F2.3–F2.5，报告响应已经包含页面需要的数值和证据；不读取客户owner，不让前端拼分。统一注册本阶段HTTP/SSE OpenAPI，保留精确路径清单断言；report-api-check真实HTTP测试随本提交闭合所有路由行为。共用基础128/128、定向3/3、全量146/146、类型/Lint/OpenAPI通过；本仓契约为真源，前端未修改或通知第三方。
