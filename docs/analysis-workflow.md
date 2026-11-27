@@ -1,12 +1,12 @@
 # S2.4 分析图与语义产物
 
-S2.5补充：带scoringPolicyHash的新任务在MATCH后增加SCORE→RANK，JOIN等待画像和排名；ScoreSet与RankingSnapshot持久化并由临时finalize核对，报告仍待S3.1。无该hash的旧任务保留本文原10节点图及幂等身份。政策、资格、稳定排序与零模型调用重算见[评分说明](scoring.md)，下文S2.4历史范围不代表评分仍未接线。
+当前实现包含S2.5评分与S3.1报告：带scoringPolicyHash的任务在MATCH后执行SCORE→RANK，JOIN等待画像和排名；新reportVersion=1任务通过SAVE与消费完成事务提交报告。历史快照保持对应原图/幂等身份。政策、资格与重算见[评分说明](scoring.md)，报告/SSE见[报告说明](reports.md)。本文的语义处理说明继续适用，临时FINALIZE只用于历史任务。
 
-本阶段提供真实分析输入、业务图、语义抽取、六维画像、冻结召回、逐项匹配及临时汇总终态。执行模型和embedding经明确配置的端口注入；本地工程验证只使用测试注入的确定性模型/向量，不证明真实模型质量。真实调用T9及正式Rubric审核按[路线图](development-roadmap.md)统一验收延后。报告、评分和排名分别在S3.1、S2.5接入。
+当前提供真实分析输入、业务图、语义抽取、六维画像、冻结召回、逐项匹配、确定性评分排名和报告终态。执行模型和embedding经明确配置的端口注入；本地工程验证只使用测试注入的确定性模型/向量，不证明真实模型质量。真实调用T9及正式Rubric审核按[路线图](development-roadmap.md)统一验收延后。
 
 ## 图、恢复与产物
 
-主图为LOAD→PARSE→EXTRACT→VALIDATE，随后PROFILE与RECALL并行；召回经SNAP→MATCH后与PROFILE在JOIN汇合，FINALIZE准备临时终态。任务状态最终由消费处理器同事务提交汇总、任务终态、attempt结束和DONE收据；只有可靠提交后才允许ACK。SAVE报告节点尚未实现，reportId保持null。
+主图为LOAD→PARSE→EXTRACT→VALIDATE，随后PROFILE与RECALL并行；召回经SNAP→MATCH→SCORE→RANK后与PROFILE在JOIN汇合，SAVE保存汇总意图。消费完成处理器同事务提交报告、任务终态、attempt结束和DONE收据；只有可靠提交后才允许ACK。历史无reportVersion输入仍使用临时FINALIZE且reportId可为null。
 
 LOAD核对冻结corpus/Rubric/hash和已配置版本，PARSE读取授权简历版本的已存ExtractedDocument，不重新解析文件。GraphState只保存任务/input hash与节点产物ID或安全失败状态；官方PostgreSQL Checkpointer使用durability=sync，不把连接、Buffer、原始异常或原文件塞入图状态。
 
@@ -40,7 +40,7 @@ MatchPlan冻结候选顺序、岗位完整要求、extractionId及全部要求�
 
 AnalysisSummary不是最终报告。SUCCEEDED要求画像可用、召回成功、所有计划要求完成且无显式降级；unknown属于有效判断，零候选允许空结果。PARTIAL要求至少一个板块可用，同时保留失败、截断、pending或降级信息；两个板块都不可用为FAILED。解析/输入失败直接经任务失败路径处理。汇总保存planned/completed/failed/truncated/pending及对应产物ID，五项计数相等校验，不补虚构判断。
 
-TaskEvent记录实际阶段与计数，seq由任务行锁分配；MATCH可记录已完成岗位/候选岗位数，最终记录要求计划/完成/失败数。阶段不同，计数单位可能不同，不能当估算百分比。旧generation/fence事件无法覆盖新执行。SSE与最终报告接口尚待S3.1。
+TaskEvent记录实际阶段与计数，seq由任务行锁分配；MATCH可记录已完成岗位/候选岗位数，最终记录要求计划/完成/失败数。阶段不同，计数单位可能不同，不能当估算百分比。旧generation/fence事件无法覆盖新执行。SSE与最终报告接口已由S3.1接入，详见[报告说明](reports.md)。
 
 ## 本地执行与验证
 

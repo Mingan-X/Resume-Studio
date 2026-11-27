@@ -98,7 +98,7 @@ S3.1补充：新输入reportVersion=1使用SAVE替代临时FINALIZE，图持久�
 
 S2.5补充：新任务创建冻结ScoringPolicy的版本/hash，MATCH后执行SCORE/RANK，JOIN核对评分与排名后仍使用临时finalize；S3.1再接最终报告。旧S2.4快照缺scoringPolicyHash时保留原图和节点组件身份，不原地改写快照。评分/重算持久化与边界见[评分说明](scoring.md)。
 
-S2.4已增加真实分析输入、创建HTTP及同事务Outbox，并接入下图EXTRACT/PROFILE/召回/MATCH/JOIN工程链路，验证范围见[分析流程](analysis-workflow.md)与[进度](progress.md)。SCORE/RANK与报告SAVE分别待S2.5/S3.1；当前JOIN后由临时FINALIZE准备AnalysisSummary，再由消费处理器同事务提交任务终态/收据，reportId=null。输入和配置冻结见[分析输入](analysis-input.md)。真实corpus身份沿用owner/versionName；真实外键与旧synthetic快照分开约束。
+S2.4接入真实分析输入、创建HTTP及同事务Outbox和EXTRACT/PROFILE/召回/MATCH/JOIN；S2.5/S3.1已接入SCORE/RANK及SAVE报告提交，验证范围见[分析流程](analysis-workflow.md)与[进度](progress.md)。仅历史输入使用临时FINALIZE且reportId可null。输入和配置冻结见[分析输入](analysis-input.md)。真实corpus身份沿用owner/versionName；真实外键与旧synthetic快照分开约束。
 
 ```mermaid
 flowchart TD
@@ -358,7 +358,7 @@ erDiagram
 
 - `IdentityModule` 默认提供固定开发owner `00000000-0000-4000-8000-000000000001`，由迁移建立Owner记录；`IDENTITY`/`IdentityPort`可替换，应用服务不接受请求正文的ownerId。未知身份不能自动建立Owner，任务外键拒绝未登记主体。此适配器未接入公网入口，不代表完成登录鉴权。
 - 两类任务保持独立表与状态枚举，初始 `QUEUED`、generation=1、fenceToken=0；分析任务初始activeGraphThreadId=taskId、graphGeneration=1。T1提供存储，T4–T8已接入领取/心跳、预算累计、恢复和取消状态迁移。
-- `TaskAttempt`、`TaskEvent`、`ConsumerReceipt`保留taskType/taskId，并以analysisTaskId/jobIndexTaskId互斥外键绑定实际任务；SQL CHECK要求类型、taskId及外键一致，复合外键同时校验ownerId。TaskEvent的seq为正且按taskType/taskId唯一，T4–T8在任务行锁事务中为完成/重试/恢复/取消分配序号；SSE仍未提供。TaskAttempt费用用整数微单位与currency保存。
+- `TaskAttempt`、`TaskEvent`、`ConsumerReceipt`保留taskType/taskId，并以analysisTaskId/jobIndexTaskId互斥外键绑定实际任务；SQL CHECK要求类型、taskId及外键一致，复合外键同时校验ownerId。TaskEvent的seq为正且按taskType/taskId唯一，T4–T8在任务行锁事务中为完成/重试/恢复/取消分配序号；S3.1已提供按seq补读SSE。TaskAttempt费用用整数微单位与currency保存。
 - `OutboxEvent`保留通用aggregateType/aggregateId，无分析任务专属外键；创建服务在同一事务内创建对应聚合并写调度事件。`Quarantine`面向无法可信解析的基础设施消息，messageId可空、不信任owner；本批无面向用户的隔离区查询。其他新增应用查询均显式限定ownerId。
 - 合成输入Schema固定 `schemaVersion: 1`、`kind: synthetic`，明确冻结输入版本、预算及配置版本；versionId暂为合成UUID，无尚不存在的ResumeVersion/JobVersion外键。快照内嵌于任务JSONB，因此任务、快照、Outbox是同库同事务。写入及幂等读回都执行Zod校验；SQL核对快照owner/版本与列一致，并用trigger禁止更新输入、版本、owner、幂等键和requestHash。S2接入真实资源时须另加迁移与授权检查，不能直接把合成ID当成业务记录。
 - 幂等作用域为 `(ownerId, taskType, Idempotency-Key)`，各任务表唯一 `(ownerId,idempotencyKey)`；key按UUID校验并统一小写。SHA-256覆盖任务类型及完整验证后的快照（含owner、所有版本和预算），递归排序对象键，数组顺序保持；不包含生成的taskId、事件时间。相同请求返回原taskId，差异请求抛出安全的 `IDEMPOTENCY_CONFLICT`，HTTP错误适配器映射409。并发唯一冲突发生后先回滚，再从新事务视图读取已提交赢家；没有内存幂等缓存或无界重试。

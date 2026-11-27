@@ -96,7 +96,7 @@ S2.4-T1新增ANALYSIS_UNAVAILABLE（503）：服务端未配置分析输入配�
 
 S3.1补充：新任务通过SAVE/完成事务提交不可变报告后才SUCCEEDED/PARTIAL，reportId有效；历史无reportVersion任务保留旧语义。SSE及报告/重算/选择列表已接入，具体已实现字段和限制见[报告接口](reports.md)。下文S3.1前临时说明属于旧任务兼容边界。
 
-分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；岗位发布已创建真实索引任务；S2.4新增分析创建HTTP与显式业务消费图，SSE仍规划。创建字段与错误见[API](api.md)及[分析输入](analysis-input.md)。S3.1报告接入前分析成功/部分成功指画像与匹配产物提交，reportId=null，前端不得把它当已生成报告。MATCH及最终事件计数单位按阶段区分，不能换算伪百分比。
+分析与索引都是长任务，HTTP请求不在进程内执行它们。查询/取消、分析创建、显式业务消费图、报告与SSE均已实现，仍使用本地开发身份。创建字段与错误见[API](api.md)及[分析输入](analysis-input.md)。历史无reportVersion分析的成功/部分成功只指产物提交，reportId仍可null，前端不得把它当已生成报告。MATCH及最终事件计数单位按阶段区分，不能换算伪百分比。
 
 1. 创建：`POST` 返回 `202`，响应体含 `taskId` 与 `statusUrl`。
 2. 查询：`GET /api/v1/tasks/:taskId` 返回 `taskId`、`taskType`（ANALYSIS/JOB_INDEX）、`status`、`stage`、`progress: {completed, total}`（总量未知时 `total` 为null）、累计领取次数 `attempt`、`nextRetryAt`、`error`（任务错误白名单及安全文案）、`reportId`、`cancelRequested`。不返回owner/输入/租约/fence/图线程。当前合成任务无报告。
