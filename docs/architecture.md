@@ -504,7 +504,9 @@ S1.4-T9由独立脚本使用 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI
 
 ## 10. 可观测性、隐私与部署门槛
 
-S3.2-T1/T2已增加本地账号与PostgreSQL会话，生产业务路由由全局会话/CSRF Guard保护；内部请求Symbol传owner给request-scoped IdentityPort。真实Worker从持久Outbox核验消息后分派owner，发布/对账按私有配置明确owner。规则与验证边界见[认证](auth.md)及[所有权审计](ownership-audit.md)；本节历史“开发固定主体/尚未认证”仅适用于未启用会话的本地模式。生命周期仍按T4/T5实施。
+S3.3增加可选`/ready`（数据库与两条业务队列检查、并发合并及1秒缓存），保留`/health`存活语义。Linux单机应用Compose通过host networking使用既有loopback配置；独立只读Docker元数据代理使原有实例归属检查在应用容器继续执行，不授予API/Worker Docker控制权限。固定角色监督器管理API、两个消费者、发布器、两类对账及生命周期进程，持续失败有界退出，重启不重置任务预算。配置和目标环境未验证范围见[发布运维](release-operations.md)，不新增通用Agent Runtime。
+
+S3.2-T1/T2已增加本地账号与PostgreSQL会话，生产业务路由由全局会话/CSRF Guard保护；内部请求Symbol传owner给request-scoped IdentityPort。真实Worker从持久Outbox核验消息后分派owner，发布/对账按私有配置明确owner。规则与验证边界见[认证](auth.md)及[所有权审计](ownership-audit.md)；本节历史“开发固定主体/尚未认证”仅适用于未启用会话的本地模式。生命周期T4/T5已接线，实际停止证据/清单完整性与DONE语义见[数据生命周期](data-lifecycle.md)。
 
 目标业务链路：API生成request trace，W3C traceparent经Outbox/Rabbit传播；每次attempt关联taskId，图节点、检索、工具和模型各有span。LangChain调用挂Langfuse CallbackHandler；普通解析/算分用OTel手工span，不能只追模型而看不到普通代码耗时。当前HTTP requestId仅用于请求日志，尚未实现上述跨进程传播。
 
@@ -518,7 +520,7 @@ S3.2-T1/T2已增加本地账号与PostgreSQL会话，生产业务路由由全局
 
 关注指标：Outbox最老未发布年龄、队列ready/unacked、任务耗时/失败/重试、租约超时、DLQ数量、LLM错误与token预算、Qdrant索引积压、数据库池饱和、trace丢失。数据库/队列不可用能恢复任务；Langfuse不可用不能阻塞业务。
 
-部署前验证备份和恢复；单节点Compose用于本地开发，不能宣称RabbitMQ quorum单节点或本机PostgreSQL具备节点故障高可用。当前已启动本项目独立容器并验证重启持久化，尚未进行生产部署或备份恢复验收。
+部署前验证备份和恢复；单节点Compose不能宣称RabbitMQ quorum单节点或本机PostgreSQL具备节点故障高可用。本项目独立容器已验证重启持久化，S3.3另完成本地隔离备份恢复；目标服务器生产部署、灾备与稳定性仍待统一验收。
 
 ## 11. 目录规划
 

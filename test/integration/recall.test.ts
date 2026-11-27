@@ -28,6 +28,7 @@ import { indexCollectionName } from '../../src/modules/recall/job-chunks.js';
 import { TaskFailure } from '../../src/infrastructure/consumer/failure.js';
 import { qdrantTestTarget } from '../support/native-qdrant.js';
 import { cleanIndexCollections } from '../support/index-cleanup.js';
+import { networkFaultProxy } from '../support/network-fault-proxy.js';
 
 await test('S2.3 hybrid recall uses real Qdrant/SQL, aggregates chunks and explicitly degrades on index failures', { timeout: 180_000 }, async t => {
   await ownedPostgres();
@@ -103,6 +104,19 @@ await test('S2.3 hybrid recall uses real Qdrant/SQL, aggregates chunks and expli
   const degraded = await unavailable.recall(query, { ...settings, vectorFailure: 'keyword' }, spec);
   assert.equal(degraded.degradationReason, 'VECTOR_UNAVAILABLE');
   assert.ok(degraded.candidates.every(item => item.sources.every(source => source.source === 'keyword')));
+  // S3.3: interrupt real Qdrant transport for this caller, then recover the same collection.
+  const proxy = await networkFaultProxy(qdrant.kind === 'native-windows' ? 6333 : 56333);
+  try {
+    const transport = new JobIndexVector({ url: `http://127.0.0.1:${proxy.port}`, apiKey: qdrant.config.qdrantApiKey }, qdrant.verify);
+    const disrupted = new RecallService(identity, keyword, indexes, embedding, transport);
+    assert.deepEqual(await disrupted.recall(query, settings, spec), first);
+    proxy.block();
+    await assert.rejects(disrupted.recall(query, settings, spec), /VECTOR_UNAVAILABLE/);
+    const fallback = await disrupted.recall(query, { ...settings, vectorFailure: 'keyword' }, spec);
+    assert.equal(fallback.degraded, true); assert.equal(fallback.degradationReason, 'VECTOR_UNAVAILABLE');
+    assert.ok(fallback.candidates.every(item => item.sources.every(source => source.source === 'keyword')));
+    proxy.unblock(); assert.deepEqual(await disrupted.recall(query, settings, spec), first);
+  } finally { await proxy.close(); }
   await db.jobVersion.update({ where: { ownerId, id: drafts[0]!.id }, data: { indexStatus: 'PENDING' } });
   await assert.rejects(recall.recall(query, settings, spec), /INDEX_NOT_READY/);
   assert.equal((await recall.recall(query, { ...settings, vectorFailure: 'keyword' }, spec)).degradationReason, 'INDEX_NOT_READY');

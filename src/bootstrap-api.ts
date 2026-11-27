@@ -17,6 +17,7 @@ export async function createApi(config: ApiConfig): Promise<INestApplication> {
   if (config.resumes) extra.push((await import('./modules/resumes/resume-api.module.js')).ResumeApiModule.register(config.resumes,Boolean(config.auth)));
   if (config.jobs) extra.push(await (await import('./modules/jobs/job-api.module.js')).JobApiModule.register(config.jobs,Boolean(config.auth)));
   if (config.auth) extra.push((await import('./modules/auth/auth.module.js')).AuthModule.register(config.auth,true));
+  if (config.readiness) extra.push((await import('./modules/health/readiness.module.js')).ReadinessModule.register(config.readiness));
   const app = await NestFactory.create(ApiModule.register(config, extra), {
     logger: false, abortOnError: false,
   });

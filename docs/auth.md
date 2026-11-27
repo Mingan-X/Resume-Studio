@@ -10,6 +10,8 @@ S3.2-T1实现模块与CLI，T2接入业务API的会话身份。当前验证范�
 
 模块路由：GET /api/v1/auth/session返回匿名或已登录状态及csrfToken；GET /auth/me须已登录；POST /auth/login与/logout须带X-CSRF-Token和配置精确HTTPS Origin。所有响应no-store。session用于登录前获取CSRF，匿名会话不允许访问业务资源。测试在loopback HTTP人工发送Cookie只验证服务端属性和行为，不声称浏览器会在HTTP发送Secure Cookie；真实部署需同源HTTPS。
 
+S3.3的可选运维/ready与/health一样不要求会话，但只读依赖可用性且不返回业务数据/内部连接；部署代理不对公网转发/ready。此例外按Controller类型限定，不放宽任何业务资源的会话/CSRF/owner要求。
+
 T1数据库/HTTP测试覆盖错误口令、CSRF/Origin、会话轮换、过期、登出、哈希存储和owner关联；单元核对scrypt/随机salt/错误格式及cookie重复拒绝。没有在测试中建立真实用户或打印真实凭证。
 
 S3.2生命周期政策：简历版本上传满30天清理其关联业务数据，岗位语料单独保留；主动删除全部业务数据含自建JD/语料/向量/自定义规则，保留账号。接口、显式执行器和安全停止/重入规则见[数据生命周期](data-lifecycle.md)；只有启动受监督的清理命令后才执行，不把模块存在描述为已运行常驻调度。

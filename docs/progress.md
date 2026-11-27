@@ -8,6 +8,70 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T9发布文档收尾，阶段待统一验收
+
+T1–T7可执行开发与本地验证完成，T8及原有真实模型/人工/目标服务器项目按既定授权延后，S3.3标待验收。同步README、架构、部署、测试、认证、路线图及[前端恢复交接](handoff-frontend-s33.md)，校正当前Qdrant15秒请求上限与历史L2原5秒性能目标的区别；原进度失败记录未改写。阶段任务已分提交保存，按授权随后--no-ff合并develop并推送阶段分支/develop；master保持不动，前端恢复消息携带实际合并SHA。
+
+最终检查：typecheck、零警告Lint、构建、OpenAPI一致性、Prisma generate/validate/32迁移状态通过；基础145/145、78.602秒，完整153/153、838.940秒，0失败/跳过；broker重启专项、隔离恢复、真实Docker CLI归属检查、就绪探针及本地创建性能均有前述记录。文档本地文件/章节/命令引用与git diff --check通过。资源核验data/s33-final-resources.json：41张业务/诊断表无测试残留、两个原主体保留，scoring-v1/rubric-v1 hash不变，4条队列ready/unacked/consumer均0、Qdrant集合与Checkpoint数据空；本轮恢复容器均已移除，备份副本在忽略目录保留。
+
+未执行及原因：真实模型/embedding Key与人工标注未提供，因此不生成质量、真实费用/耗时或正式向量重建结果；目标服务器未提供，Docker Hub元数据获取又受网络阻塞，因此镜像digest/构建、nginx/TLS/Linux运行、目标恢复回滚和连续3+2回归未验证。SocketTimeout/L1/L2及一次初始就绪503原因未确认，历史失败保留；不把本轮通过称为根治。原生6333未启动对照，未擅自启停。没有goal工具、子代理、并行安装/构建/测试、密钥/真实简历/原始trace提交或对其他项目实例的操作。
+
+## 2026-11-28 S3.3-T8按授权延后目标回归
+
+维护者尚未提供目标服务器，T8按路线图既定边界延后。已准备目标硬件/镜像/代码版本记录、基础3次/完整2次、默认Docker Qdrant原5秒创建性能及TLS/回滚检查清单，未实际运行目标回归，也未解除L1/L2或SocketTimeout。当前本机145/145和153/153不能替代目标环境的连续回归；镜像digest/构建本轮另有Docker Hub网络阻塞，不冒充部署验证。
+
+本提交只补充路线图执行说明与进度，文档链接/结构检查通过；不重复运行刚通过且源码未变的基础/集成测试。该既定延后项不阻止后端开发部分合并develop与恢复前端，但阶段仍需维护者统一验收。
+
+## 2026-11-28 S3.3-T7部署准备与本地验证
+
+增加Linux单机Compose应用模板、Dockerfile、同源TLS/nginx/前端静态目录、私有env/JSON/证书挂载及七类固定角色监督；保留既有loopback端点和原归属检查。API/Worker不挂Docker socket，只有独立只读元数据代理持有，拒绝变更、其他项目、Env/日志输出。新增可选/ready检查数据库与两条业务队列，/health语义不变；Schema/API/OpenAPI/测试同步。发布/对账仍显式单owner配置，生命周期必须监督运行，未扩大为自动多账号调度。
+
+真实Docker CLI经过代理执行原PostgreSQL/RabbitMQ/Qdrant/全部Langfuse归属检查通过（data/s33-deployment-local-second.log）；就绪HTTP断连/503/恢复/存活独立专项通过（data/s33-readiness-isolated.log），最终完整153/153中该用例再次通过。基础145/145、typecheck、零警告Lint、构建及OpenAPI一致性通过；监督器拒绝__proto__非法角色且返回结构化码。Compose config --quiet在显式syntax-only文件下通过，未启动模板服务。
+
+首次部署专项0/2：就绪Schema漏兼容原heartbeat=10，Docker filters漏兼容CLI的布尔map格式；按实际配置/请求修正而不放宽端点/权限。随后代理通过，但就绪首次健康探针出现一次503；直接真实PG/AMQP检查及原断言独立复验、完整集成均通过，未捕获该次依赖拒绝根因，不将其认定为SocketTimeout、稳定性已修复或生产验证。两次失败日志原样保留。
+
+Docker Hub三次镜像元数据查询因连接失败退出，当前无Node/docker-cli/nginx本地镜像；未验证新镜像digest、Dockerfile构建或nginx -t，不使用任意镜像替换或修改全局网络。Linux信号/host networking、目标TLS/浏览器、真实模型配置与服务器部署按原授权留待统一验收。模板中的镜像占位符不能直接发布，真实Key/管理员凭证未写入库；详情见[发布运维](release-operations.md)。
+
+## 2026-11-28 S3.3-T6安全修复与许可证审计完成
+
+pnpm audit首轮5 high/4 moderate，全部来自undici7.29.1及effect3.20.0。按官方registry公告修复范围定向覆盖7.30.1/3.22.1，生成锁文件后冻结安装成功（3分57.7秒）；直接依赖和严格peer策略不变。复查audit退出0、全部级别0，未使用忽略列表或接受未修复高危。两次许可证盘点均395条，EPL/BSD/双重与组合许可另核对发布包文本并记录源码来源，详见[依赖审计](dependency-audit.md)。原始本地路径/报告不入库。
+
+最终工作树（含同期T7工程变更）typecheck、零警告Lint、构建通过；基础145/145、78.602秒（data/s33-unit-verified.log），完整集成153/153、838.940秒（data/s33-integration-final.log），0失败/跳过。Prisma7.10.1 generate/validate/status通过，现有32条迁移已应用，无新迁移。OpenAPI一致性通过。未验证目标Linux镜像/OS组件CVE、真实模型/embedding及新机冷安装；pnpm audit0只代表本次registry已知npm公告，不解除SocketTimeout/L1/L2或证明生产安全。
+
+## 2026-11-28 S3.3-T5隔离备份恢复通过
+
+增加backup:drill与[备份恢复/回滚步骤](backup-recovery.md)。本地最终runId=7db8f66e-abc3-40a1-b041-257b2d6ecb72通过：业务库45张表、Checkpoint库4张表逐表行数/规范行hash一致，官方合成图41→42及本轮关系数据随备份恢复；LocalStorage合成文件恢复SHA-256一致，RabbitMQ definitions导入隔离实例后逐条匹配。两个目标复用来源镜像ID，network=none、仅tmpfs、无共享卷，串行建立并核验移除；源实例未被覆盖。本轮owner/Checkpoint已精确清理，manifest cleaned=true，归档与合成文件副本保留在忽略的data/s33-restore目录。
+
+首次9e430661在文件复制阶段失败：新存储已创建files/staging目录，errorOnExist拒绝覆盖；改为只复制精确UUID子目录，保留新目录归属标记。第二次cb6131b0业务/Checkpoint/文件均通过，但隔离RabbitMQ的.erlang.cookie报eacces而启动失败；目标tmpfs改用从同镜像核验的服务UID/GID，启动及管理命令统一服务身份。两次失败清单均cleaned=true，未删现有卷/数据库/配置，未提高超时。第三次日志data/s33-t5-restore-third.log、退出0。
+
+官方PostgreSQL16 pg_dump文档已核对；工具使用原项目归属检查并补充网络核验。该脚本最多64MiB归档缓冲，仅用于本地演练，不作为生产流式备份工具。角色/ACL恢复、目标服务器演练、真实embedding从SQL重建Qdrant、Langfuse完整灾备和正式RPO/RTO仍按文档/原授权待验收；不以tmpfs目标代表真实磁盘性能。依赖安全修复后的阶段完整回归随后执行。
+
+## 2026-11-28 S3.3-T4本地创建性能
+
+增加带真实production会话/CSRF/HTTP/数据库的performance:tasks。1份合成简历、1条JD，并发1，预热5次后50次新幂等键请求全部202且Schema通过；p50=38.60ms、p95=49.81ms、最大105.15ms、均值38.76ms。核对56个分析及56条分析Outbox，未调用模型/embedding/消费者，精确owner与账号/会话均清理。环境、分母、nearest-rank算法和局限见[性能记录](performance.md)，本地manifest c8bfbcd1-6dd6-4f40-85ba-42a50e418edb cleaned=true。
+
+脚本通过类型构建/Lint并实际执行（data/s33-t4-performance.log）。基础回归沿用本轮142/142，新增性能fixture不改变业务代码；阶段末另执行包含部署变更的完整回归。真实分析耗时/token/费用与目标环境性能按原授权延后，不能用本轮创建数据解除L1/L2或SocketTimeout。
+
+## 2026-11-28 S3.3-T3故障注入与broker专项复验
+
+新增test:faults串行矩阵，复用全部架构§6.3窗口现有断言，并增加真实PostgreSQL连接中断后的0 ACK/同输入重投、真实Qdrant断连的显式关键词降级与恢复、模型返回后保存失败的重复调用/持久预算，以及主动RabbitMQ重启后的确认消息重投。仅操作本项目，broker实验补充精确网络标签/成员校验与UUID清单；不改超时/业务重试/断言。
+
+基础142/142、83.999秒通过；故障矩阵首轮69/70、493.710秒（data/s33-t3-faults-second.log）。broker失败的清理异常为quorum队列不支持queue.delete(ifUnused)，掩盖了该轮主路径结果，不能宣称该轮完成重启。核验唯一清单队列为空且无consumer后精确清理；新fixture使用专属授权交换机、显式consumer检查及聚合失败记录。独立broker复验1/1、78.949秒通过（data/s33-t3-broker-fixed.log），真实重启同一实例、同messageId redelivered后ACK，清单cleaned=true。原失败保留，其他69项通过不代替后续阶段完整回归。
+
+串行typecheck/Lint/构建已通过。过程中一次后续性能fixture漏account.id导致build失败、两次新增脚本/清理Lint问题均已修正，未触及业务校验。所有模型仍为显式工程fixture；真实收费、人工质量、目标环境与L1/L2解除未执行，SocketTimeout未知问题保留。原生Qdrant6333未启停，前端尚未恢复。
+
+## 2026-11-28 S3.3-T2质量指标与输入校验
+
+增加evaluation:quality离线脚本，计算引用位置/语义有效率、结构化正确率与字段覆盖、逐要求混淆矩阵/执行覆盖、unknown precision/recall、Recall@K和已知费用/token。数据/输出hash绑定，要求完整人工标注、全部冻结候选要求与全语料相关性，拒绝重复、缺失、降级、伪造provenance声明值和越界成员；声明真实性仍由维护者审核。未执行要求与未知费用不填零或冒充unknown。
+
+串行typecheck、零警告Lint、基础142/142、85.852秒通过（data/s33-t2-unit.log）；新增3项仅使用不落盘的算术fixture。无真实模型/人工标注，因此未执行质量报告命令，不提供准确率、费用或上线阈值。无依赖/持久化/API变化，真实服务集成不适用。T1已保存8404ffe，T2按任务保存，S3.3继续进行中。
+
+## 2026-11-28 S3.3-T1合成评测集与标注说明
+
+分支feature/s3.3-release-readiness从develop=4b3f4a3创建，S3.3进行中。新增离线可重复生成的20份中文合成简历与100条既有合成JD、来源/授权声明、覆盖说明、严格Schema、内容hash及人工标注流程。实际生成data/evaluation-zh-v1.json，datasetHash=0962f103b45305b6aa499dddea2d118bde6711803d0ab556c0faac534589bd56；文件不导入业务库，拒绝覆盖既有输出。生成器源码保存完整数据定义。
+
+串行typecheck、零警告Lint通过，基础139/139、115.538秒（data/s33-t1-unit.log）。无新增依赖/迁移/API，不运行真实服务集成。人工标注与模型质量按授权延后，coverage不是标签。所有goal工具禁用；没有子代理、并行构建/测试或前端恢复。内置会话目录只读诊断成功，原生工具随后已暴露，未改本地配置。
+
 ## 2026-11-28 S3.2合并推送完成
 
 T4=314cb7d、T5=427bf9a、T7=f147147已--no-ff合并develop=9ca226fa1039caf08e3d5c6f27ac553105e3b40c并推送，origin/develop一致，远端feature/s3.2-identity-lifecycle保留；合并树与最终151/151验证树一致，工作区干净。阶段待统一验收，不操作master。本条仅补记实际交付；下一步从更新develop新建S3.3会话，按handoff-s33继续全部后端可执行任务，完成后恢复指定前端会话，全部会话禁止goal模式。

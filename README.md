@@ -12,15 +12,17 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1–S1.4；S2.1–S3.2待统一验收。报告、查询/重算revision、分析选择列表和持久事件SSE已接线；S3.2增加账号会话、所有权审计、安全加固及保留/删除执行器，最终基础138/138、完整集成151/151通过。真实模型/embedding调用、人工质量指标与目标部署仍延后。当前验证见progress，不将本地装配视为公网部署验收。**
+**已完成 S1.1–S1.4；S2.1–S3.3的可执行开发部分完成，待统一验收。报告、查询/重算revision、SSE、账号会话、所有权与保留/删除执行器已接线；S3.3增加评测准备、故障与恢复实验、依赖审计及发布配置。真实模型/embedding、人工质量和目标部署仍延后，逐次验证以progress为准，不将本地装配视为公网部署验收。**
 
 S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败。S1.4 附已知环境限制L2：默认Docker Qdrant创建集合曾超过5秒；2026-11-27维护者授权适当放宽Qdrant请求，先改为10秒，S2.4实测11.93秒后调整为15秒，操作/任务原总期限不变。新上限下通过不代表旧5秒性能目标已达成，两项限制仍在目标环境复核。逐次失败、修复与检查结果见[开发进度](docs/progress.md)。基础/集成测试入口均串行，不放宽原行为断言。
 
 已有能力（运行范围以进度记录为准）：
 
+- S3.3发布准备：[20份合成简历/100条JD与人工评测脚本](docs/quality-evaluation.md)、[故障窗口](docs/fault-injection.md)、[本地创建任务性能](docs/performance.md)、[隔离备份恢复](docs/backup-recovery.md)、[依赖安全/许可证审计](docs/dependency-audit.md)、[同源TLS与进程监督模板](docs/release-operations.md)。`/ready`可选检查DB与业务队列；没有真实质量指标，模板/本地试验不等于目标服务器已上线。
+
 - [账号与会话](docs/auth.md)：本地账号CLI、Secure/HttpOnly Cookie、CSRF/Origin、生产会话身份及请求限制；[数据生命周期](docs/data-lifecycle.md)：账号简历30天保留、全部业务数据删除并保留账号、停止证据与持久步骤重入。清理须显式启动受监督命令，旧历史不完整/外部状态不明保留待核实。
 
-- [S3.1报告与进度](docs/reports.md)：新任务SAVE意图与报告/终态/收据事务接线；报告查询/分页/重算revision和owner隔离，分析历史/可选版本与语料范围，按seq补读的SSE。响应直接提供结构化简历、证据位置、画像、全部评分/贡献和PARTIAL计数；只在本地开发身份下启用，真实模型报告联调仍延后。
+- [S3.1报告与进度](docs/reports.md)：新任务SAVE意图与报告/终态/收据事务接线；报告查询/分页/重算revision和owner隔离，分析历史/可选版本与语料范围，按seq补读的SSE。响应直接提供结构化简历、证据位置、画像、全部评分/贡献和PARTIAL计数；S3.2已接入会话身份，真实模型报告联调仍延后。
 
 - [S2.5确定性评分](docs/scoring.md)：不可变评分政策与任务hash绑定，BigInt有理数计算贡献/覆盖率/上界；硬要求partial/unknown及未完成候选待核实，最多10个eligible；所有候选分数持久化，调权在原候选/判断集上重算且模型调用数0。原S2.4任务保持原图路径，新任务执行12节点图；报告与重算HTTP已由S3.1接入。
 
@@ -37,7 +39,7 @@ S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，�
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
 - 可替换的开发单用户身份；独立 AnalysisTask/JobIndexTask 及共享任务记录模型；冻结输入与 Outbox 同事务写入、按所有者及任务类型隔离的请求幂等。TasksModule保留合成创建入口，TaskApiModule提供真实分析创建及查询/取消。
 - Outbox短事务租约领取、confirm/mandatory/return检查、有限次数和总期限内的延迟重发；显式命令配置业务quorum队列/DLX并执行有界发布批次。
-- `tasks:consume analysis` / `tasks:consume job-index`手动ACK消费；持久收据、执行租约/心跳和fence保护合成完成记录，数据库故障不ACK。当前是显式有界会话，未接入常驻Worker或真实业务图。
+- `tasks:consume analysis` / `tasks:consume job-index`保留为合成验证命令；手动ACK、持久收据、租约/心跳和fence保护完成记录，数据库故障不ACK。真实业务使用`tasks:consume:analysis`/`tasks:consume:index`，S3.3提供固定角色监督模板。
 - `tasks:consume:graph`显式执行官方合成StateGraph；未知旧执行是否停止时切换恢复thread，确认停止后才复用原thread。NodeArtifact受业务fence保护；真实暂停/恢复子进程验证旧saver迟到写入隔离。JobIndexTask使用合成版本目标验证旧执行不能更新新版本状态。
 - 显式启用任务API后可创建分析、按可信owner查询真实阶段/计数并请求取消；消费者或对账器在安全边界提交取消终态。S3.2生产配置要求会话身份，常驻进程监督在S3.3验证。
 - `openapi:generate` / `openapi:check`从同一组运行时Zod契约生成并检查[OpenAPI产物](docs/openapi.json)，CI能拒绝缺失或过期的文档；不增加API运行时生成依赖。
@@ -59,8 +61,8 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 
 | 用途 | 当前已接入 | 规划接入 |
 |---|---|---|
-| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 报告HTTP接口、生产认证 |
-| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；事务Outbox、发布/消费/重试、隔离区、对账、业务语义产物与Checkpoint联合隔离 | 最终评分与报告 |
+| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；报告/会话/生命周期HTTP与同源OpenAPI | 目标环境TLS与公开部署验收 |
+| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；事务Outbox、发布/消费/重试、对账、确定性评分/报告与Checkpoint隔离 | 目标环境恢复与容量验收 |
 | AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x、业务分析图（假模型工程验证）、ChatOpenAI 1.8.5（本地HTTP桩验证） | 真实模型验证 |
 | 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
@@ -115,6 +117,10 @@ pnpm run test:integration
 | [本地部署](docs/deployment.md) | 环境、镜像、初始化与联调 |
 | [测试与验证](docs/testing.md) | 测试命令、覆盖与边界 |
 | [依赖说明](docs/dependency-compatibility.md) | 版本与兼容约束 |
+| [质量评测](docs/quality-evaluation.md) / [本地性能](docs/performance.md) | 数据、人工标注、指标计算及实测边界 |
+| [故障注入](docs/fault-injection.md) / [备份恢复](docs/backup-recovery.md) | 故障窗口、隔离恢复与回滚 |
+| [依赖审计](docs/dependency-audit.md) / [发布运维](docs/release-operations.md) | 安全修复、许可证、TLS与进程监督 |
+| [前端恢复交接](docs/handoff-frontend-s33.md) | 契约、会话/生命周期、已知问题与延后项 |
 | [第三方设计参考](docs/reference-research.md) | Elpis 源码研究 |
 
 ## 来源与许可

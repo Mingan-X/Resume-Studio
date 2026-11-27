@@ -11,3 +11,5 @@ coverage/
 .pnpm-store/
 .DS_Store
 src/generated/
+infra/release/*.env
+infra/release/secrets/

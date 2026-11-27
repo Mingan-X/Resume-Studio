@@ -1,10 +1,14 @@
 # 依赖与兼容性
 
-版本与接入记录覆盖2026-11-23至2026-11-26。当前声明以[package.json](../package.json)、解析及补丁哈希以[pnpm-lock.yaml](../pnpm-lock.yaml)为准；本文区分已接入组合与未来候选。S1.4-T9仅为新增OpenAPI生成工具重新查询registry与官方包文档，其余依赖沿用既有验证记录。
+版本与接入记录覆盖2026-11-23至2026-11-28。当前声明以[package.json](../package.json)、解析及补丁哈希以[pnpm-lock.yaml](../pnpm-lock.yaml)为准；本文区分已接入组合与未来候选。各阶段的在线核对范围单独记录；S3.3重新核对两项安全修复的registry元数据，其他版本沿用各阶段实际记录。
 
 [registry元数据快照](research/dependency-metadata-2026-11-23.json)保存36个候选包的Node engines及peer字段、66项直接范围检查结果。范围检查不代表完整传递依赖、安全审计或运行验收；快照包含当时考虑过的未安装组件。
 
 ## 1. 当前工程依赖
+
+### S3.3 传递依赖安全修复
+
+2026-11-28 registry audit发现undici7.29.1/effect3.20.0共5 high、4 moderate；在pnpm-workspace中只覆盖这两个已解析版本至7.30.1/3.22.1，锁文件同步生成，冻结安装通过，复查audit为0。undici要求Node>=20.18.1，两包MIT且未声明peer，现有Node24.22.3满足声明；没有改变直接依赖、忽略peer或更换技术方向。兼容性回归及395条许可证盘点、特殊EPL/BSD/组合声明见[审计记录](dependency-audit.md)与[进度](progress.md)。这些结果不覆盖Node内置依赖或Docker镜像CVE。
 
 ### S2.3 文本向量适配器
 

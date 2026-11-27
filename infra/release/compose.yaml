@@ -1,0 +1,133 @@
+# Linux Engine host networking preserves the already validated loopback endpoints.
+# This is an application overlay for the separately provisioned resume-studio infrastructure.
+name: resume-studio
+
+x-runtime: &runtime
+  image: ${APP_IMAGE:?Set an immutable application image reference}
+  pull_policy: never
+  network_mode: host
+  init: true
+  restart: "on-failure:3"
+  stop_grace_period: 20s
+  read_only: true
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+  security_opt: ['no-new-privileges:true']
+  cap_drop: ['ALL']
+  user: '1000:1000'
+  environment:
+    DOCKER_HOST: tcp://127.0.0.1:23750
+  secrets:
+    - source: runtime
+      target: runtime.env
+    - source: checkpoint
+      target: checkpoint.env
+    - source: observation
+      target: observability.env
+  volumes:
+    - type: bind
+      source: ${RELEASE_SECRETS_DIR:?Set a private absolute secrets directory}/runtime.env
+      target: /app/infra/.env
+      read_only: true
+      bind: { create_host_path: false }
+    - type: bind
+      source: ${RELEASE_SECRETS_DIR}/observability.env
+      target: /app/infra/.env.observability
+      read_only: true
+      bind: { create_host_path: false }
+    - type: bind
+      source: ${STORAGE_DIRECTORY:?Set the dedicated absolute storage directory}
+      target: /srv/resume-studio/storage
+      bind: { create_host_path: false }
+    - type: bind
+      source: ${RELEASE_SECRETS_DIR}/models
+      target: /run/models
+      read_only: true
+      bind: { create_host_path: false }
+  logging:
+    driver: json-file
+    options: { max-size: '10m', max-file: '3' }
+
+services:
+  ownership-reader:
+    image: ${APP_IMAGE}
+    pull_policy: never
+    network_mode: host
+    init: true
+    user: '0:0'
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    cap_drop: ['ALL']
+    restart: "on-failure:3"
+    entrypoint: ['node', 'dist/src/infrastructure/deployment/docker-read-proxy.cli.js']
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind: { create_host_path: false }
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:23750/_ping',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+  api:
+    <<: *runtime
+    command: ['api']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 6s
+      retries: 3
+      start_period: 60s
+  analysis-worker:
+    <<: *runtime
+    command: ['analysis']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  index-worker:
+    <<: *runtime
+    command: ['index']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  publisher:
+    <<: *runtime
+    command: ['publisher']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  analysis-reconciler:
+    <<: *runtime
+    command: ['analysis-reconciler']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  index-reconciler:
+    <<: *runtime
+    command: ['index-reconciler']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  lifecycle:
+    <<: *runtime
+    command: ['lifecycle']
+    depends_on: { ownership-reader: { condition: service_healthy } }
+  proxy:
+    image: ${NGINX_IMAGE:?Set a verified nginx image digest}
+    pull_policy: never
+    network_mode: host
+    restart: "on-failure:3"
+    environment: { PUBLIC_HOST: '${PUBLIC_HOST:?Set the approved DNS hostname}' }
+    volumes:
+      - ./default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - type: bind
+        source: ${FRONTEND_DIST:?Set the built frontend absolute directory}
+        target: /srv/www
+        read_only: true
+        bind: { create_host_path: false }
+    secrets: [tls_certificate, tls_key]
+    depends_on: { api: { condition: service_healthy } }
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+
+secrets:
+  runtime: { file: '${RELEASE_SECRETS_DIR}/runtime.env' }
+  checkpoint: { file: '${RELEASE_SECRETS_DIR}/checkpoint.env' }
+  observation: { file: '${RELEASE_SECRETS_DIR}/observability.env' }
+  tls_certificate: { file: '${RELEASE_SECRETS_DIR}/tls/fullchain.pem' }
+  tls_key: { file: '${RELEASE_SECRETS_DIR}/tls/privkey.pem' }

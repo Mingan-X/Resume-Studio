@@ -27,6 +27,7 @@ import { consumerConfigSchema } from '../../src/infrastructure/consumer/config.j
 import { taskDispatchSchema } from '../../src/contracts/tasks.js';
 import type { TaskType } from '../../src/contracts/tasks.js';
 import { analysisInput, jobIndexInput } from '../support/task-inputs.js';
+import { networkFaultProxy } from '../support/network-fault-proxy.js';
 
 async function receive(channel: Channel, queue: string): Promise<GetMessage> {
   const until = Date.now() + 5_000;
@@ -93,6 +94,29 @@ await test('S1.4-T4 real consumer receipts, execution leases and fenced completi
     return { ownerId, taskId: task.taskId, message, identity, config, store, handler, consumer, read,
       queue: type === 'analysis' ? topology.analysis : topology.jobIndex };
   }
+
+  await t.test('S3.3 PostgreSQL transport unavailable leaves delivery unACKed and recovers from the same persisted input', async () => {
+    const c = await context('analysis'), proxy = await networkFaultProxy(55432);
+    const url = new URL(connectionConfig.databaseUrl); url.port = String(proxy.port);
+    const unavailable = new DatabaseService({ ...connectionConfig, databaseUrl: url.toString() });
+    try {
+      await unavailable.check(); proxy.block();
+      const handler = new TaskDeliveryHandler(new TaskExecutionStore(unavailable, c.config), c.identity,
+        new SyntheticCompletionHandler(), c.config, new PostgresExecutionLock(unavailable.pool));
+      await publisher.publish(c.message);
+      const failed = await new TaskConsumer(connectionConfig.rabbitmqUrl, topology, handler)
+        .run('analysis', { maxMessages: 1, windowMs: 10_000 });
+      assert.equal(failed.received, 1); assert.equal(failed.acknowledged, 0); assert.equal(failed.reason, 'error');
+      assert.equal((await c.read()).status, 'QUEUED');
+      const redelivery = await receive(channel, c.queue);
+      assert.equal(redelivery.fields.redelivered, true); assert.equal(redelivery.properties.messageId, c.message.messageId);
+      channel.nack(redelivery, false, true); await channel.checkQueue(c.queue);
+      proxy.unblock(); await unavailable.check();
+      const recovered = await c.consumer().run('analysis', { maxMessages: 1, windowMs: 10_000 });
+      assert.equal(recovered.acknowledged, 1); assert.equal((await c.read()).status, 'SUCCEEDED');
+      assert.equal(await db.taskAttempt.count({ where: { ownerId: c.ownerId } }), 1);
+    } finally { await unavailable.onModuleDestroy(); await proxy.close(); }
+  });
 
   for (const type of ['analysis', 'job-index'] as const) {
     await t.test(`${type}: duplicate deliveries produce one attempt/completion and durable DONE receipt before ACK`, async () => {

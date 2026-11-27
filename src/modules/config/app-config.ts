@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isAbsolute } from 'node:path';
 import { taskApiConfigSchema } from './task-api-config.js';
 import { authConfigSchema } from '../auth/auth-config.js';
+import { readinessConfigSchema } from '../health/readiness-config.js';
 
 const environment = z.enum(['development', 'test', 'production']);
 const common = { APP_ENV: environment };
@@ -13,6 +14,7 @@ export const apiConfigSchema = z.object({
   HTTP_PORT: z.string().regex(/^\d+$/).transform(Number).pipe(z.int().min(1).max(65535)), // 默认端口号
   tasks: taskApiConfigSchema.optional(),
   auth: authConfigSchema.optional(),
+  readiness: readinessConfigSchema.optional(),
   analysisConfigFile: z.string().min(1).refine(isAbsolute).optional(),
   resumes: z.object({ databaseUrl: taskApiConfigSchema.unwrap().shape.databaseUrl,
     storageRoot: z.string().min(1).refine(isAbsolute) }).strict().optional(),
@@ -20,6 +22,9 @@ export const apiConfigSchema = z.object({
     modelConfigFile: z.string().min(1).refine(isAbsolute).optional(), indexTargetFile: z.string().min(1).refine(isAbsolute).optional(),
   }).strict().optional(),
 }).superRefine((config, ctx) => {
+  if (config.readiness && (!config.tasks || config.readiness.databaseUrl !== config.tasks.databaseUrl)) {
+    ctx.addIssue({ code: 'custom', path: ['readiness'], message: 'Readiness requires the same task database' });
+  }
   if (config.analysisConfigFile && !config.tasks) ctx.addIssue({ code: 'custom', path: ['analysisConfigFile'], message: 'Task API required' });
   if (!config.tasks && !config.resumes && !config.jobs) return;
   if (!config.auth) {
@@ -50,6 +55,7 @@ export class ConfigValidationError extends Error {
 export function loadConfig(role: 'api', env: NodeJS.ProcessEnv): ApiConfig;
 export function loadConfig(role: 'worker', env: NodeJS.ProcessEnv): WorkerConfig;
 export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): AppConfig {
+  if (role === 'api' && env.READINESS_ENABLED !== undefined && !['true', 'false'].includes(env.READINESS_ENABLED)) throw new ConfigValidationError(['READINESS_ENABLED']);
   if (role === 'api' && env.AUTH_ENABLED !== undefined && !['true','false'].includes(env.AUTH_ENABLED)) throw new ConfigValidationError(['AUTH_ENABLED']);
   if (role === 'api' && env.TASK_API_ENABLED !== undefined && !['true','false'].includes(env.TASK_API_ENABLED)) {
     throw new ConfigValidationError(['TASK_API_ENABLED']);
@@ -65,6 +71,7 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
     APP_ENV: env.APP_ENV,
     HTTP_HOST: env.HTTP_HOST,
     HTTP_PORT: env.HTTP_PORT,
+    ...(role === 'api' && env.READINESS_ENABLED === 'true' ? { readiness: { databaseUrl: env.DATABASE_URL, rabbitmqUrl: env.RABBITMQ_URL } } : {}),
     ...(role === 'api' && env.AUTH_ENABLED === 'true' ? {auth:{databaseUrl:env.DATABASE_URL,origin:env.AUTH_ORIGIN,
       ...(env.AUTH_SESSION_SECONDS!==undefined?{sessionSeconds:Number(env.AUTH_SESSION_SECONDS)}:{}),
       ...(env.AUTH_ANONYMOUS_SECONDS!==undefined?{anonymousSeconds:Number(env.AUTH_ANONYMOUS_SECONDS)}:{})}} : {}),

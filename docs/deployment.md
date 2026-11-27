@@ -1,5 +1,7 @@
 # 本地部署
 
+S3.3补充[同源TLS与进程监督配置](release-operations.md)、[备份恢复/回滚手册](backup-recovery.md)和可选`READINESS_ENABLED=true`的`/ready`探针；原`/health`仍仅检查存活。部署模板使用Linux host networking保留当前loopback及实例归属约束，不放宽地址范围；目标服务器、镜像构建/digest与正式TLS回归未完成，不能把模板当成已部署。初始化/迁移仍在宿主管理流程执行，应用容器只读取受限归属元数据。当前检查以progress为准。
+
 S3.2生命周期迁移记录所有Checkpoint线程、删除屏障/请求/步骤、活动上传及向量写入、可关联trace。先停止旧版本API/Worker并确认执行已停止，部署迁移及新代码，再启用`pnpm run data:cleanup watch`；本机需配置专用STORAGE_ROOT与原有三个infra env文件。不能删数据库/卷回退迁移，不能在删除执行器运行时回退到未登记线程/操作的旧版本。真实trace删除可异步等待，历史不完整及未确认停止会保留WAITING。详见[部署与恢复边界](data-lifecycle.md)。
 
 S3.2身份接入需先应用账号/会话、基础设施owner及生命周期迁移（当前32条），generate/build后再启用AUTH_ENABLED与精确HTTPS AUTH_ORIGIN；生产业务入口禁止开发身份。账号仅CLI通过stdin创建，新账号不继承开发数据/规则。真实Worker从持久Outbox识别账号owner；发布/对账显式SERVICE_OWNER_ID。详细步骤、前端F3.1发布顺序、系统owner和会话期限见[认证说明](auth.md)。仍只验证当前本地Compose归属，目标服务器部署待S3.3；回退需先关闭业务公网入口，保留账号/会话及迁移数据，不退回公网开发身份。
@@ -335,7 +337,7 @@ pnpm run test:integration
 pnpm run test:integration:native-qdrant
 ```
 
-[原生目标验证](../test/support/native-qdrant.ts)仅支持Windows及明确的loopback端点，检查6333监听进程、解析后的授权exe路径、PID、启动时间和二进制大小/修改时间；操作前及精确删除前复核同一进程身份，变化则拒绝删除。该验证没有计算二进制哈希，不以目录名或端口单独认定归属。测试沿用原5秒请求超时、CRUD/维数断言和15秒清理对账，仅操作本轮预先确认不存在的UUID集合。待清理manifest增加目标类别/地址及原生进程身份，不含密钥；它不是后续自动删除授权。
+[原生目标验证](../test/support/native-qdrant.ts)仅支持Windows及明确的loopback端点，检查6333监听进程、解析后的授权exe路径、PID、启动时间和二进制大小/修改时间；操作前及精确删除前复核同一进程身份，变化则拒绝删除。该验证没有计算二进制哈希，不以目录名或端口单独认定归属。当前测试使用与Docker相同的15秒单请求上限、CRUD/维数断言和原15秒清理对账总期限，仅操作本轮预先确认不存在的UUID集合；历史L2的5秒创建性能核对仍保留。待清理manifest增加目标类别/地址及原生进程身份，不含密钥；它不是后续自动删除授权。
 
 原生与Docker结果分开写入progress。原生通过只证明这台机器该实例的本轮对照成功，不能据此关闭默认Docker验证、标记Docker持久化延迟已修复或完成生产性能验收。
 
@@ -377,7 +379,7 @@ Ctrl+C触发应用关闭；关闭超过5秒退出失败。脚本/容器停止不
 | Qdrant测试collection前缀 | s12_ |
 | 持久化验证manifest | data/s12-persistence.json |
 
-诊断配置只接受本机地址、上述账号/数据库/vhost和专属端口55432/55672/56333；每轮临时资源附UUID。数据库池最大3连接，连接获取超时3秒、SQL超时5秒；Qdrant调用超时5秒，发布确认超时5秒。
+诊断配置只接受本机地址、上述账号/数据库/vhost和专属端口55432/55672/56333；每轮临时资源附UUID。数据库池最大3连接，连接获取超时3秒、SQL超时5秒；当前Qdrant调用单请求上限15秒且受操作剩余总期限约束，发布确认超时5秒。历史Qdrant原5秒性能目标仍用于L2复核。
 
 这些是当前诊断实现的配置，不是业务任务的生产级吞吐或时延保证。基础设施配置还要求 `DATABASE_URL`、`RABBITMQ_URL`、`QDRANT_URL`、`QDRANT_API_KEY` 和 `INFRA_TEST_SCOPE`；由infra/.env提供，不向日志打印。T5/T6已实现合成任务有界重试、总期限与对账；基础设施长期断线监督和生产负载仍待后续验证。原生Qdrant仅通过上文显式测试入口使用，不放宽应用配置校验。
 
