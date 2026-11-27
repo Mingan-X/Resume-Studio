@@ -79,6 +79,20 @@ export class JobIndexVector {
   }
   async listAliases(call: IndexCall) { return aliasesSchema.parse(await this.request('/aliases', 'GET', undefined, call)).aliases; }
 
+  async query(raw: unknown, queryVector: unknown, jobVersionIds: unknown, limit: number, call: IndexCall) {
+    const spec = await this.verify(raw, call), vector = z.array(z.number()).length(spec.dimensions).parse(queryVector);
+    const ids = z.array(z.uuid()).min(1).max(10_000).parse(jobVersionIds), take = z.int().min(1).max(1000).parse(limit);
+    const result = await this.request(`/collections/${encodeURIComponent(indexCollectionName(spec))}/points/query`, 'POST', {
+      query: vector, limit: take, with_payload: true, with_vector: false,
+      filter: { must: [{ key: 'ownerId', match: { value: spec.ownerId } }, { key: 'visibility', match: { value: 'private' } },
+        { key: 'embeddingVersion', match: { value: spec.embeddingVersion } }, { key: 'indexVersion', match: { value: spec.indexVersion } },
+        { key: 'jobVersionId', match: { any: ids } }] },
+    }, call);
+    const points = z.object({ points: z.array(z.object({ id: z.uuid(), score: z.number(), payload: indexPointPayloadSchema })).max(take) }).parse(result).points;
+    if (points.some(point => point.payload.ownerId !== spec.ownerId || point.payload.embeddingVersion !== spec.embeddingVersion
+      || point.payload.indexVersion !== spec.indexVersion || !ids.includes(point.payload.jobVersionId))) throw new TaskFailure('OUTPUT_INVALID');
+    return points;
+  }
   async verify(raw: unknown, call: IndexCall) {
     const spec = indexCollectionSchema.parse(raw), info = await this.inspect(indexCollectionName(spec), call);
     if (!info || requestHash(info.config.metadata) !== requestHash(spec) || info.config.params.vectors.size !== spec.dimensions) {

@@ -8,6 +8,11 @@ import { indexCollectionName } from '../../modules/recall/job-chunks.js';
 
 export class JobIndexRepository {
   constructor(private readonly database: DatabaseService) {}
+  async visibleVersions(owner: string, rawIds: unknown, rawCity: unknown = null) {
+    const ownerId = z.uuid().parse(owner), ids = z.array(z.uuid()).max(10_000).parse(rawIds), city = z.string().nullable().parse(rawCity);
+    return this.database.client.jobVersion.findMany({ where: { ownerId, id: { in: ids }, status: 'PUBLISHED', ...(city === null ? {} : { city }) },
+      select: { id: true, jobId: true, contentHash: true, document: true } });
+  }
   async assertCorpusReady(owner: string, corpusVersion: string, rawSpec: unknown) {
     const ownerId = z.uuid().parse(owner), spec = indexCollectionSchema.parse(rawSpec);
     if (spec.ownerId !== ownerId) throw new Error('INDEX_NOT_READY');
