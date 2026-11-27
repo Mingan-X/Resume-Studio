@@ -39,6 +39,8 @@ import { requestHash } from '../../modules/tasks/request-hash.js';
 import { validateParsedResume } from '../../modules/resumes/parsed-resume.js';
 import { normalizeEmployment } from '../../modules/analysis/dates.js';
 import { JobCorpusRepository } from '../jobs/corpus.repository.js';
+import { ScoringRepository } from './scoring.repository.js';
+import { ScoringPolicyRepository } from './scoring-policy.repository.js';
 
 export function createAnalysisRuntime(database: DatabaseService, identity: IdentityPort, checkpoint: CheckpointConfig,
   model: ModelExecutor, embedding: EmbeddingExecutor, vector: JobIndexVector,
@@ -51,6 +53,7 @@ export function createAnalysisRuntime(database: DatabaseService, identity: Ident
   const candidateService = new AnalysisCandidateService(candidates, recall), matching = new MatchingRepository(database);
   const matchingService = new MatchingService(candidates, jobs, resumes, matching, caller), summaries = new AnalysisSummaryRepository(database);
   const artifactRepository = new AnalysisArtifactRepository(database);
+  const scores = new ScoringRepository(database);
   const extraction = async (state: AnalysisGraphState, claim: ExecutionClaim) => {
     const result = analysisNodeResultSchema.parse(state.outputs.EXTRACT);
     if (result.status !== 'ok') throw new TaskFailure('INPUT_INVALID');
@@ -76,6 +79,10 @@ export function createAnalysisRuntime(database: DatabaseService, identity: Ident
       if (!corpus || corpus.contentHash !== input.corpusHash || !rubric || rubric.contentHash !== input.rubricHash
         || input.promptVersion !== 'analysis-v1' || input.embeddingVersion !== embedding.embeddingVersion
         || input.indexTarget.dimensions !== embedding.dimensions || input.indexTarget.provenance !== embedding.provenance) throw new TaskFailure('INPUT_INVALID');
+      if (input.scoringPolicyHash) {
+        const policy = await new ScoringPolicyRepository(database).load(claim.ownerId, input.scoringVersion);
+        if (!policy || policy.contentHash !== input.scoringPolicyHash) throw new TaskFailure('INPUT_INVALID');
+      }
       return { status: 'ok', artifactId: claim.message.taskId };
     },
     PARSE: async (_state, { claim }) => {
@@ -100,8 +107,17 @@ export function createAnalysisRuntime(database: DatabaseService, identity: Ident
       const result = analysisNodeResultSchema.parse(state.outputs.SNAP); if (result.status === 'failed') return result;
       return safeSection(async () => ({ status: 'ok', artifactId: (await matchingService.match(claim, await extraction(state, claim), budget, signal)).id }));
     },
+    SCORE: async (state, { claim }) => {
+      const match = analysisNodeResultSchema.parse(state.outputs.MATCH); if (match.status === 'failed') return match;
+      return { status: 'ok', artifactId: (await scores.score(claim)).id };
+    },
+    RANK: async (state, { claim }) => {
+      const score = analysisNodeResultSchema.parse(state.outputs.SCORE); if (score.status === 'failed') return score;
+      return { status: 'ok', artifactId: (await scores.rank(claim, score.artifactId)).id };
+    },
     JOIN: async (state, { claim }) => {
-      const profile = analysisNodeResultSchema.parse(state.outputs.PROFILE), match = analysisNodeResultSchema.parse(state.outputs.MATCH);
+      const profile = analysisNodeResultSchema.parse(state.outputs.PROFILE), match = analysisNodeResultSchema.parse(
+        realAnalysisInputSchema.parse(claim.snapshot).scoringPolicyHash ? state.outputs.RANK : state.outputs.MATCH);
       const summary = await summaries.prepare(claim, { profileError: profile.status === 'failed' ? profile.code : null,
         matchingError: match.status === 'failed' ? match.code : null }); return { status: 'ok', artifactId: summary.id };
     },

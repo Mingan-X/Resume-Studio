@@ -29,6 +29,8 @@ import { extractedDocument } from '../../src/modules/resumes/evidence.js';
 import { skillDictionaryV1 } from '../../src/modules/recall/skills.js';
 import { analysisConfiguration } from '../support/analysis-inputs.js';
 import { jobDraft } from '../support/job-inputs.js';
+import { ScoringPolicyRepository } from '../../src/infrastructure/tasks/scoring-policy.repository.js';
+import { defaultScoringPolicy } from '../../src/modules/scoring/default-policy.js';
 
 await test('S2.4 real analysis HTTP freezes authorized resources, idempotency, rollback and synthetic rejection', { timeout: 90_000 }, async t => {
   await ownedPostgres();
@@ -48,6 +50,7 @@ await test('S2.4 real analysis HTTP freezes authorized resources, idempotency, r
         await tx.outboxEvent.deleteMany({ where: { ownerId: id } });
         await tx.analysisTask.deleteMany({ where: { ownerId: id } });
         await tx.analysisConfiguration.deleteMany({ where: { ownerId: id } });
+        await tx.scoringPolicy.deleteMany({ where: { ownerId: id } });
         await tx.rubricVersion.deleteMany({ where: { ownerId: id } });
         await tx.jobCorpusVersion.deleteMany({ where: { ownerId: id } });
         await tx.jobIndexTarget.deleteMany({ where: { ownerId: id } });
@@ -74,6 +77,7 @@ await test('S2.4 real analysis HTTP freezes authorized resources, idempotency, r
     componentVersion: settings.indexTarget.componentVersion, budget: settings.budget });
   await new JobCorpusRepository(database).freeze(ownerId, 'test-corpus-v1', [draft.id], skillDictionaryV1);
   await jobs.importRubric(ownerId, rubricVersionSchema.parse(JSON.parse(readFileSync('resources/rubrics/rubric-v1.json', 'utf8')) as unknown));
+  await new ScoringPolicyRepository(database).import(ownerId, defaultScoringPolicy);
   await app.listen(0, '127.0.0.1'); const base = await app.getUrl();
   const request = { resumeVersionId: versionId, asOfDate: '2026-11-27', jobCorpusVersionId: 'test-corpus-v1' }, key = randomUUID();
   const send = (body: unknown, idempotencyKey = key) => fetch(`${base}/api/v1/analyses`, { method: 'POST',

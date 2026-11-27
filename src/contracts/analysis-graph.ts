@@ -3,7 +3,7 @@ import { sha256Schema } from './evidence.js';
 import { versionNameSchema } from './jobs.js';
 import { taskFailureCodeSchema } from './tasks.js';
 
-export const analysisNodeSchema = z.enum(['LOAD', 'PARSE', 'EXTRACT', 'VALIDATE', 'PROFILE', 'RECALL', 'SNAP', 'MATCH', 'JOIN', 'FINALIZE']);
+export const analysisNodeSchema = z.enum(['LOAD', 'PARSE', 'EXTRACT', 'VALIDATE', 'PROFILE', 'RECALL', 'SNAP', 'MATCH', 'SCORE', 'RANK', 'JOIN', 'FINALIZE']);
 export type AnalysisNode = z.infer<typeof analysisNodeSchema>;
 export const analysisNodeResultSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('ok'), artifactId: z.uuid() }).strict(),

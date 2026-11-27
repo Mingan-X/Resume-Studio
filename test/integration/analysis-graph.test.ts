@@ -88,9 +88,9 @@ await test('S2.4 business graph survives worker death, validates artifacts and f
       payload: { path: ['dispatchGeneration'], equals: current.generation } } });
     const message = taskDispatchSchema.parse(outbox.payload), fresh = spawn(ownerId, message, 'normal'), next = await fresh.event('claimed');
     assert.equal(next.graph.threadId === info.graph.threadId, confirmed); assert.equal(next.graph.generation, info.graph.generation + (confirmed ? 0 : 1));
-    assert.equal((await fresh.event('finished')).nodes, 10); assert.equal((await fresh.exited)[0], 0);
+    assert.equal((await fresh.event('finished')).nodes, 12); assert.equal((await fresh.exited)[0], 0);
     assert.ok(!fresh.events.some(event => event.event === 'node' && ['LOAD', 'PARSE'].includes(event.node)));
-    assert.equal(await db.nodeArtifact.count({ where: { ownerId } }), 10);
+    assert.equal(await db.nodeArtifact.count({ where: { ownerId } }), 12);
     for (const prior of saved) assert.deepEqual(await db.nodeArtifact.findUnique({ where: { id: prior.id } }), prior);
     const newClaim: ExecutionClaim = { ...oldClaim, message, attemptId: next.attemptId, fenceToken: BigInt(next.fenceToken),
       startedAt: new Date(next.startedAt), deadline: new Date(next.deadline), graph: next.graph };

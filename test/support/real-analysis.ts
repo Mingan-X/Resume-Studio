@@ -12,6 +12,8 @@ import { realAnalysisInputSchema, taskDispatchSchema } from '../../src/contracts
 import { skillDictionaryV1 } from '../../src/modules/recall/skills.js';
 import { analysisConfiguration } from './analysis-inputs.js';
 import { jobDraft } from './job-inputs.js';
+import { ScoringPolicyRepository } from '../../src/infrastructure/tasks/scoring-policy.repository.js';
+import { defaultScoringPolicy } from '../../src/modules/scoring/default-policy.js';
 
 export async function seedRealAnalysis(database: DatabaseService, ownerId: string,
   options: { settings?: ReturnType<typeof analysisConfiguration>; jobCount?: number; requirementCount?: number; allowSynthetic?: boolean } = {}) {
@@ -36,6 +38,7 @@ export async function seedRealAnalysis(database: DatabaseService, ownerId: strin
   }
   await new JobCorpusRepository(database).freeze(ownerId, 'test-corpus-v1', drafts.map(draft => draft.id), skillDictionaryV1);
   await jobs.importRubric(ownerId, rubricVersionSchema.parse(JSON.parse(await readFile('resources/rubrics/rubric-v1.json', 'utf8')) as unknown));
+  await new ScoringPolicyRepository(database).import(ownerId, { ...defaultScoringPolicy, version: settings.scoringVersion });
   const taskId = await new AnalysisRepository(database).create(ownerId, randomUUID(), { resumeVersionId: versionId,
     asOfDate: '2026-11-27', jobCorpusVersionId: 'test-corpus-v1' }, settings, options.allowSynthetic);
   const task = await db.analysisTask.findUniqueOrThrow({ where: { id: taskId } });
@@ -50,10 +53,19 @@ export async function cleanRealAnalysis(database: DatabaseService, ownerId: stri
     await tx.taskEvent.deleteMany({ where: { ownerId } }); await tx.taskAttempt.deleteMany({ where: { ownerId } });
     await tx.outboxEvent.deleteMany({ where: { ownerId } });
     await tx.analysisSummary.deleteMany({ where: { ownerId } });
+    await tx.rankingSnapshot.deleteMany({ where: { ownerId } });
+    // Derived scores reference their source; remove the finite per-owner DAG from leaves to roots.
+    let remaining = await tx.scoreSet.count({ where: { ownerId } });
+    while (remaining) {
+      const leaves = await tx.scoreSet.findMany({ where: { ownerId, revisions: { none: {} } }, select: { id: true } });
+      if (!leaves.length) throw new Error('SCORE_REVISION_CYCLE');
+      await tx.scoreSet.deleteMany({ where: { ownerId, id: { in: leaves.map(item => item.id) } } }); remaining -= leaves.length;
+    }
     await tx.profileAssessment.deleteMany({ where: { ownerId } }); await tx.matchPlan.deleteMany({ where: { ownerId } });
     await tx.candidateSet.deleteMany({ where: { ownerId } }); await tx.analysisTask.deleteMany({ where: { ownerId } });
     await tx.resumeExtraction.deleteMany({ where: { ownerId } });
     await tx.analysisConfiguration.deleteMany({ where: { ownerId } }); await tx.rubricVersion.deleteMany({ where: { ownerId } });
+    await tx.scoringPolicy.deleteMany({ where: { ownerId } });
     await tx.jobCorpusVersion.deleteMany({ where: { ownerId } }); await tx.jobIndexTarget.deleteMany({ where: { ownerId } });
     await tx.jobIndexTask.deleteMany({ where: { ownerId } }); await tx.jobVersion.deleteMany({ where: { ownerId } }); await tx.job.deleteMany({ where: { ownerId } });
     await tx.resumeUpload.deleteMany({ where: { ownerId } }); await tx.extractedDocument.deleteMany({ where: { ownerId } });

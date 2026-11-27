@@ -6,7 +6,9 @@ import type { ExecutionClaim } from '../consumer/contracts.js';
 import { ExecutionLeaseLostError } from '../consumer/contracts.js';
 import { requireAnalysisAuthority } from './analysis-artifact.repository.js';
 import { analysisSummarySchema, analysisCompletionSchema } from '../../contracts/analysis-summary.js';
-import { taskCountsSchema, taskFailureCodeSchema } from '../../contracts/tasks.js';
+import { taskCountsSchema, taskFailureCodeSchema, realAnalysisInputSchema } from '../../contracts/tasks.js';
+import { scoreSetSchema, rankingResultSchema } from '../../contracts/scoring.js';
+import { rankScores } from '../../modules/scoring/rank.js';
 import { profileAssessmentSchema } from '../../contracts/profile.js';
 import { matchPlanSchema, requirementExecutionSchema } from '../../contracts/matching.js';
 import { candidateSetContentSchema } from '../../contracts/candidates.js';
@@ -28,12 +30,26 @@ async function summarize(tx: Prisma.TransactionClient, claim: ExecutionClaim, er
     failed = executions.filter(row => row.status === 'FAILED').length, truncated = executions.filter(row => row.status === 'BUDGET').length,
     pending = executions.filter(row => row.status === 'PENDING').length;
   const profileError = taskFailureCodeSchema.nullable().parse(errors.profileError), matchingError = taskFailureCodeSchema.nullable().parse(errors.matchingError);
+  const snapshot = realAnalysisInputSchema.parse(claim.snapshot);
+  let scoring: { scoreSetId: string | null; rankingId: string | null } | undefined;
+  if (snapshot.scoringPolicyHash) {
+    const score = await tx.scoreSet.findFirst({ where: { ownerId: claim.ownerId, taskId: claim.message.taskId, sourceScoreSetId: null }, include: { ranking: true } });
+    if (plan && !matchingError && !score?.ranking) throw new Error('SCORING_ARTIFACTS_MISSING');
+    if (score) {
+      const content = scoreSetSchema.parse(score.content);
+      if (requestHash(content) !== score.contentHash || content.policyHash !== snapshot.scoringPolicyHash || content.planId !== plan?.id
+        || content.judgmentSetHash !== requestHash({ plan: planContent, executions })) throw new Error('SCORING_ARTIFACTS_INVALID');
+      if (!score.ranking || requestHash(rankingResultSchema.parse(score.ranking.content)) !== score.ranking.contentHash
+        || requestHash(rankScores(content.results)) !== score.ranking.contentHash) throw new Error('RANKING_ARTIFACTS_INVALID');
+    }
+    scoring = { scoreSetId: score?.id ?? null, rankingId: score?.ranking?.id ?? null };
+  }
   const profileAvailable = !!profile && !profileError, matchingAvailable = !!plan && !!candidates && !matchingError && (planned === 0 || completed > 0);
   const degraded = candidateContent?.recall.degraded ?? false;
   const status = !profileAvailable && !matchingAvailable ? 'FAILED' : profileAvailable && matchingAvailable && failed + truncated + pending === 0 && !degraded ? 'SUCCEEDED' : 'PARTIAL';
   return analysisSummarySchema.parse({ schemaVersion: 1, taskId: claim.message.taskId, inputHash: requestHash(claim.snapshot), status,
     profileId: profile?.id ?? null, candidateSetId: candidates?.id ?? null, matchPlanId: plan?.id ?? null,
-    profileError, matchingError, degraded, planned, completed, failed, truncated, pending });
+    profileError, matchingError, degraded, planned, completed, failed, truncated, pending, ...scoring });
 }
 
 export class AnalysisSummaryRepository {
@@ -52,7 +68,7 @@ export class AnalysisSummaryRepository {
     });
   }
   async progress(claim: ExecutionClaim, rawStage: unknown, rawCounts: unknown) {
-    const stage = z.enum(['LOAD','PARSE','EXTRACT','VALIDATE','PROFILE','RECALL','SNAP','MATCH','JOIN','FINALIZE']).parse(rawStage), counts = taskCountsSchema.parse(rawCounts);
+    const stage = z.enum(['LOAD','PARSE','EXTRACT','VALIDATE','PROFILE','RECALL','SNAP','MATCH','SCORE','RANK','JOIN','FINALIZE']).parse(rawStage), counts = taskCountsSchema.parse(rawCounts);
     await this.database.client.$transaction(async tx => {
       await requireAnalysisAuthority(tx, claim);
       const previous = await tx.taskEvent.findFirst({ where: { ownerId: claim.ownerId, taskType: 'ANALYSIS', taskId: claim.message.taskId }, orderBy: { seq: 'desc' } });

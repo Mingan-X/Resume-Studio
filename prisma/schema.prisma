@@ -74,6 +74,8 @@ model ScoringPolicy {
   version String @db.VarChar(64)
   content Json @db.JsonB
   contentHash String @map("content_hash") @db.Char(64)
+  tasks AnalysisTask[]
+  scoreSets ScoreSet[]
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   @@id([ownerId, version])
   @@map("scoring_policy")
@@ -208,6 +210,8 @@ model AnalysisTask {
   rubric RubricVersion? @relation(fields: [ownerId, rubricVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
   configurationVersion String? @map("configuration_version") @db.VarChar(64)
   configuration AnalysisConfiguration? @relation(fields: [ownerId, configurationVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  scoringPolicyVersion String? @map("scoring_policy_version") @db.VarChar(64)
+  scoringPolicy ScoringPolicy? @relation(fields: [ownerId, scoringPolicyVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
   activeGraphThreadId String @map("active_graph_thread_id") @db.Uuid
   graphGeneration Int @default(1) @map("graph_generation")
   reportId String? @map("report_id") @db.Uuid
@@ -236,6 +240,7 @@ model AnalysisTask {
   profile ProfileAssessment?
   matchPlan MatchPlan?
   summary AnalysisSummary?
+  scoreSets ScoreSet[]
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -243,6 +248,39 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model ScoreSet {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  policyVersion String @map("policy_version") @db.VarChar(64)
+  policy ScoringPolicy @relation(fields: [ownerId, policyVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  sourceScoreSetId String? @map("source_score_set_id") @db.Uuid
+  sourceScoreSet ScoreSet? @relation("RecomputedScore", fields: [ownerId, sourceScoreSetId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  revisions ScoreSet[] @relation("RecomputedScore")
+  operationKey String @unique @map("operation_key") @db.Char(64)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  ranking RankingSnapshot?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, id])
+  @@index([ownerId, taskId])
+  @@map("score_set")
+}
+
+model RankingSnapshot {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  scoreSetId String @unique @map("score_set_id") @db.Uuid
+  scoreSet ScoreSet @relation(fields: [ownerId, scoreSetId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, id])
+  @@unique([ownerId, scoreSetId])
+  @@map("ranking_snapshot")
 }
 
 model AnalysisSummary {
