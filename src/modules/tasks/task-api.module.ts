@@ -6,11 +6,15 @@ import { INFRA_CONFIG } from '../../infrastructure/tokens.js';
 import { TaskQueryRepository } from '../../infrastructure/tasks/task-query.repository.js';
 import { TaskQueryService } from './task-query.service.js';
 import { TaskController } from './task.controller.js';
+import { AnalysisController } from './analysis.controller.js';
+import { AnalysisRepository } from '../../infrastructure/tasks/analysis.repository.js';
+import { ANALYSIS_CONFIGURATION, AnalysisCreationService } from './analysis-creation.service.js';
 
 @Module({})
 export class TaskApiModule {
-  static register(config: { databaseUrl: string }): DynamicModule {
-    return { module: TaskApiModule, imports: [IdentityModule], controllers: [TaskController],
-      providers: [{ provide: INFRA_CONFIG, useValue: config }, DatabaseService, TaskQueryRepository, TaskQueryService] };
+  static register(config: { databaseUrl: string }, analysisConfiguration: unknown = null): DynamicModule {
+    return { module: TaskApiModule, imports: [IdentityModule], controllers: [TaskController, AnalysisController],
+      providers: [{ provide: INFRA_CONFIG, useValue: config }, DatabaseService, TaskQueryRepository, TaskQueryService,
+        AnalysisRepository, AnalysisCreationService, { provide: ANALYSIS_CONFIGURATION, useValue: analysisConfiguration }] };
   }
 }

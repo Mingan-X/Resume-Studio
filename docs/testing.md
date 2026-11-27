@@ -1,5 +1,7 @@
 # 测试与验证
 
+当前Qdrant单请求上限在S2.4-T1依据11.93秒服务端创建记录进一步调整为15秒，沿用维护者已授权的Qdrant范围；原操作/任务/父测试总期限及取消和重试不变。下段10秒为先前调整记录；[本次证据](research/s24-qdrant-2026-11-27.md)与progress保留全部失败。HTTP桩同时验证5.5秒与11.5秒响应，原更早总期限/取消/错误/归属断言保留。
+
 2026-11-27经维护者明确授权，Qdrant SDK/索引适配器单请求上限从5秒改为10秒（依据服务端6.459秒/5.673秒创建记录）。默认Docker与原生对照使用相同新上限，操作/任务总期限、父测试期限及CRUD/维数/归属/fence断言不变。下述历史“原5秒”记录保留为旧验证条件；独立清理HTTP仍为5秒、清理总期限15秒。API、数据库、RabbitMQ和Langfuse超时未放宽；L2原性能目标不因此自动解除。
 
 同轮修复增加安全诊断：Checkpoint Worker测试fixture在失败时输出lock/claim/execute阶段、耗时及有界cause白名单分类；观测metrics记录最后一次传输失败的stage/reason/status/elapsedMs，不保留错误正文、URL或凭证。诊断不新增重试、不改变导出丢失语义；`safe-failure.test`与原观测故障测试验证分类和隐私边界。`index-vector.test`以5.5秒HTTP响应验证授权后的上限，并保留更早总deadline及取消拒绝测试。
@@ -8,7 +10,11 @@ S2.3语料的确定性生成、技能字典与真实数据库专项见[岗位语
 
 当前测试使用 TypeScript 编译产物和 Node 内置 test runner，Nest testing用于创建应用上下文；没有额外的测试转换器。真实集成测试默认连接独立的本项目容器；维护者明确授权的原生Qdrant仅用于下述显式对照入口，不使用其他项目实例。
 
+依据本机慢盘及维护者“严禁并行构建/安装/测试”的执行约束，基础测试和集成测试入口都显式使用 `--test-concurrency=1`，命令之间也串行执行。测试内部用于验证竞争/幂等的必要并发仍保留；所有原超时、断言和用例均保留，不用放宽期限或删除测试应对机器负载。
+
 ## 当前验收状态
+
+S2.4-T1的[分析输入专项](analysis-input.md#验证边界)覆盖真实HTTP/数据库及Outbox回滚，默认纳入test:integration；样本全部为本轮临时owner下的合成简历/JD，正式Rubric只复制内容到临时owner。每轮owner清单保存在忽略的data/s24-analysis-runs，清理前重新核验本项目PostgreSQL归属。不证明后续分析图、真实模型或质量评测已交付。
 
 S2.3测试入口及边界见[岗位召回](job-recall.md#验证)、[索引](job-index.md)、[候选冻结](candidate-sets.md)、[百炼HTTP桩](embedding.md)、[评测脚本](recall-evaluation.md)。默认Docker真实索引/召回/冻结测试仅使用独立owner合成数据，精确清理按manifest和实例/集合metadata核验；清理遇可恢复传输失败只在原15秒窗口重试，不覆盖业务失败。真实百炼Key、人工标签与原生对照未执行项按progress逐次记录，不能从单元或HTTP桩报告召回质量。
 

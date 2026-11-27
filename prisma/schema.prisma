@@ -62,6 +62,7 @@ model Owner {
   jobs Job[]
   rubrics RubricVersion[]
   jobCorpora JobCorpusVersion[]
+  analysisConfigurations AnalysisConfiguration[]
 
   @@map("owner")
 }
@@ -76,6 +77,7 @@ model JobCorpusVersion {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   candidateSets CandidateSet[]
+  analysisTasks AnalysisTask[]
 
   @@id([ownerId, version])
   @@map("job_corpus_version")
@@ -119,6 +121,7 @@ model ResumeVersion {
   blocks EvidenceBlock[]
   uploads ResumeUpload[]
   extractedDocument ExtractedDocument?
+  analysisTasks AnalysisTask[]
   @@unique([resumeId, version])
   @@unique([ownerId, id])
   @@unique([ownerId, id, fileHash])
@@ -167,6 +170,14 @@ model AnalysisTask {
   ownerId String @map("owner_id") @db.Uuid
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   resumeVersionId String @map("resume_version_id") @db.Uuid
+  realResumeVersionId String? @map("real_resume_version_id") @db.Uuid
+  realResumeVersion ResumeVersion? @relation(fields: [ownerId, realResumeVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  corpusVersion String? @map("corpus_version") @db.VarChar(64)
+  corpus JobCorpusVersion? @relation(fields: [ownerId, corpusVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  rubricVersion String? @map("rubric_version") @db.VarChar(64)
+  rubric RubricVersion? @relation(fields: [ownerId, rubricVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  configurationVersion String? @map("configuration_version") @db.VarChar(64)
+  configuration AnalysisConfiguration? @relation(fields: [ownerId, configurationVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
   activeGraphThreadId String @map("active_graph_thread_id") @db.Uuid
   graphGeneration Int @default(1) @map("graph_generation")
   reportId String? @map("report_id") @db.Uuid
@@ -302,8 +313,21 @@ model RubricVersion {
   content Json @db.JsonB
   contentHash String @map("content_hash") @db.Char(64)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  analysisTasks AnalysisTask[]
   @@id([ownerId, version])
   @@map("rubric_version")
+}
+
+model AnalysisConfiguration {
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  version String @db.VarChar(64)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  tasks AnalysisTask[]
+  @@id([ownerId, version])
+  @@map("analysis_configuration")
 }
 
 model JobIndexTarget {

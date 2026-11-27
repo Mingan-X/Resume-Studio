@@ -13,7 +13,7 @@
     "openapi:generate": "pnpm run build && node scripts/openapi.mjs",
     "openapi:check": "pnpm run build && node scripts/openapi.mjs --check",
     "lint": "eslint . --max-warnings=0",
-    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "test": "pnpm run build && node --test --test-concurrency=1 dist/test/*.test.js",
     "start:api": "node --env-file-if-exists=.env dist/src/main-api.js",
     "start:worker": "node --env-file-if-exists=.env dist/src/main-worker.js",
     "infra:init": "node scripts/infra-init.mjs",

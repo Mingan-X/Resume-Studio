@@ -13,6 +13,7 @@ const { jobPathSchema, jobVersionPathSchema, jobListQuerySchema, jobListResponse
 const { createJobDraftSchema, editJobDraftSchema } = await import('../dist/src/contracts/job-drafts.js');
 const { jobConfirmationSchema, jobPublicationResultSchema } = await import('../dist/src/contracts/job-publication.js');
 const { jdExtractionResultSchema } = await import('../dist/src/contracts/job-extraction.js');
+const { createAnalysisRequestSchema, createAnalysisResponseSchema } = await import('../dist/src/contracts/analyses.js');
 const registry = new OpenAPIRegistry();
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
@@ -43,6 +44,10 @@ registry.registerPath({ method: 'get', path: '/api/v1/resumes/{resumeId}/version
   request: { params: resumeVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(resumeVersionResponseSchema, '不可变文本与警告，不返回结构化占位'), ...errors } });
 const jobErrors = { ...errors, 409: response(error, '幂等冲突或未确认/引用失效'), 422: response(error, '模型输出或预算不满足'), 503: response(error, '模型或索引目标未配置/暂不可用') };
 const jsonBody = schema => ({ required: true, content: { 'application/json': { schema } } });
+registry.registerPath({ method: 'post', path: '/api/v1/analyses', operationId: 'createAnalysis', summary: '冻结授权输入并事务创建分析任务',
+  request: { query: taskQuerySchema, headers: z.object({ 'idempotency-key': z.uuid() }), body: jsonBody(createAnalysisRequestSchema) },
+  responses: { 202: response(createAnalysisResponseSchema, '任务和Outbox已提交；同key同请求返回原任务'), ...errors,
+    409: response(error, '幂等冲突或配置版本内容变化'), 503: response(error, '分析配置不可用') } });
 registry.registerPath({ method: 'post', path: '/api/v1/jobs', operationId: 'createJob', summary: '创建JD草稿', request: { query: taskQuerySchema, body: jsonBody(createJobDraftSchema) }, responses: { 201: response(jobVersionResponseSchema, '新草稿版本'), ...jobErrors } });
 registry.registerPath({ method: 'get', path: '/api/v1/jobs', operationId: 'listJobs', summary: 'owner范围岗位列表', request: { query: jobListQuerySchema }, responses: { 200: response(jobListResponseSchema, '稳定游标分页'), ...jobErrors } });
 registry.registerPath({ method: 'get', path: '/api/v1/jobs/{jobId}', operationId: 'getJob', summary: '岗位最新版本', request: { params: jobPathSchema, query: taskQuerySchema }, responses: { 200: response(jobVersionResponseSchema, '最新版本'), ...jobErrors } });

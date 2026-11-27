@@ -56,7 +56,8 @@
               "MODEL_UNAVAILABLE",
               "MODEL_OUTPUT_INVALID",
               "MODEL_BUDGET_EXHAUSTED",
-              "INDEX_TARGET_UNAVAILABLE"
+              "INDEX_TARGET_UNAVAILABLE",
+              "ANALYSIS_UNAVAILABLE"
             ]
           },
           "message": {
@@ -1627,6 +1628,184 @@
           },
           "500": {
             "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyses": {
+      "post": {
+        "operationId": "createAnalysis",
+        "summary": "冻结授权输入并事务创建分析任务",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resumeVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "asOfDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "jobCorpusVersionId": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$"
+                  }
+                },
+                "required": [
+                  "resumeVersionId",
+                  "asOfDate",
+                  "jobCorpusVersionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "任务和Outbox已提交；同key同请求返回原任务",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "statusUrl": {
+                      "type": "string",
+                      "pattern": "^\\/api\\/v1\\/tasks\\/[a-f0-9-]{36}$"
+                    }
+                  },
+                  "required": [
+                    "taskId",
+                    "statusUrl"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或Schema校验失败",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不可见或不存在",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "幂等冲突或配置版本内容变化",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "安全的服务端错误",
+            "headers": {
+              "x-request-id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "分析配置不可用",
             "headers": {
               "x-request-id": {
                 "schema": {

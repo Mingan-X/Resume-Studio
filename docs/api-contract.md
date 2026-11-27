@@ -56,6 +56,8 @@
 
 S2.2新增可选details.fields（path/code，无原始值）与MODEL_UNAVAILABLE、MODEL_OUTPUT_INVALID、MODEL_BUDGET_EXHAUSTED、INDEX_TARGET_UNAVAILABLE；岗位接口实际状态码见api.md。字段校验通过运行时Zod执行，OpenAPI不能代替跨字段、owner与发布事务约束。
 
+S2.4-T1新增ANALYSIS_UNAVAILABLE（503）：服务端未配置分析输入配置。创建接口的资源不可见404、同幂等键不同正文409、配置版本内容冲突409，均不返回内部配置或原始异常。
+
 当前结构（**已实现**）：
 
 ```json
@@ -92,7 +94,7 @@ S2.2新增可选details.fields（path/code，无原始值）与MODEL_UNAVAILABLE
 
 ## 7. 异步任务
 
-分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；岗位发布已创建真实索引任务；分析创建HTTP与SSE仍规划。
+分析与索引都是长任务，HTTP请求不在进程内执行它们。**查询/取消已实现**（S1.4-T8，本地固定开发主体）；岗位发布已创建真实索引任务；S2.4-T1新增分析创建HTTP，SSE仍规划。创建字段与错误见[API](api.md)及[分析输入](analysis-input.md)，业务图由S2.4后续任务接入。
 
 1. 创建：`POST` 返回 `202`，响应体含 `taskId` 与 `statusUrl`。
 2. 查询：`GET /api/v1/tasks/:taskId` 返回 `taskId`、`taskType`（ANALYSIS/JOB_INDEX）、`status`、`stage`、`progress: {completed, total}`（总量未知时 `total` 为null）、累计领取次数 `attempt`、`nextRetryAt`、`error`（任务错误白名单及安全文案）、`reportId`、`cancelRequested`。不返回owner/输入/租约/fence/图线程。当前合成任务无报告。

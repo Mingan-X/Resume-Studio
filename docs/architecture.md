@@ -94,6 +94,8 @@ API入口组合 Controller、应用服务和领域模块；Worker入口组合消
 
 ### 4.1 简历分析图
 
+S2.4-T1已增加真实分析输入、创建HTTP及同事务Outbox，输入和配置冻结边界见[分析输入](analysis-input.md)。下图语义节点仍由S2.4后续任务接入。真实corpus身份沿用owner/versionName；配置和简历/corpus/Rubric外键与旧synthetic快照分开约束。
+
 ```mermaid
 flowchart TD
     START([开始/恢复]) --> LOAD[加载冻结输入及产物]

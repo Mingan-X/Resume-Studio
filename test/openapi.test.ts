@@ -28,7 +28,8 @@ await test('OpenAPI artifact is deterministic and stale/missing copies fail with
 await test('published contract includes actual HTTP operations and distinct task statuses without internal fields',async()=>{
   const document=z.object({openapi:z.literal('3.1.0'),paths:z.record(z.string(),z.record(z.string(),z.unknown())),
     components:z.object({schemas:z.record(z.string(),z.unknown())})}).parse(JSON.parse(await readFile('docs/openapi.json','utf8')) as unknown);
-  assert.deepEqual(Object.keys(document.paths).sort(),['/api/v1/jobs','/api/v1/jobs/{jobId}','/api/v1/jobs/{jobId}/versions/{versionId}','/api/v1/jobs/{jobId}/versions/{versionId}/confirm','/api/v1/jobs/{jobId}/versions/{versionId}/publish','/api/v1/jobs/{jobId}/versions/{versionId}/suggestions','/api/v1/resumes','/api/v1/resumes/{resumeId}/versions/{versionId}','/api/v1/tasks/{taskId}','/api/v1/tasks/{taskId}/cancel','/health']);
+  assert.deepEqual(Object.keys(document.paths).sort(),['/api/v1/analyses','/api/v1/jobs','/api/v1/jobs/{jobId}','/api/v1/jobs/{jobId}/versions/{versionId}','/api/v1/jobs/{jobId}/versions/{versionId}/confirm','/api/v1/jobs/{jobId}/versions/{versionId}/publish','/api/v1/jobs/{jobId}/versions/{versionId}/suggestions','/api/v1/resumes','/api/v1/resumes/{resumeId}/versions/{versionId}','/api/v1/tasks/{taskId}','/api/v1/tasks/{taskId}/cancel','/health']);
+  assert.ok(document.paths['/api/v1/analyses']?.post);
   assert.ok(document.paths['/api/v1/tasks/{taskId}']?.get);assert.ok(document.paths['/api/v1/tasks/{taskId}/cancel']?.post);
   const output=JSON.stringify(document.components.schemas.TaskResponse);
   for(const forbidden of ['fenceToken','ownerId','inputSnapshot','activeGraphThreadId','leaseOwner'])assert.ok(!output.includes(forbidden));

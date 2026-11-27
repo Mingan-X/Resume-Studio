@@ -8,6 +8,48 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T1完成验证，真实分析创建已交付
+
+完成真实TaskInputSnapshot与synthetic区分、POST /api/v1/analyses、202 taskId/statusUrl、所有权/解析产物检查、corpus/Rubric/configuration冻结及真实外键、同事务Outbox、同key同请求复用和不同请求409；查询支持真实任务，synthetic入口不领取。新增配置版本不可变表，不持久化模型连接/Key。API、契约、OpenAPI、架构、部署/测试及分析输入文档同步。Qdrant15秒请求修正、CLI早校验与串行基础入口属于本次回归阻塞修复，依据和历次失败完整保留于下文。
+
+最终typecheck、零警告lint通过；基础110/110、60.465秒（data/s24-t1-t2-unit-final.log，含独立T2四项测试草稿）；此前串行109/109、46.635秒通过。最终完整test:integration137/137、592.790秒（data/s24-t1-integration-2.log），覆盖6项真实分析创建HTTP/DB用例和既有回归；Qdrant基础创建4803.3ms、索引主体34.976秒、Outbox死信181.149秒。OpenAPI生成/一致性通过；迁移generate/validate/deploy两次/status通过、15条。11份文档189项本地文件链接及git diff --check通过。新增配置文件边界测试在完整集成后补充，最终基础已覆盖；生产代码未再变更。
+
+归属核验后的只读资源（data/s24-t1-resources.json）：仅开发owner=1；Job/JobVersion/JobIndexTask/JobIndexRequest/JobCorpusVersion/CandidateSet/Candidate/AnalysisTask/AnalysisConfiguration/Resume/FileAsset全部0；4正式队列ready/unacked=0；Qdrant集合空。正式rubric-v1的hash仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d，AI_DRAFT/PENDING_REVIEW未改。没有删卷/数据库/配置，旧孤立policy未操作。
+
+未执行：原生6333未监听，按用户手动管理约定不启停；真实Key/embedding/模型T9、人工标注/质量及目标服务器/L1/L2解除仍按路线图延后；没有依赖声明/锁文件变化，不重复冻结安装。T1按任务提交，阶段仍进行中，不合并/推送直到非延后任务和阶段回归完成；接续T2/T3。
+
+## 2026-11-27 S2.4-T1专项通过，基础入口改为遵守串行约束
+
+Qdrant索引专项1/1通过，45.800秒（主体38.553秒，data/s24-t1-qdrant-targeted.log），在原180秒父测试及15秒初始化期限内验证幂等upsert、原子READY、旧目标fence；精确清理成功。随后基础108/109、21.697秒（data/s24-t1-t2-unit-5.log），索引CLI早期拒绝及module-load断言通过，唯一失败为百炼40ms超时用例请求数expected 1/actual 0。单独原样运行百炼专项1/1、0.378秒通过（data/s24-t1-bailian-targeted.log）。
+
+发现pnpm test的Node默认仍并行运行文件，与用户明确“严禁并行构建/安装/测试”的本机约束不符。只为基础test脚本补--test-concurrency=1，与已有集成入口一致；40ms超时、请求数严格等于1和全部其他用例/断言不改，测试内部幂等/竞争并发仍保留。依赖声明和锁文件未变，不新增冻结安装要求。该调整是执行调度，不改业务期限或验收条件；接着执行串行基础及完整回归，历史失败均保留。
+
+## 2026-11-27 S2.4-T1索引CLI早期校验修正
+
+Qdrant15秒调整后基础108/109、33.965秒（data/s24-t1-t2-unit-4.log）；新5.5/11.5秒Qdrant HTTP桩及T2四项调用包装测试通过，唯一失败再次为原索引CLI缺配置路径在10秒时stderr为空。原断言和10秒限制未改，不归L1/L2。源码显示入口在try内校验配置前静态导入数据库、Nest身份和完整运行链路；修正为只依赖Zod/路径校验的入口，模式、开发身份、绝对配置路径及embedding文件校验通过后才动态加载运行模块。执行逻辑、错误码及关闭流程保留，并复用module-load hook增加缺配置/production拒绝时不加载Nest/Prisma/runtime的断言。
+
+此修正属于T1回归阻塞处理，不扩展业务范围或选择新技术。类型检查、Lint通过，正在以原180秒父测试/15秒初始化总期限运行失败索引专项（data/s24-t1-qdrant-targeted.log），通过后再执行完整回归。此前日志均保留；T1/T2尚未提交或标完成。
+
+## 2026-11-27 S2.4-T1回归失败定位与Qdrant调整
+
+新增HTTP/数据库专项5/5通过（data/s24-t1-targeted.log，3.529秒）；随后补充实际API装配缺配置503用例，已进入完整回归。第二次基础104/105、8.139秒，唯一失败为OpenAPI测试路径清单未列新路由，已保留精确路径相等断言并补入/api/v1/analyses；第三次105/105、8.831秒通过（data/s24-t1-unit-2.log、unit-3.log）。此前HTTP桩和索引CLI失败在原限制下通过，不覆盖第一次失败。类型检查、零警告Lint、OpenAPI生成通过；7份文档107项本地文件链接通过。
+
+第一次完整`test:integration`136/137通过，689.444秒（data/s24-t1-integration.log）。唯一失败为既有S2.3 job-index首次ensure的UPSTREAM_TIMEOUT；新建分析及全部其他用例通过，基础Qdrant创建5322.6ms、Outbox死信181.502秒、Langfuse持久化通过。失败的本轮集合/队列/DB已精确清理，manifest cleaned=true；未宣称T1完成。
+
+归属核验后服务端白名单计时确认该集合PUT耗时11.929918秒，超出当前10秒；超时后立即回查404、稍后PUT成功，详细时间序列见[诊断](research/s24-qdrant-2026-11-27.md)，忽略目录保留脚本/JSON。沿用用户已授权“适当放宽Qdrant”，单请求上限进一步为15秒，原15秒初始化/清理及全部操作/任务总期限、取消、重试层数不变；其他服务及父测试时限不变。保留5.5秒HTTP桩，补11.5秒响应覆盖；接着执行验证，不以重复无改动全量碰运气。历史L1/L2及原5秒性能目标保留。
+
+原生6333无监听，未启停/未执行native对照。等待T1全量期间仅另写T2独立ModelCaller/单元草稿，未接入运行图；后续基础检查可能覆盖两任务代码，但T2须单独记录/提交，不能混称T1回归验证了模型业务图。
+
+## 2026-11-27 S2.4-T1实现与验证中
+
+接续feature/s2.4-profile-matching，起点5db9eb0工作区干净。增加真实analysis快照、owner范围创建HTTP、服务端安全配置冻结、AnalysisConfiguration不可变版本及简历/corpus/Rubric/configuration外键；corpus沿用已合并owner/versionName。任务/Outbox同事务；同key同请求先重放原任务，配置轮换不换输入；合成领取入口保持拒绝真实任务。尚未标完成或合并。
+
+已执行：Prisma generate/validate成功，db:deploy两次及status通过，15条迁移已应用；类型检查与Lint曾通过。编写测试期间两次括号语法错误、Lint两处未await test、后加SQL拒绝测试的Prisma JsonValue输入类型错误均逐项修正，不修改有效测试标准。
+
+第一次`pnpm test`为102/105，22.029秒，原日志data/s24-t1-unit.log保留：OpenAPI过期（新增接口尚未generate）；百炼HTTP桩超时路径expected request delta 1实际0；索引CLI原10秒内stderr为空，预期INDEX_RUNTIME_FAILED。后两项不归L1/L2，未修改期限、断言或旧实现。首次openapi:generate被新SQL拒绝测试的TS2322阻断（data/s24-t1-openapi-generate.log），修正为Schema校验后的JSON输入后重跑。后续结果另记，不覆盖旧失败。
+
+真实服务专项与完整回归尚待执行；原生Qdrant仍依用户手动启停、无监听不启动。真实模型/embedding调用、人工指标及目标环境验证继续按路线图延后。没有依赖/锁文件变更，没有操作master、前端或第三方消息。
+
 ## 2026-11-27 S2.3合并推送，S2.4接续
 
 S2.3-T9=0ce6ab55625f5ef8529205af4427904c295018d2已--no-ff合并develop，合并e0ccfa7aba565b89cd3f6e5ac22c904a7a9a4e63；origin/develop同值，origin/feature/s2.3-job-recall=0ce6ab5，推送成功。S2.3待维护者统一验收，真实调用/人工标注/原生对照与目标环境限制保留；master及前端未操作。合并后工作区干净，从develop创建feature/s2.4-profile-matching，按-d清理已合并本地S2.3分支，远端保留。

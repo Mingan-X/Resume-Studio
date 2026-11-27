@@ -85,7 +85,7 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
     embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion, dimensions: 8, provenance: 'synthetic',
     chunkerVersion: target.chunkerVersion, componentVersion: target.componentVersion });
   specs.push(spec); save();
-  // Authorized 10s request ceiling remains bounded by the original 15s setup deadline.
+  // Qdrant request ceiling remains bounded by the original 15s setup deadline.
   await vector.ensure(spec, { deadline: Date.now() + 15_000, signal: AbortSignal.timeout(15_000) });
   confirmed.add(indexCollectionName(spec)); save();
   assert.throws(() => createJobIndexDelivery(database, identity, embedding, vector), /OFFICIAL_EMBEDDING_REQUIRED/);

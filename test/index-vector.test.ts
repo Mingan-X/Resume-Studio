@@ -8,23 +8,26 @@ import { indexCollectionName } from '../src/modules/recall/job-chunks.js';
 import { JobIndexVector } from '../src/infrastructure/vector/job-index.vector.js';
 import { isRetryable } from '../src/infrastructure/consumer/failure.js';
 
-await test('authorized Qdrant budget accepts a response beyond the former five-second ceiling', async t => {
+await test('authorized Qdrant budget accepts responses beyond the former five- and ten-second ceilings', async t => {
   const spec = indexCollectionSchema.parse({ schemaVersion: 1, project: 'resume-studio', kind: 'job-index', ownerId: randomUUID(),
     embeddingVersion: 'fixture-v1', indexVersion: 'fixture-v1', dimensions: 8, provenance: 'synthetic',
     chunkerVersion: 'jd-chunks-v1', componentVersion: 'job-index-v1' });
   const timers = new Set<NodeJS.Timeout>();
+  let responseDelay = 5500;
   const server = createServer((_request, response) => {
     const timer = setTimeout(() => {
       timers.delete(timer);
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify({ status: 'ok', result: { config: { metadata: spec, params: { vectors: { size: 8, distance: 'Cosine' } } } } }));
-    }, 5500);
+    }, responseDelay);
     timers.add(timer);
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { for (const timer of timers) clearTimeout(timer); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const vector = new JobIndexVector({ url: `http://127.0.0.1:${address.port}`, apiKey: 'fixture-only' }, () => Promise.resolve());
+  assert.deepEqual(await vector.verify(spec, { signal: AbortSignal.timeout(15_000), deadline: Date.now() + 15_000 }), spec);
+  responseDelay = 11_500;
   assert.deepEqual(await vector.verify(spec, { signal: AbortSignal.timeout(15_000), deadline: Date.now() + 15_000 }), spec);
 });
 
