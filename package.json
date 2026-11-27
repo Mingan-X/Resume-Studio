@@ -8,6 +8,7 @@
     "pnpm": ">=12 <13"
   },
   "scripts": {
+    "evaluation:dataset": "node dist/src/infrastructure/evaluation/dataset.cli.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "openapi:generate": "pnpm run build && node scripts/openapi.mjs",
