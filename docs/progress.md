@@ -8,6 +8,28 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.2-T4基础设施专项结论与完整复验通过
+
+专项报告完成，见[故障诊断](research/infrastructure-diagnosis-2026-11-27.md)。未修改业务代码、服务配置、原超时/验收断言；证据确认共享持久化路径出现过严重同步停顿，但无法由历史日志确定最后一次DLX从路由发现到目标持久化/客户端接收的具体延迟位置，不声称修复了已证明的消息丢失。
+
+实际检查：原Outbox专项10/10通过（255.624秒，DLX181.686秒）；原完整pnpm run test:integration119/119通过、0失败/跳过（595.408秒，DLX183.303秒，Docker Qdrant创建4265.6ms）；typecheck、零警告lint通过；pnpm test70/70通过、0跳过（22.493秒）。两份文档17个本地文件链接与git diff --check通过。
+
+复验后核验Rabbit/Postgres/Qdrant实例归属：仅4条正式队列、ready/unacked均0；Qdrant集合0；数据库只保留原开发owner，Job/Rubric/Resume/FileAsset/DiagnosticRecord均0；两个独立诊断manifest.cleaned=true。已知旧孤立policy继续保留，其精确UUID模式不匹配正式及本轮队列，不盲删。未操作其他项目或原生Qdrant，未迁移数据、删除卷/数据库/配置，未清理C盘或关闭其他程序。
+
+当前最近完整回归已通过，允许恢复原S2.2任务流程；这是本轮回归门禁解除，不是长期环境稳定或L1/L2解除。阶段仍进行中、未合并推送，T6正式Rubric导入及T7–T10、S2.3–S3.3仍未完成。优先改善存储：E/D/F同机械盘，C仅约3.3GiB空闲，现有Docker VHD约22.1GiB，需先提供容量足够的SSD/NVMe/目标机器再制定备份与受控迁移；不以增大190秒窗口换取通过。首次管理观察超时、raw源码下载连接重置等诊断失败保留在前条/报告，不隐藏。
+
+## 2026-11-27 S2.2-T4基础设施故障专项排查（维护者明确授权）
+
+维护者在原会话授权专项排查；续接会话已completed/idle，当前feature/s2.2-jd-rubric、HEAD4fd039c、初始工作区干净。不改变D决策/验收窗口、不修改master或前端。报告见[基础设施诊断](research/infrastructure-diagnosis-2026-11-27.md)。
+
+关键证据：故障时PostgreSQL checkpoint同步耗时121.783秒、单文件60.436秒，同期RabbitMQ CLI net tick遗漏及10秒心跳丢失；Docker I/O full avg60约26%–27%。项目/依赖/约22.1GiB Docker VHD在E盘机械盘，D/E/F同物理盘；C为NVMe但只剩约3.3GiB，未迁移或清理。当前无Rabbit告警、九服务healthy，但不据此否定历史停顿。具体磁盘/VHD/分页/其他负载占比未分离。
+
+读取broker配置180000ms，核对官方v4.4.0源码blob b79a3154fdca46423055c445aacbcb7cc6edf71e；历史失败队列也在180.001秒后发现路由，日志不证明已持久化/客户端收到。独立合成诊断恢复绑定后180.036秒收到同messageId及rejected x-death；321次get最长RPC2.176秒、Node最大事件循环延迟569ms。首轮可选管理HTTP观察超时，实验未进入且已清理；第二轮观察错误单独记录，业务窗口未变，CLI快照补充源队列pending证据。
+
+原Outbox专项node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --test --test-concurrency=1 dist/test/integration/outbox.test.js：10/10通过、0跳过，255.624秒，DLX子项181.686秒。末次精确资源核对：4条正式队列均空，两个诊断manifest.cleaned=true；Job/Resume/DiagnosticRecord均0、owner仅开发主体；已知孤立policy仍保留，不凭前缀删除。所有诊断文件保存在忽略data/infra-diagnosis-20261127。没有启停原生Qdrant/服务、改WAL/fsync/超时、删卷/库/凭证或声称问题已稳定修复。
+
+原完整pnpm run test:integration已启动用于确认回归门禁，结果待追加；本轮只改诊断文档，未新增依赖/迁移/业务代码，不额外编写镜像实现的测试。raw GitHub读取两次连接重置后通过官方contents API取得固定版本源码，失败保留。尚未解除阶段阻塞或标记T4完成。
+
 ## 2026-11-27 S2.2-T6仅保存AI草案，未导入
 
 T6按需求六维起草30个等级，带行为标准/证据门槛/全版本唯一featureId及20/40/60/80/100分值，元数据AI_DRAFT/PENDING_REVIEW。用已编译rubricVersionSchema只读校验JSON通过（6维、30等级），文档相对链接检查通过。未执行正式导入及加载专项，任务未完成；原因是T4可靠性依赖已触发停止条件。T5实现保存159abd2，当前阶段仍进行中，不合并推送。
