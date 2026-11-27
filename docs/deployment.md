@@ -1,5 +1,7 @@
 # 本地部署
 
+S2.5评分政策/结果迁移须先部署，再用`pnpm run scoring:import-default <ownerId>`为已存在的本地主体显式导入scoring-v1，最后启用新API/Worker。新任务创建冻结政策版本/hash，缺对应owner政策会拒绝创建；不自动更换版本。评分与重算均不调用模型，旧S2.4无scoringPolicyHash任务仍保留原图路径；具体兼容/回退及命令见[评分说明](scoring.md)。
+
 S2.4业务图与Worker配置/命令见[分析流程](analysis-workflow.md#本地执行与验证)。新ResumeExtraction/ProfileAssessment/MatchPlan/RequirementExecution/AnalysisSummary及NodeArtifact版本列保持既有合成任务兼容；先应用迁移，再部署业务执行入口。回退时停用新分析消费与创建，保留新表和产物，不删除数据或配置。
 
 S2.4-T1分析创建随TASK_API_ENABLED启用；ANALYSIS_CONFIG_FILE为可选绝对路径，配置字段、不可变版本及失败边界见[分析输入](analysis-input.md)。新增analysis_configuration与真实输入外键迁移兼容已有合成任务；部署后旧合成Worker仍不领取真实analysis任务，业务执行入口按S2.4-T3接入。不通过删数据/配置回滚；需回退API时先停用新分析创建并保留新表和已提交任务，旧版本不能处理真实快照。

@@ -8,6 +8,16 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.5-T8阶段回归通过，待统一验收
+
+最终基础126/126、68.675秒（data/s25-unit-final.log）、完整test:integration146/146、681.725秒（data/s25-integration.log）通过，0失败/跳过；类型检查、零警告Lint、OpenAPI产物一致性通过。22条迁移generate/validate/deploy两次/status通过；唯一实施失败为PrismaP1012已最小修正且保留记录。数学7项、定向集成14项及迁移前旧任务兼容分别有独立记录。未增加依赖、未改变模型或服务期限，测试串行执行。
+
+最终资源核验data/s25-resources.json：Owner=1，所有业务/匹配/评分/排名测试实体0，四正式队列ready/unacked=0，Qdrant集合空；保留scoring-v1正式hash=8aa97248595f0e4f49bf4a04a961f0c512675ecb25bc8f4e77dae3457dd5d35c，原rubric-v1 hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d与AI_DRAFT/PENDING_REVIEW不变。旧任务兼容manifest cleaned=true。未删除卷/DB/配置或其他项目资源。
+
+任务提交：T1=1194e5e、T2=509b556、T3=4f50dad、T4=6046c8f、T7=9c6636d、T5=367f878、T6=99babb4。T7只依赖T1，因此先于生产装配提交。中间T2暂存投影有末尾空行diff警告，已在紧随T3中消除；最终diff检查通过，不重写历史。11份文档227项本地链接检查通过（最终收尾再复核）。阶段改待验收，按授权合并推送develop；最终报告/重算HTTP为下一阶段。
+
+未执行与限制：原生Qdrant6333无监听，按用户手动启停约定未运行native对照；真实模型/embedding、人工质量、目标服务器/L1/L2解除按原延后规则保留。旧任务验证是无Checkpoint启动原图，不扩大为全部历史图迁移已验证；真实外部模型仍不承诺恰好一次。评分政策已按本轮确认固化，不代表模型判断质量已验收。
+
 ## 2026-11-27 S2.5-T6冻结判断重算服务完成
 
 RecomputeService从可信IdentityPort获取owner，不接受请求owner或连接模型；只在已结束成功/部分成功任务的原候选与判断上重算，显式权重严格校验，派生ScoreSet关联source且不覆盖历史，评分和排名同事务保存。数据库专项验证11候选完整保存、原11名进入首位、模型预算仍0、并发重放同ID、越权/未知候选/未结束任务拒绝，以及排名INSERT失败回滚新增ScoreSet。原ScoreSet/CandidateSet逐字不变。
