@@ -1,5 +1,7 @@
 # 测试与验证
 
+S3.2-T7 SocketTimeout专项增加socket-diagnostics（成功/拒绝连接与脱敏）及恢复Worker的loading/initialized通知。测试错误可区分process-start/module-loading/initialized，并附有界socket连接/字节/错误码数据；不记录地址、SQL、凭证或负载内容。原事件等待20秒、连接/事务/总预算及fence/恢复/ACK断言均不变。2026-11-28本轮只确认资源压力与相关22/22通过，未复现原P1008，不代表完整集成或根因修复，见[专项诊断](research/s32-postgres-2026-11-28.md)。
+
 S3.2增加认证、会话业务身份、共享消费者身份及安全边界测试，详见[所有权矩阵](ownership-audit.md)与[认证说明](auth.md)。真实登录专项使用合成账号且精确清理；HTTP人工发送Secure Cookie不代表浏览器HTTPS部署验收。向量HTTP桩的超时用例在服务端确认收到请求后推进40ms模拟时钟，仍断言一次实际请求和超时，避免将本机调度速度误作协议行为；产品超时未调整。
 
 2026-11-27维护者另授权适当放宽S2.4-T10失败的Langfuse请求：观测集成测试projects/observations/trace清理上限统一由5秒调整为10秒，并记录安全的耗时/状态/预算诊断。projects及observations均曾超过原5秒；读取请求取剩余轮询窗口与10秒较小者，持久化等待45秒、父测试90秒保持。生产导出配置与完整持久化/丢失为0/脱敏断言保持。历史5秒失败仍保留，按新上限通过不代表性能根因已修复。
