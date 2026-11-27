@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { requirementExecutionSchema } from '../src/contracts/matching.js';
 import { calculateScore } from '../src/modules/scoring/score.js';
+import { rankScores } from '../src/modules/scoring/rank.js';
 import { jobDraft } from './support/job-inputs.js';
 import { scoringPolicy } from './support/scoring-inputs.js';
 
@@ -47,6 +48,22 @@ await test('S2.5 hard gates use every requirement even with zero weight; partial
   assert.equal(result.eligibility, 'pending'); assert.equal(result.incomplete, 1); assert.equal(result.unknown, 0);
   assert.equal(result.total, 66.67); assert.equal(result.coverage, 66.67); assert.equal(result.upperBound, 100);
   const rejected = fixture(['unmet','BUDGET']); rejected.input.requirements[0]!.kind = 'HARD'; assert.equal(calculateScore(rejected.input, rejected.policy).eligibility, 'ineligible');
+});
+await test('S2.5 ranking keeps every candidate, caps eligible top10, uses stable IDs and lets original 11th enter on recompute', () => {
+  const { policy, input } = fixture(['met','unmet']);
+  const first = Array.from({ length: 11 }, (_, index) => {
+    const id = `00000000-0000-4000-8000-${String(index + 1).padStart(12,'0')}`;
+    const candidate = { ...input, jobVersionId: id, executions: input.executions.map(row => row.status === 'DONE' ? { ...row, jobVersionId: id, judgment: { ...row.judgment, jobVersionId: id } } : { ...row, jobVersionId: id }) };
+    return { candidate, score: calculateScore(candidate, policy) };
+  });
+  const original = rankScores(first.map(item => item.score)); assert.equal(original.results.length, 11); assert.equal(original.top10.length, 10);
+  assert.ok(!original.top10.includes(first[10]!.score.jobVersionId));
+  const recalculated = first.map((item, index) => index === 10 ? calculateScore({ ...item.candidate, weights: { ...item.candidate.weights,
+    requirementWeights: [{ requirementId: 'r0', weight: 99 }, { requirementId: 'r1', weight: 1 }] } }, policy) : item.score);
+  assert.equal(rankScores(recalculated).top10[0], first[10]!.score.jobVersionId);
+  assert.deepEqual(rankScores(first.map(item => item.score).reverse()), original);
+  const pending = fixture(['partial']); pending.input.requirements[0]!.kind = 'HARD';
+  const small = rankScores([calculateScore(pending.input, pending.policy)]); assert.equal(small.top10.length, 0); assert.equal(small.pending.length, 1); assert.equal(small.shortfall.missing, 10);
 });
 await test('S2.5 weighted outcomes stay bounded and all-met/unknown endpoints hold for fractional weights', () => {
   for (let index = 1; index <= 100; index++) {
