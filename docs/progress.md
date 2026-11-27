@@ -8,6 +8,24 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S3.1-T1报告快照模型完成
+
+实现AnalysisReport及ReportRecomputeRequest，报告revision/root/source关系、完整内部输入快照、展示内容/hash和唯一finalize键。内容含结构化简历/原文位置、画像、冻结岗位/全部执行状态、评分/排名和PARTIAL覆盖/原因；响应Schema剥离owner/存储/执行令牌等内部字段。数据库触发器禁止UPDATE，派生报告保留来源。23条迁移generate/validate/deploy两次/status通过。
+
+共用最终类型/Lint、基础128/128、53.183秒与完整集成146/146、685.647秒通过（data/s31-unit-final.log、data/s31-integration.log），0失败/跳过；OpenAPI一致性通过。此前Schema omit加载失败及119/123基础失败已最小修正并保留记录。验证基于完整工作区，按任务拆分保存，不声称每个中间提交独立部署/重复全量。无新增依赖，真实模型、原生对照及目标环境限制仍保留。
+
+## 2026-11-27 S3.1定向HTTP通过，阶段回归中
+
+修正带refine Schema的omit组合后，OpenAPI生成通过。完整业务/HTTP专项3/3、68.735秒（data/s31-runtime-targeted.log）通过：报告一份、重投不重复；消费收据失败报告0且任务不终态，恢复后报告1；并发同key重算同revision、新key差异409/非法权重400 details、原报告不变、owner404、revision分页、API重启读回不变。SSE初始/中间seq补读无重复、终态已读204、非法ID400、读取新持久事件、断线不取消、5连接超限429及释放验证通过；选择列表和分析详情可读。原test父期限未放宽。
+
+最终typecheck、零警告Lint、基础128/128、53.183秒（data/s31-unit-final.log）通过；23条迁移已核验。完整test:integration已启动（data/s31-integration.log），结果未出前不改阶段待验收。当前模型为显式fixture，没有真实Key/付费请求，真实联调/原生及目标环境限制仍保留。无新增依赖，不重复安装。
+
+## 2026-11-27 S3.1报告/SSE实现与首次检查
+
+按T1–T6编写不可变AnalysisReport/revision和幂等重算绑定、SAVE节点及完成事务内报告/任务/收据提交、报告查询/重算HTTP、分析/可选版本/岗位语料分页、持久TaskEvent SSE（seq补读/心跳/连接限制）。前端需求只读核对Resume-Studio-Frontend@a8aea7c3704716e2432736e62d376e7b8642b24b的F2.3–F2.5与api-integration/ui-guidelines，不修改前端。新reportVersion=1任务要求报告，旧任务保留原组件/恢复路径，不原地迁移输入。
+
+Prisma generate/validate/deploy两次/status通过，23条迁移；初次类型检查发现ranking可选字段显式undefined与exactOptionalPropertyTypes冲突，已修为先检查ID再查询。类型/Lint随后通过。首次OpenAPI生成因Zod已带refine对象使用omit报错，基础测试也因此119通过/4失败（测试文件加载失败导致总计123，data/s31-unit.log，75.554秒），包括契约加载及OpenAPI旧产物断言；未放宽或删除校验。已将报告元数据独立Schema，生成OpenAPI成功，旧日志保留。新HTTP/完整图专项正在运行，结果另记。
+
 ## 2026-11-27 S2.5合并推送与S3.1接续
 
 S2.5-T8=c7557b7已--no-ff合并develop，业务合并79399f0ab749c88cda00665a02772988accfd4f1，推送后origin/develop一致，origin/feature/s2.5-scoring-ranking已保留。合并树与通过回归的阶段分支一致，工作区干净；按-d清理已合并本地分支。正式政策/Rubric保持，末尾资源核验无测试数据/队列/集合残留。

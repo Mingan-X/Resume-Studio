@@ -240,6 +240,7 @@ model AnalysisTask {
   profile ProfileAssessment?
   matchPlan MatchPlan?
   summary AnalysisSummary?
+  reports AnalysisReport[]
   scoreSets ScoreSet[]
 
   @@unique([ownerId, idempotencyKey])
@@ -248,6 +249,38 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model AnalysisReport {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  revision Int
+  rootReportId String @map("root_report_id") @db.Uuid
+  sourceReportId String? @map("source_report_id") @db.Uuid
+  sourceReport AnalysisReport? @relation("ReportRevisions",fields:[ownerId,sourceReportId],references:[ownerId,id],onDelete:NoAction,onUpdate:NoAction)
+  revisions AnalysisReport[] @relation("ReportRevisions")
+  operationKey String @unique @map("operation_key") @db.Char(64)
+  inputSnapshot Json @map("input_snapshot") @db.JsonB
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  requests ReportRecomputeRequest[]
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId,id])
+  @@unique([taskId,revision])
+  @@index([ownerId,createdAt,id])
+  @@map("analysis_report")
+}
+
+model ReportRecomputeRequest {
+  ownerId String @map("owner_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  requestHash String @map("request_hash") @db.Char(64)
+  reportId String @map("report_id") @db.Uuid
+  report AnalysisReport @relation(fields:[ownerId,reportId],references:[ownerId,id],onDelete:NoAction,onUpdate:NoAction)
+  @@id([ownerId,idempotencyKey])
+  @@map("report_recompute_request")
 }
 
 model ScoreSet {
