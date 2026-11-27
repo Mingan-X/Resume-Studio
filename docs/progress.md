@@ -8,6 +8,34 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T10最终回归通过，Langfuse阻塞解除
+
+按本轮授权，观测集成测试三类HTTP单请求为10秒，observations不超过剩余45秒轮询窗口、请求继承父测试90秒取消；生产导出/重试策略及完整持久化、lost=0、关联/脱敏断言保持。最初仅调整projects后observations仍5秒超时的失败继续保留，不归L1/L2；最终定向1/1、14.221秒通过。
+
+最终完整`pnpm run test:integration`144/144通过、0失败/跳过，698.842秒（data/s24-langfuse-timeout-integration.log）。Langfuse全量专项7.315秒，projects=200/70ms，observations=200/347ms和689ms，trace清理=200/944ms；原持久化/零丢失/脱敏断言全部通过。typecheck与零警告Lint通过，基础118/118、79.367秒通过（data/s24-langfuse-timeout-unit.log）；后续仅修改观测专项及文档，专项与全量覆盖最终代码。OpenAPI产物一致性再次通过；本次没有依赖、Schema或迁移变化，不重复安装/迁移。既有20条迁移与业务验证见前文。
+
+核验归属后只读检查（data/s24-langfuse-timeout-resources.json）：仅开发Owner=1，其他本次业务/语义产物实体计数0，4正式队列ready/unacked=0，Qdrant集合空。rubric-v1原hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d及AI_DRAFT/PENDING_REVIEW未改；没有删除卷/数据库/配置或操作其他项目实例。原生6333无监听，依用户约定未启停/native对照未执行；T9真实模型/embedding、人工质量及目标环境/L1/L2解除按原表延后。
+
+当前门禁解除，S2.4改待统一验收；本轮放宽是授权后的有限等待调整，不声明底层性能根因已解决。README/需求/路线图同步状态；按原授权提交修复并以--no-ff合并develop，推送阶段分支及develop。master及前端不操作，最终合并/推送结果另记。
+
+## 2026-11-27 S2.4-T10 Langfuse调整后专项通过，全量复验中
+
+最终typecheck、零警告Lint通过。观测专项1/1、14.221秒通过（data/s24-langfuse-timeout-targeted-2.log）；projects=200/513ms、两次observations=200/2946ms和966ms、trace清理=200/1677ms，使用10秒单请求和原轮询/父测试总期限。持久化全部span、lost=0、关联及PII脱敏原断言均通过，没有关闭或跳过有效测试。基础118/118的记录保留；后续改动只在观测集成测试和文档，无基础测试生产路径变化。
+
+开始完整test:integration（data/s24-langfuse-timeout-integration.log），目前Langfuse专项在全量中也通过，阶段状态仍等待完整结论。已fetch核对local develop与origin/develop均e0ccfa7，属于当前阶段祖先；没有操作master。按原授权在全量通过后再合并/推送阶段分支和develop。
+
+## 2026-11-27 S2.4-T10 Langfuse读取请求进一步按授权调整
+
+typecheck、零警告Lint与基础118/118、79.367秒通过（data/s24-langfuse-timeout-unit.log）。首次真实观测专项0/1，17.260秒（data/s24-langfuse-timeout-targeted.log）：projects为200/114ms，observations读取5014ms达到原5秒而超时，trace清理已完成。未改写此失败，不当L1/L2。
+
+沿用维护者本次Langfuse超时授权，将集成测试projects/observations/trace清理单请求统一为10秒。observations始终取10秒与剩余45秒轮询窗口较小值，等待间隔也受剩余时间限制；请求受父测试90秒取消信号约束，不增加重试，不修改生产导出超时、丢失为0或隐私断言。所有HTTP成功/失败增加仅stage/elapsedMs/timeoutMs/status诊断，继续串行验证后再判定门禁。
+
+## 2026-11-27 S2.4-T10 Langfuse请求期限授权调整（验证中）
+
+维护者明确授权“这个的超时限制也适当放宽”。从feature/s2.4-profile-matching、3330f81干净工作区接续；唯一代码调整是observability集成测试初始projects查询上限5秒→10秒，并输出安全的elapsedMs/timeoutMs/status诊断。依据为上一轮5008ms截断，10秒是有限余量而非实测性能承诺。其余观测读取/trace清理5秒、轮询45秒、父测试90秒、生产导出配置以及完整持久化/丢失为0/隐私断言保持，不增加重试。
+
+路线图、测试文档和诊断记录同步授权范围，旧失败不改写。本次无业务行为、API、依赖或迁移变化，先串行执行类型/Lint/基础及真实观测专项，再执行阶段完整回归；结果未出前保持阶段进行中，不提前解除门禁。原生Qdrant仍由用户手动管理，无监听不启停。
+
 ## 2026-11-27 S2.4-T10阶段回归阻塞与交接
 
 最终基础`pnpm test`118/118通过、76.258秒（data/s24-stage-unit.log）；最终typecheck、零警告lint、OpenAPI一致性通过。全仓20条迁移generate/validate/deploy两次/status通过；无依赖声明或锁文件变化，不重复冻结安装。文档更新README、API/契约、架构、部署/测试、需求与分析工作流；最终生产实现未在测试后改动，仅日期注释与文档澄清月份值不代表精确到日。
