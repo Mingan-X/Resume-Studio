@@ -35,6 +35,14 @@ pnpm run corpus:import <ownerUuid>
 
 ## 验证
 
+T5向量/RRF草稿已接入内部RecallService，正在验证：先用显式owner和冻结corpus进行关键词查询，检查当前索引产物/目标READY后对脱敏摘要求embedding，只查该corpus内jobVersionId，按每岗位最高chunk分形成向量rank。相似度仅用于这一路排序，结果只返回RRF分与各路rank，不作为综合分。关键词与向量默认各50，RRF最多20；同分按jobId/jobVersionId代码单元升序。
+
+Qdrant使用exact检索、有限chunkLimit（默认500），额外读取一个点检测截断边界；若边界两点同分，拒绝不确定截断并按显式策略报错/降级。大语料仍受候选窗口约束，不声称无限扫描或全库召回质量。索引未READY为INDEX_NOT_READY；向量调用失败为VECTOR_UNAVAILABLE；空摘要为EMPTY_VECTOR_QUERY。仅vectorFailure=keyword允许降级，结果必须标degraded与原因且只带keyword来源。数据库、持久预算预留、取消和总期限错误不能被降级掩盖。
+
+两个路径合并前再次回查PostgreSQL的owner、private语料成员、PUBLISHED、内容hash和显式城市，排除外部调用期间已删除的候选。索引集合不依赖alias动态指向，保存的配置包含embedding/index等完整版本。此服务尚未由S2.4分析图调用，CandidateSet冻结由T6实现；当前测试结果以progress为准。
+
 [基础测试](../test/job-corpus.test.ts)验证字典边界、版本独立性、100条确定性生成与引用。[数据库专项](../test/integration/job-corpus.test.ts)验证100条发布/Outbox、导入重放、草稿与跨owner拒绝、快照冲突和不可变性、字典升级不修改旧结果。测试保存本轮owner manifest，清理前再次核对PostgreSQL归属，只清理本轮记录；正式rubric与其他owner保持不变。
 
 [关键词契约测试](../test/keyword-recall.test.ts)验证参数边界与默认无城市过滤；[真实SQL专项](../test/integration/keyword-recall.test.ts)覆盖默认50上限、稳定并列、别名/重复技能、显式城市、空集合、owner隔离、旧快照不混入新版本及已删除版本剔除。结果与未执行项只记录在progress。
+
+[RRF纯函数](../test/rrf.test.ts)、[召回故障边界](../test/recall.test.ts)与[真实Qdrant/SQL召回](../test/integration/recall.test.ts)覆盖多块聚合、冻结语料过滤、显式降级、预算/数据库错误不吞掉、同分截断拒绝。合成embedding仅用于工程测试，不报告真实Recall@K。

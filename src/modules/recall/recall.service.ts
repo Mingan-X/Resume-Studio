@@ -13,8 +13,9 @@ import { fuseRecall } from './rrf.js';
 
 export class RecallFailure extends Error {}
 export class RecallService {
-  constructor(private readonly identity: IdentityPort, private readonly keyword: KeywordRecallRepository,
-    private readonly indexes: JobIndexRepository, private readonly embedding: EmbeddingExecutor, private readonly vector: JobIndexVector) {}
+  constructor(private readonly identity: IdentityPort, private readonly keyword: Pick<KeywordRecallRepository, 'recall'>,
+    private readonly indexes: Pick<JobIndexRepository, 'assertCorpusReady' | 'visibleVersions' | 'validCandidates'>,
+    private readonly embedding: EmbeddingExecutor, private readonly vector: Pick<JobIndexVector, 'query'>) {}
 
   async recall(rawQuery: unknown, rawConfig: unknown, rawSpec: unknown,
     options: { signal?: AbortSignal; deadline?: number; reserve?: (usage: EmbeddingReservation) => Promise<void> } = {}) {
@@ -28,7 +29,7 @@ export class RecallService {
     const guard = () => { if (signal.aborted || Date.now() >= deadline) throw new RecallFailure(options.signal?.aborted ? 'CANCELLED' : 'DEADLINE_EXCEEDED'); };
     guard();
     const keywords = await this.keyword.recall(ownerId, query, { version: 'keyword-overlap-v1', limit: config.keywordLimit }); guard();
-    const rankedKeywords = keywords.candidates.map(({ jobId, jobVersionId, rank }) => ({ jobId, jobVersionId, rank }));
+    let rankedKeywords = keywords.candidates.map(({ jobId, jobVersionId, rank }) => ({ jobId, jobVersionId, rank }));
     let rankedVectors: { jobId: string; jobVersionId: string; rank: number }[] = [];
     let reason: 'INDEX_NOT_READY' | 'VECTOR_UNAVAILABLE' | 'EMPTY_VECTOR_QUERY' | null = null;
     let phase: 'ready' | 'embedding' | 'vector' | 'database' = 'ready', reservationFailed = false;
@@ -37,6 +38,7 @@ export class RecallService {
       let ready;
       try { ready = await this.indexes.assertCorpusReady(ownerId, query.corpusVersion, spec); }
       catch (error) { if (error instanceof Error && error.message === 'INDEX_NOT_READY') reason = 'INDEX_NOT_READY'; throw error; }
+      if (ready.corpus.contentHash !== keywords.corpusHash) throw new RecallFailure('CORPUS_HASH_MISMATCH');
       guard();
       phase = 'embedding';
       const embedded = await this.embedding.run([query.summary], { signal, deadline, ...(options.reserve ? { reserve: async (usage: EmbeddingReservation) => {
@@ -66,8 +68,14 @@ export class RecallService {
       if (config.vectorFailure === 'error') throw new RecallFailure(reason, { cause: error });
     }
     guard();
+    // External work may outlive a concurrent deletion. Recheck both paths, including keyword fallback.
+    const valid = await this.indexes.validCandidates(ownerId, query.corpusVersion,
+      [...new Set([...rankedKeywords, ...rankedVectors].map(item => item.jobVersionId))], query.city); guard();
+    const retain = (items: typeof rankedKeywords) => items.filter(item => valid.some(row => row.jobVersionId === item.jobVersionId && row.jobId === item.jobId))
+      .map((item, index) => ({ ...item, rank: index + 1 }));
+    rankedKeywords = retain(rankedKeywords); rankedVectors = retain(rankedVectors);
     return recallResultSchema.parse({ schemaVersion: 1, corpusVersion: query.corpusVersion, corpusHash: keywords.corpusHash,
-      config, embeddingVersion: spec.embeddingVersion, candidates: fuseRecall(rankedKeywords, rankedVectors, config),
+      config, embeddingVersion: spec.embeddingVersion, indexSpec: spec, candidates: fuseRecall(rankedKeywords, rankedVectors, config),
       degraded: reason !== null, degradationReason: reason });
   }
 }

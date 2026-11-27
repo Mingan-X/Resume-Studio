@@ -8,6 +8,42 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T5完成验证，T6/T7共用回归通过
+
+`pnpm run test:integration`131/131通过、0失败/跳过，793.182秒（data/s23-t5-t7-integration.log），包含补建、候选冻结、索引重试/版本隔离、真实召回/清理及既有全部用例；Docker集合创建6047.8ms，Outbox DLX181.909秒。之前清理失败及HTTP桩超时完整保留，不归L1/L2。各用例本轮资源精确清理成功。
+
+T5类型/Lint、基础最终100/100（包含后续草稿单元）、真实召回专项及上述全量通过，按任务提交向量/RRF、显式降级、有效版本复查和15秒清理对账修正。原生6333未监听，native对照未执行、不自行启停，仍待维护者统一对照。没有真实embedding/人工质量结果。T6城市冻结校验与T7配置/CLI拒绝补测、T8脚本是在本轮build后添加，须另行构建验证，不能宣称已由本全量覆盖。阶段保持进行中。
+
+## 2026-11-27 S2.3-T5清理复核、T6候选冻结专项及T7桩验证
+
+清理修正后db:generate/db:validate、typecheck、lint通过；`pnpm test`100/100通过，20.723秒（data/s23-t5-cleanup-unit.log），含清理失联/丢回复不延长原deadline测试，以及T7百炼HTTP桩（float/base64、维数/index、非法响应、429/503、重定向拒绝、响应上限、取消/超时/脱敏）。没有真实Key/付费调用，合成端口不作正式目标。
+
+`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/recall.test.js`清理复核1/1通过，43.790秒（data/s23-t5-cleanup-review.log），新清理hook完成精确资源移除，前次130项129通过的失败保留。T6迁移202611270007_s23_candidates在项目归属核验后deploy两次/status通过，14条up to date；候选专项1/1通过，5.763秒（data/s23-t6-targeted.log）。验证活fence下并发冻结唯一、空候选、内容冲突、跨owner、取消/旧fence、成员与集合不可变、SQL失败原子回滚及脱敏查询保存。真实分析图接线仍在S2.4，测试只使用真实DB上的合成AnalysisTask。
+
+T7依据本轮[百炼官方文档](research/bailian-embedding-2026-11-27.md)实现text-embedding-v4、显式维数与工作空间HTTPS endpoint，配置只读本地文件，消费/对账CLI不提供合成兜底；embeddingVersion不匹配在领取/对账前defer而不消耗预算。T5/T6/T7按任务分开提交，开始共用当前编译产物执行完整`pnpm run test:integration`（data/s23-t5-t7-integration.log）；各任务最终状态须待结果，原生未启动仍未对照。
+
+## 2026-11-27 S2.3-T5全量清理故障及最小修正
+
+`pnpm run test:integration`130项129通过/1失败，665.885秒（data/s23-t5-integration.log）。唯一recall测试的after hook在Qdrant exists返回DEPENDENCY_UNAVAILABLE时退出，manifest=6fd329cb-a97a-4807-b53e-09bf40ae2ae4保持cleaned=false；不是L1/L2，不以之前专项通过覆盖。旧清理助手未捕获可恢复传输错误，没有利用原15秒窗口继续对账。
+
+修正test/support/index-cleanup：每个精确spec仍15秒总窗口，所有请求共享原deadline，存在性/删除响应丢失仅对既有可重试TaskFailure继续对账；归属失败、元数据拒绝立即失败；到期保留清单并报未确认。新增故障测试检查read失败→delete已完成但reply失败→确认缺失、所有尝试相同deadline、归属拒绝和永久错误不重试。没有放宽生产/测试期限或把清理失败忽略。
+
+编译前先用本轮data/s23-recall-cleanup-current.mjs读取上述唯一manifest，核对固定owner UUID、合成spec与确定性岗位版本ID范围，拒绝存在分析任务/正式Rubric/简历数据，再核验项目PostgreSQL/Qdrant归属、metadata及删除结果。只清理这两个owner下4个合成版本及任务/Outbox、指定集合；成功后该manifest标cleaned=true，未操作其他项目或原生Qdrant。
+
+全量期间编写的T6候选冻结与T7百炼适配器/CLI草稿仍未验证。当前仅生成其类型供源码检查，T6迁移尚未部署；先复核T5清理修正再继续，后续结果单独追加。
+
+## 2026-11-27 S2.3-T5真实召回与基础复核通过
+
+`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/recall.test.js`1/1通过，24.501秒（data/s23-t5-recall.log）；在真实PostgreSQL/Qdrant上发布/执行索引，多chunk聚合、冻结语料排除新岗位、owner payload过滤、稳定重放、city/limit、显式不可用/未READY降级与同分截断拒绝通过。本轮集合、任务、岗位/owner清理完成，测试embedding仅合成，不报告真实检索质量。
+
+最终typecheck、零警告lint通过；`pnpm test`98/98通过，7.598秒（data/s23-t5-unit-final.log），此前HTTP桩超时不覆盖、不归L1/L2。开始完整`pnpm run test:integration`（data/s23-t5-integration.log）。原生未监听，未启停，原生对照未执行；其他后续任务暂未标完成。
+
+## 2026-11-27 S2.3-T5向量召回/RRF检查进行中
+
+T4已提交bc4a62a，继续T5草稿：exact Qdrant查询仅过滤冻结corpus/owner/private/索引版本，最高chunk分聚合岗位、默认50向量候选；RRF最多20并稳定并列排序。候选返回前两路都再次回查PG有效发布成员/hash/显式城市；显式降级原因且不返回伪向量rank。数据库/预算预留/取消/总deadline失败不能被降级吞掉。结果增加完整indexSpec，维数/版本可追溯；同分在chunk上限处被截断时明确失败/按配置降级，避免任意选择。无HTTP、依赖或迁移变化。
+
+typecheck、lint通过；`pnpm test`98项97通过/1失败，26.886秒（data/s23-t5-unit.log）。新召回/RRF全部通过，唯一原index-vector HTTP故障测试TimeoutError，**非L1/L2**；未改原限制/断言。随后`node --test --test-concurrency=1 dist/test/index-vector.test.js dist/test/recall.test.js dist/test/rrf.test.js`7/7通过，6.465秒（data/s23-t5-unit-review.log），未复现，不覆盖原失败。开始真实SQL/Qdrant专项（data/s23-t5-recall.log），尚未记录结果。
+
 ## 2026-11-27 S2.3-T4补建与索引故障边界检查完成
 
 数据库/索引专项`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/index-backfill.test.js dist/test/integration/job-index.test.js`2/2通过，42.161秒（data/s23-t4-resume-targeted.log），含补建no-op并发/重放/回滚及实际upsert后故障持久重试、预算累计、alias维数切换。`pnpm run test:integration`129/129通过、0失败/跳过，605.790秒（data/s23-t4-resume-integration.log）。每项精确清理报告完成，正式Rubric未动。原生6333未监听，native全量按用户约定未执行，不自行启停；历史基础92/93中的L1与此前所有失败保留。迁移/类型/Lint已通过，文档/diff检查通过；无依赖或HTTP变化。

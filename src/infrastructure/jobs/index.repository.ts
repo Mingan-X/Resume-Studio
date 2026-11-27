@@ -5,9 +5,22 @@ import { indexCollectionSchema, jobIndexCompletionSchema } from '../../contracts
 import { jobIndexInputSnapshotSchema } from '../../contracts/tasks.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
 import { indexCollectionName } from '../../modules/recall/job-chunks.js';
+import { versionNameSchema } from '../../contracts/jobs.js';
 
 export class JobIndexRepository {
   constructor(private readonly database: DatabaseService) {}
+  async validCandidates(owner: string, corpus: string, rawIds: unknown, rawCity: unknown) {
+    const ownerId = z.uuid().parse(owner), ids = z.array(z.uuid()).max(200).parse(rawIds), city = z.string().trim().min(1).max(128).nullable().parse(rawCity);
+    const corpusVersion = versionNameSchema.parse(corpus);
+    return z.array(z.object({ jobId: z.uuid(), jobVersionId: z.uuid() }).strict()).parse(await this.database.client.$queryRaw`
+      SELECT v.job_id AS "jobId", v.id AS "jobVersionId"
+      FROM job_corpus_version c CROSS JOIN LATERAL jsonb_array_elements(c.manifest->'members') member
+      JOIN job_version v ON v.owner_id=c.owner_id AND v.id=(member->>'jobVersionId')::uuid
+      WHERE c.owner_id=${ownerId}::uuid AND c.version=${corpusVersion} AND c.visibility='private'
+        AND v.id=ANY(${ids}::uuid[]) AND v.status='PUBLISHED' AND v.content_hash=member->>'contentHash'
+        AND (${city}::text IS NULL OR v.city=${city}::text)
+    `);
+  }
   async visibleVersions(owner: string, rawIds: unknown, rawCity: unknown = null) {
     const ownerId = z.uuid().parse(owner), ids = z.array(z.uuid()).max(10_000).parse(rawIds), city = z.string().nullable().parse(rawCity);
     return this.database.client.jobVersion.findMany({ where: { ownerId, id: { in: ids }, status: 'PUBLISHED', ...(city === null ? {} : { city }) },

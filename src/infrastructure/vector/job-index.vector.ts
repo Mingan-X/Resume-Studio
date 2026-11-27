@@ -84,15 +84,18 @@ export class JobIndexVector {
     const spec = await this.verify(raw, call), vector = z.array(z.number()).length(spec.dimensions).parse(queryVector);
     const ids = z.array(z.uuid()).min(1).max(10_000).parse(jobVersionIds), take = z.int().min(1).max(1000).parse(limit);
     const result = await this.request(`/collections/${encodeURIComponent(indexCollectionName(spec))}/points/query`, 'POST', {
-      query: vector, limit: take, with_payload: true, with_vector: false,
+      query: vector, limit: take + 1, params: { exact: true }, with_payload: true, with_vector: false,
       filter: { must: [{ key: 'ownerId', match: { value: spec.ownerId } }, { key: 'visibility', match: { value: 'private' } },
         { key: 'embeddingVersion', match: { value: spec.embeddingVersion } }, { key: 'indexVersion', match: { value: spec.indexVersion } },
         { key: 'jobVersionId', match: { any: ids } }] },
     }, call);
-    const points = z.object({ points: z.array(z.object({ id: z.uuid(), score: z.number(), payload: indexPointPayloadSchema })).max(take) }).parse(result).points;
+    const points = z.object({ points: z.array(z.object({ id: z.uuid(), score: z.number(), payload: indexPointPayloadSchema })).max(take + 1) }).parse(result).points;
     if (points.some(point => point.payload.ownerId !== spec.ownerId || point.payload.embeddingVersion !== spec.embeddingVersion
       || point.payload.indexVersion !== spec.indexVersion || !ids.includes(point.payload.jobVersionId))) throw new TaskFailure('OUTPUT_INVALID');
-    return points;
+    points.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    // A capped tied boundary would select an arbitrary subset; fail into the explicit fallback policy.
+    if (points.length > take && points[take - 1]!.score === points[take]!.score) throw new TaskFailure('OUTPUT_INVALID');
+    return points.slice(0, take);
   }
   async verify(raw: unknown, call: IndexCall) {
     const spec = indexCollectionSchema.parse(raw), info = await this.inspect(indexCollectionName(spec), call);

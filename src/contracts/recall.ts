@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { versionNameSchema } from './jobs.js';
+import { indexCollectionSchema } from './job-index.js';
 
 export const recallQuerySchema = z.object({ schemaVersion: z.literal(1), corpusVersion: versionNameSchema,
   skills: z.array(z.string().trim().min(1).max(128)).max(100), summary: z.string().max(20_000),
@@ -26,7 +27,19 @@ export const recallCandidateSchema = z.object({ jobId: z.uuid(), jobVersionId: z
 }).strict();
 export const recallResultSchema = z.object({ schemaVersion: z.literal(1), corpusVersion: versionNameSchema,
   corpusHash: z.string().regex(/^[a-f0-9]{64}$/), config: recallConfigSchema,
-  embeddingVersion: versionNameSchema, candidates: z.array(recallCandidateSchema).max(20),
+  embeddingVersion: versionNameSchema, indexSpec: indexCollectionSchema, candidates: z.array(recallCandidateSchema).max(20),
   degraded: z.boolean(), degradationReason: z.enum(['INDEX_NOT_READY', 'VECTOR_UNAVAILABLE', 'EMPTY_VECTOR_QUERY']).nullable(),
-}).strict().refine(value => value.degraded === (value.degradationReason !== null));
+}).strict().superRefine((value, ctx) => {
+  if (value.embeddingVersion !== value.indexSpec.embeddingVersion) ctx.addIssue({ code: 'custom', message: '索引版本不匹配' });
+  if (value.degraded !== (value.degradationReason !== null)) ctx.addIssue({ code: 'custom', message: '降级状态必须带明确原因' });
+  if (value.candidates.length > value.config.limit || new Set(value.candidates.map(item => item.jobVersionId)).size !== value.candidates.length) {
+    ctx.addIssue({ code: 'custom', message: '候选必须唯一且不超过配置上限' });
+  }
+  for (const [index, item] of value.candidates.entries()) {
+    if (item.rank !== index + 1 || new Set(item.sources.map(source => source.source)).size !== item.sources.length
+      || (value.degraded && item.sources.some(source => source.source === 'vector'))) {
+      ctx.addIssue({ code: 'custom', path: ['candidates', index], message: '候选顺序或来源无效' });
+    }
+  }
+});
 export type RecallResult = z.infer<typeof recallResultSchema>;
