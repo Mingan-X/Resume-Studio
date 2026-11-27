@@ -8,6 +8,28 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T3图与恢复基础实现保存（阶段回归未通过）
+
+保存固定StateGraph、稳定分支合并、NodeArtifact分支/prompt/model身份及不可变保护、真实analysis模型版本领取过滤、graph代次预算校验与子进程恢复专项。T3生产消费装配与实际节点在T4–T8依次保存后闭合；当前提交只包含图/恢复基础，不把fixture当语义实现。工作区完整代码的类型检查、零警告Lint与基础118/118通过（data/s24-stage-unit.log，76.258秒），OpenAPI一致性通过；19/20条新增迁移均已校验并二次deploy无pending。子进程专项3/3及当前全量中的相同用例通过。
+
+当前完整test:integration仍运行，但已发生Langfuse projects请求5008ms超时，未放宽原5秒门禁、未归L1/L2。先只读核验归属/健康/日志：受检Langfuse容器healthy、restartCount=0、OOMKilled=false；日志无定位原因，当前VM I/O full avg60=26.89仅表明当时有等待，不证明故障根因（data/s24-langfuse-diagnosis.json）。保存已验证实现不等于任务/阶段验收通过；不得合并或推进依赖该门禁的阶段。最终计数和处理结论待本轮结束另记。
+
+## 2026-11-27 S2.4-T3–T8接线与定向验证
+
+T3后续子进程专项3/3、17.668秒通过（data/s24-t3-graph-targeted-3.log）：确认退出复用thread、未确认停止切换thread、已存LOAD/PARSE不重复、旧fence/错误graph/取消写入拒绝、分支/版本冲突及不可变节点验证。第一次新Worker提前退出未复现，诊断修正不宣称定位其底层根因，原失败继续保留。
+
+T4–T8按已确认任务继续编写EXTRACT缓存与日期、PROFILE子图及Rubric映射、冻结RecallQuery/Candidate绑定、Send匹配/持久计划/400预算、汇总/进度及消费入口。代码尚未按完成提交；后续任务用于完成T3业务节点/命令接线，不将测试fixture或部分骨架标成已交付。Prisma generate/validate/deploy两次/status通过，新增17–20条迁移均应用；中断后类型检查发现summary空值TS18047并修正，最新类型/Lint通过。
+
+节点单元定向7/7、7.774秒通过（data/s24-nodes-unit-targeted.log）；抽取真实DB专项1/1、7.046秒（data/s24-t4-extraction-targeted.log），跨任务同简历版本缓存复用，首次模型调用1、后续0，fence与数据库不可变/互斥验证。首次完整业务链路专项3/3、43.543秒（data/s24-runtime-targeted.log），真实PostgreSQL/Qdrant＋显式假模型验证SUCCEEDED/PARTIAL/FAILED、取消、降级、重复投递不重调模型；420计划中400完成/20明确预算行，本轮全部owner/thread/集合清理manifest=true。
+
+收尾补充PROFILE原生子图、等级映射、终态收据失败回滚/恢复不重调模型及运行中取消，尚待新专项结果。首次新命令因CLI测试env类型推断TS2339未进入测试，改为NodeJS.ProcessEnv后重跑。真实模型/embedding、质量结果和原生对照未执行；原生无监听不启动。所有构建/检查按单命令串行，基础入口已显式test-concurrency=1。
+
+## 2026-11-27 S2.4-T3业务图与恢复验证中
+
+T2已提交3284ab8。新增固定业务StateGraph和AnalysisArtifactRepository，图状态只含task/input hash、节点产物ID或显式失败；LOAD→PARSE→EXTRACT→VALIDATE后PROFILE/RECALL并行，SNAP/MATCH后JOIN等待双路，再FINALIZE。节点实现按后续T4–T8注入，当前专项是明确测试节点，不宣称模型/业务终态交付。operationKey包含branchKey/input/component/schema/prompt/model，产物写入/读取核对活fence/租约/取消/deadline/graph身份及完整冻结snapshot，恢复再次核对数据库产物。真实analysis领取要求匹配modelConfigVersion，reserveUsage新增graph代次核对。
+
+Prisma generate/validate/deploy两次/status通过，16条迁移已应用；类型检查、Lint初次通过。第一次真实子进程专项1通过/2失败（含父测试），21.173秒（data/s24-t3-graph-targeted.log）：未确认停止路径切换thread并复用产物通过；确认退出后复用thread路径新Worker在claimed前结束。测试fixture在finally先断IPC导致外层catch安全诊断未送达，先修正诊断顺序和lock-held显式失败，不改业务恢复/超时/断言。第二次命令build遇process.send回调重载TS2345，测试未启动，修正为显式四参数后继续诊断。首次精确owner/thread清理manifest=true，无遗留数据；T3尚未完成/提交。
+
 ## 2026-11-27 S2.4-T2模型调用预算封装完成
 
 T1已提交f30b8ab。T2新增AnalysisModelCaller，复用既有ModelExecutor与Worker的reserve接口：逐次网络尝试/一次修复先预留累计次数/token/费用，恢复或并行分支不重置账本；核对真实snapshot owner/modelConfigVersion/币种、总deadline、取消；数据库/fence错误原样交回，慢预留排空后才结束调用服务。保持既有重试层、未settle并发槽及安全错误码。输入末次脱敏和ObservabilityService白名单span不传原文LangChain回调；usage未知为null，不以预留冒充实测费用。

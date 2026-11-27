@@ -111,7 +111,8 @@ async function finishCancellation(tx: Prisma.TransactionClient, ownerId: string,
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
 
-  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string) {
+
+  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' | 'analysis' = 'synthetic', embeddingVersion?: string, modelConfigVersion?: string) {
     const ownerId = ownerIdSchema.parse(owner), taskId = z.uuid().parse(id).toLowerCase();
     return this.database.client.$transaction(async tx => {
       const lock = z.array(z.object({ acquired: z.boolean() })).length(1).parse(await tx.$queryRaw`
@@ -127,6 +128,7 @@ export class TaskExecutionStore {
       if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
       // Recovery opts in only when a matching executor is configured; no budget spent while unavailable.
       if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return 'handler-unavailable';
+      if (snapshot.kind === 'analysis' && snapshot.modelConfigVersion !== modelConfigVersion) return 'handler-unavailable';
       const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
       const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
@@ -187,7 +189,7 @@ export class TaskExecutionStore {
     });
   }
 
-  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string): Promise<ClaimResult> {
+  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' | 'analysis' = 'synthetic', embeddingVersion?: string, modelConfigVersion?: string): Promise<ClaimResult> {
     const ownerId = ownerIdSchema.parse(owner), message = taskDispatchSchema.parse(input);
     const name = consumerName(message.taskType), type = dbType(message.taskType);
     return this.database.client.$transaction(async tx => {
@@ -221,6 +223,7 @@ export class TaskExecutionStore {
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
       // Leave the task and delivery pending, without an attempt, receipt or ACK.
       if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return { kind: 'deferred' };
+      if (snapshot.kind === 'analysis' && snapshot.modelConfigVersion !== modelConfigVersion) return { kind: 'deferred' };
       if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });
@@ -251,7 +254,7 @@ export class TaskExecutionStore {
       } : undefined;
       const leaseUntil = new Date(Math.min(now.getTime() + this.config.leaseMs, deadline.getTime()));
       const updated = await tx.$executeRaw(Prisma.sql`
-        UPDATE ${table(message.taskType)} SET status = 'RUNNING', stage = ${snapshot.kind === 'synthetic' ? 'SYNTHETIC_RUNNING' : 'INDEX_RUNNING'}, retry_at = NULL,
+        UPDATE ${table(message.taskType)} SET status = 'RUNNING', stage = ${snapshot.kind === 'synthetic' ? 'SYNTHETIC_RUNNING' : snapshot.kind === 'analysis' ? 'LOAD' : 'INDEX_RUNNING'}, retry_at = NULL,
           fence_token = fence_token + 1, lease_owner = ${attemptId}::uuid, lease_until = ${leaseUntil},
           heartbeat_at = ${now}, updated_at = ${now}, budget_usage = ${JSON.stringify(budgetUsageSchema.parse({ ...usage, attempts: usage.attempts + 1 }))}::jsonb
           ${graph ? Prisma.sql`, active_graph_thread_id = ${graph.threadId}::uuid, graph_generation = ${graph.generation}` : Prisma.empty}
@@ -380,7 +383,8 @@ export class TaskExecutionStore {
     await this.database.client.$transaction(async tx => {
       const task = await lockTask(tx, claim.ownerId, claim.message), now = await databaseNow(tx);
       if (!task || task.status !== 'RUNNING' || task.fenceToken !== claim.fenceToken || task.leaseOwner !== claim.attemptId
-        || task.generation !== claim.message.dispatchGeneration || !task.leaseUntil || task.leaseUntil <= now || task.cancelRequested) throw new ExecutionLeaseLostError();
+        || task.generation !== claim.message.dispatchGeneration || !task.leaseUntil || task.leaseUntil <= now || task.cancelRequested
+        || (claim.graph && (task.graphThreadId !== claim.graph.threadId || task.graphGeneration !== claim.graph.generation))) throw new ExecutionLeaseLostError();
       if (claim.deadline <= now) throw new TaskFailure('DEADLINE_EXCEEDED');
       const usage = budgetUsageSchema.parse(task.budgetUsage);
       if (delta.modelCalls > claim.snapshot.budget.maxModelCalls - usage.modelCalls
