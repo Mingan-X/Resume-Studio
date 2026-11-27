@@ -10,6 +10,8 @@ S2.3语料的确定性生成、技能字典与真实数据库专项见[岗位语
 
 ## 当前验收状态
 
+S2.3测试入口及边界见[岗位召回](job-recall.md#验证)、[索引](job-index.md)、[候选冻结](candidate-sets.md)、[百炼HTTP桩](embedding.md)、[评测脚本](recall-evaluation.md)。默认Docker真实索引/召回/冻结测试仅使用独立owner合成数据，精确清理按manifest和实例/集合metadata核验；清理遇可恢复传输失败只在原15秒窗口重试，不覆盖业务失败。真实百炼Key、人工标签与原生对照未执行项按progress逐次记录，不能从单元或HTTP桩报告召回质量。
+
 S2.2使用job-contracts、job-extraction、model-executor单元测试核对权重、来源与有界模型重试/修复/预算；openai-model.test通过本地真实HTTP桩验证JSON Schema请求、脱敏、无SDK内层重试、429/5xx/超时/非法输出/响应上限。没有真实中转或百炼质量数据。integration/jobs、job-drafts、job-publication、rubrics、job-api分别覆盖数据库不可变/并发/owner、发布Outbox和真实RabbitMQ待执行、完整等级与HTTP。模型建议成功/失败不修改JD；测试模型只显式注入，不作生产兜底。
 
 以[开发进度中的最新验收/回归记录](progress.md)为准，本文只维护检查方式与覆盖边界，不复制运行计数。

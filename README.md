@@ -12,13 +12,15 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1–S1.4。S2.1待统一验收；S2.2岗位草稿/要求/发布、Rubric、模型适配器与HTTP已实现，待统一验收（保留L1/L2及真实调用延后）。真实索引、简历画像/匹配、评分和报告尚未实现。**
+**已完成 S1.1–S1.4。S2.1/S2.2待统一验收；S2.3岗位语料、索引执行器、关键词/向量/RRF召回、候选冻结和百炼HTTP适配器已实现，待统一验收。真实模型/embedding调用与人工质量指标仍延后；简历画像/匹配、评分和报告尚未实现。**
 
-S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败，重跑通过。S1.4 附已知环境限制L2：本机默认Docker Qdrant创建集合可能超过5秒客户端限制，使 `pnpm run test:integration` 的Qdrant诊断用例失败；原生Qdrant对照通过。两项限制都在部署服务器或硬件满足条件后重新验证，判断依据与处理规则见[开发进度](docs/progress.md)。
+S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败。S1.4 附已知环境限制L2：默认Docker Qdrant创建集合曾超过5秒；2026-11-27维护者授权将Qdrant单请求上限改为10秒，总期限不变。新上限下通过不代表旧5秒性能目标已达成，两项限制仍在目标环境复核。逐次失败、修复与检查结果见[开发进度](docs/progress.md)。
 
 已有能力：
 
-- JOB_API_ENABLED显式本地岗位API：草稿与要求编辑、完整权重/硬门槛确认、不可变发布及事务Outbox/真实JobIndexTask，列表和版本详情；S2.3前真实任务保持待执行，合成消费者不能标READY。
+- S2.3内部岗位召回链路：[合成语料/技能字典/关键词与RRF](docs/job-recall.md)、[版本化索引及故障恢复](docs/job-index.md)、[冻结候选](docs/candidate-sets.md)。工程测试使用真实PostgreSQL/RabbitMQ/Qdrant及显式合成embedding，不代表真实模型质量；[百炼适配器](docs/embedding.md)只通过本地HTTP桩，真实Key/正式embedding索引与[人工Recall@K](docs/recall-evaluation.md)仍延后。暂无召回HTTP/分析图接线。
+
+- JOB_API_ENABLED显式本地岗位API：草稿与要求编辑、完整权重/硬门槛确认、不可变发布及事务Outbox/真实JobIndexTask，列表和版本详情；缺少匹配embedding配置时真实任务保持待执行，合成消费者不能标READY。
 - 正式rubric-v1（AI_DRAFT/PENDING_REVIEW）导入与六维完整等级加载；JD抽取建议经有界模型端口/证据校验且不写回草稿。OpenAI兼容ChatOpenAI适配器仅本地HTTP桩已验证，真实中转调用延后，缺配置明确不可用。
 - NestJS API 与独立 Worker 入口；Worker 当前为空进程，不消费业务任务。
 - 显式启用RESUME_API_ENABLED后，PDF/DOCX同步上传并隔离解析，按owner/key/文件SHA-256幂等；本地文件、不可变版本/文本块/解析产物分开保存，引用逐字校验。PDF仅可靠页码，DOCX段落/表格定位；扫描/加密/空文本与资源超限明确失败，不做OCR。

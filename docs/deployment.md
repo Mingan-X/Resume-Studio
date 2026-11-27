@@ -1,5 +1,7 @@
 # 本地部署
 
+S2.3岗位索引显式命令与版本/alias边界见[索引执行](job-index.md)；百炼本地配置、消费/对账命令及真实验证延后边界见[Embedding调用](embedding.md)。新增CandidateSet与JobIndexRequest迁移使用既有业务数据库，部署前按原流程备份并核验项目归属，不删除原有数据/卷。真实百炼配置只保存在忽略文件，缺配置时命令安全失败；本地HTTP桩不能作为正式索引目标。
+
 ## S2.2 岗位与模型本地装配
 
 JOB_API_ENABLED=true启用岗位路由，DATABASE_URL仍限制本项目本地开发库。JOB_MODEL_CONFIG_FILE和JOB_INDEX_TARGET_FILE为可选绝对路径，文件放入被忽略的data目录；未配置时对应建议/发布操作503，不阻止读取草稿。文件内容经严格Zod校验，大小上限64KiB，错误仅输出字段名，不打印Key。模型连接参数不入库，任务只引用版本标识。

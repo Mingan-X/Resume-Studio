@@ -1,6 +1,6 @@
 # Resume Studio 技术架构
 
-状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区、对账、Checkpoint/fence联合隔离、任务查询/取消API及OpenAPI生成已实现；真实任务执行、简历分析、业务工作流和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
+状态：API/空Worker、基础设施诊断、独立Checkpointer、合成图恢复、本地观测、S1.4合成任务创建/发布/消费、重试/隔离区、对账、Checkpoint/fence联合隔离、任务查询/取消API及OpenAPI生成已实现；S2.1/S2.2文件与岗位API已接入，S2.3真实索引任务处理器/召回/候选冻结正在阶段回归，模型真实调用仍延后；简历分析、业务分析图和报告部分属于目标设计。当前运行能力与限制见[README](../README.md)和[测试文档](testing.md)。六维Rubric、模型与Embedding选择见[待决策事项](development-roadmap.md#6-待决策事项)；第三方参考见[源码分析](reference-research.md)，版本依据见[兼容性说明](dependency-compatibility.md)。
 
 ## 1. 核心概念与取舍
 
@@ -14,7 +14,7 @@
 
 **Checkpoint**：工作流状态快照及待完成节点，用于崩溃后继续；不替代任务记录、报告、授权或队列。Prisma 管业务表，官方 PostgresSaver 管自己的表，二者独立事务。
 
-当前Prisma Schema已有诊断表、Owner、两类任务与attempt/event/receipt/outbox/quarantine模型，以及T7合成NodeArtifact和SyntheticIndexTarget；已实现合成任务创建、发布、消费、重试、对账及Checkpoint联合恢复。真实业务处理器仍属目标设计。官方Checkpoint表由独立setup建立，供合成图使用。并发、超时、重试和租约参数尚未经过生产负载验证，Rubric等级、评分映射和权重等业务政策须单独审查。
+当前Prisma Schema已有诊断表、Owner、两类任务与attempt/event/receipt/outbox/quarantine模型，以及T7合成NodeArtifact和SyntheticIndexTarget；已实现合成任务创建、发布、消费、重试、对账及Checkpoint联合恢复。S2.3已加入岗位索引处理器与真实Qdrant工程测试，简历分析处理器仍属目标设计。官方Checkpoint表由独立setup建立，供合成图使用。并发、超时、重试和租约参数尚未经过生产负载验证，Rubric等级、评分映射和权重等业务政策须单独审查。
 
 ## 2. 整体架构
 
@@ -124,9 +124,9 @@ S2.1规划在上传请求内同步解析并持久化文本；PARSE按可信owner
 
 ### 4.2 另一个工作流：JD入库/索引
 
-S2.2实现草稿/要求编辑、确认与同事务PUBLISHED+JobIndexTask+当前目标+Outbox，以及本地HTTP列表/详情/发布/建议。JD抽取是请求内有界ModelPort调用，只返回经Schema/逐字引用校验的待确认建议，不写回草稿；未配置模型明确503。ChatOpenAI兼容适配器只完成HTTP桩验证，真实中转调用按统一验收延后。正式rubric-v1已导入、保持AI_DRAFT/PENDING_REVIEW。真实embedding索引处理器仍属S2.3，当前真实索引任务不被合成消费者完成或标READY。
+S2.2实现草稿/要求编辑、确认与同事务PUBLISHED+JobIndexTask+当前目标+Outbox，以及本地HTTP列表/详情/发布/建议。JD抽取是请求内有界ModelPort调用，只返回经Schema/逐字引用校验的待确认建议，不写回草稿；未配置模型明确503。ChatOpenAI兼容适配器只完成HTTP桩验证，真实中转调用按统一验收延后。正式rubric-v1已导入、保持AI_DRAFT/PENDING_REVIEW。S2.3已加入真实索引处理器，默认合成消费者仍不能完成真实索引或标READY；真实百炼调用仍延后。
 
-S2.2已接入[岗位/Rubric契约与持久化边界](jd-rubric.md)：JD证据复用引用校验，JobVersion发布内容及要求由数据库约束禁止原地修改；真实索引快照通过独立版本外键与旧合成任务兼容。下述调用链已实现到事务发布，embedding与Qdrant索引执行仍待S2.3，完整运行证据见[进度](progress.md)。
+S2.2已接入[岗位/Rubric契约与持久化边界](jd-rubric.md)：JD证据复用引用校验，JobVersion发布内容及要求由数据库约束禁止原地修改；真实索引快照通过独立版本外键与旧合成任务兼容。S2.3已将下述链路接到Qdrant及原子READY，工程测试使用合成embedding，百炼真实调用仍延后，完整运行证据见[进度](progress.md)。
 
 JD正文保存为草稿版本 → LLM抽取要求 → Zod/证据校验 → 人工或业务规则确认硬门槛/权重 → 在同一PostgreSQL事务内发布不可变JobVersion、创建JobIndexTask并写OutboxEvent（`job.index.requested.v1`）→ Worker embedding → Qdrant幂等upsert → 提交索引任务终态与该版本的indexStatus=READY。
 
@@ -423,7 +423,9 @@ API在owner限定的行锁事务中只保存cancelRequested；非终态重复请
 
 ## 7. 召回、RAG与索引一致性
 
-S2.3-T1新增合成JD导入、版本化技能归一化与不可变JobCorpusVersion清单（private、owner限定、完整字典与发布内容哈希）；T2增加PostgreSQL技能数组精确求交、发布版本回查、稳定排序与候选上限。实现与验证边界见[岗位语料说明](job-recall.md)。向量/RRF和分析图接线仍待后续任务实现。
+S2.3当前实现与验证边界： [语料/双路召回/RRF](job-recall.md)、[索引处理器与补建/alias](job-index.md)、[候选冻结](candidate-sets.md)、[有界Embedding与百炼适配器](embedding.md)。任务表仍是真源，Qdrant为派生索引；真实向量服务及质量评测按统一验收延后，业务分析图接线属于S2.4。下述设计数量不是性能保证，实际检查与未执行项以progress为准。
+
+S2.3-T1新增合成JD导入、版本化技能归一化与不可变JobCorpusVersion清单（private、owner限定、完整字典与发布内容哈希）；T2增加PostgreSQL技能数组精确求交、发布版本回查、稳定排序与候选上限。实现与验证边界见[岗位语料说明](job-recall.md)。T4–T7已加入索引执行、向量/RRF、候选冻结和显式百炼配置；分析图接线仍待S2.4，真实服务调用按统一验收延后。
 
 当前确定的方案是 **结构化技能关键词检索 + Dense Vector（稠密向量检索）+ RRF（按排名融合）+ LLM 逐项判断**。前两路负责获取岗位候选，RRF 融合候选排名，LLM 随后对候选岗位的每条要求给出带证据的判断；最终评分与排序仍由普通代码完成。当前方案没有采用 BM25 检索或独立 Reranker 模型，不应称为完整的“BM25 + Dense + Reranker”链路，也不因补充这一说明而提前增加组件。
 

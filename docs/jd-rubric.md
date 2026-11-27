@@ -1,5 +1,7 @@
 # JD与Rubric契约
 
+S2.3已加入真实JobIndexTask处理器与显式配置入口，见[索引执行](job-index.md)和[Embedding调用](embedding.md)。本文S2.2时期“真实索引尚未执行/待S2.3”指当时边界；当前默认synthetic消费者仍拒绝真实任务，仅对应embeddingVersion的显式索引装配可执行。真实百炼调用仍延后，合成向量只用于工程一致性测试。
+
 S2.2已实现岗位/要求/Rubric持久化、确认发布、JD建议及本地HTTP，阶段回归结果见[进度](progress.md)。真实模型与embedding验证延后，不将HTTP桩或固定样例当作真实服务验证。
 
 六维ID按需求§2顺序为 `technical_depth`（技术深度）、`engineering`（工程能力）、`business_understanding`（业务理解）、`project_impact`（项目影响力）、`collaboration`（协作沟通）、`growth`（成长性）。契约来源为 [jobs.ts](../src/contracts/jobs.ts) 与 [rubric.ts](../src/contracts/rubric.ts)。

@@ -8,6 +8,22 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T9阶段回归完成，待统一验收
+
+S2.3非延后任务实现完成并按T1–T8提交；T9同步README、架构、部署/测试、需求与JD实现状态。已交付工程链路：100条合成JD与字典/语料快照、关键词/向量/RRF、版本集合/alias与真实索引任务处理器、补建请求幂等、冻结候选、百炼HTTP适配器及本地显式消费/对账、人工标注格式/Recall@K脚本。没有新增HTTP接口，分析图接线留S2.4。
+
+最终检查：typecheck、零警告lint通过；基础103/103通过（12.853秒，data/s23-t6-t8-unit.log）；OpenAPI一致性通过。最终`pnpm run test:integration`131/131通过、0失败/跳过，782.746秒（data/s23-t9-integration.log），覆盖最终城市冻结条件；Docker集合创建5879.9ms在授权10秒内，Outbox死信184.610秒在原窗口内。此前131/131共用回归、所有专项及历史失败分别保留。迁移generate/validate/deploy两次/status通过，14条；没有依赖声明变化，不重复冻结安装。文档12份206项本地文件链接与git diff --check通过。
+
+归属核验后只读资源检查（data/s23-final-resources.json）：仅开发owner=1；Job/JobVersion/JobIndexTask/JobIndexRequest/JobCorpusVersion/CandidateSet/Candidate/AnalysisTask/Resume/FileAsset=0；4正式队列ready/unacked=0；Qdrant集合空。正式rubric-v1 hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d、AI_DRAFT/PENDING_REVIEW未修改。旧孤立policy未动，没有删除卷/数据库/配置。
+
+延后/未执行：真实百炼Key与正式embedding重建、人工标签/质量指标、目标服务器及L1/L2解除按原路线图延后；原生Qdrant6333未监听，依用户手动管理约定未启停，native对照如实记未执行，统一验收补做。历史API L1、HTTP桩超时、清理DEPENDENCY_UNAVAILABLE等逐次记录保留；新清理修正不扩大期限。状态改待验收，按授权--no-ff合并develop并推送阶段分支/develop；master与前端不操作，随后新会话继续S2.4至S3.3。
+
+## 2026-11-27 S2.3-T9阶段收尾准备
+
+T4补建/恢复边界bc4a62a、T5召回/RRF与清理修正30ca3b8、T6冻结候选deb8a9e、T7百炼适配器53e811a、T8格式/评测脚本a318a53已分别提交。最后基础103/103、类型/Lint及OpenAPI一致性通过；正在运行最终完整test:integration（data/s23-t9-integration.log），不提前改阶段状态。整理README、架构§7、需求实现状态、JD历史边界、部署与测试入口；不改变需求/验收、不补虚假质量数据。
+
+只fetch origin develop，local/remote均c50faf91fd662562ce1d4f7fc589911e1a84ee86；未操作master或前端。用户已授权阶段完成后--no-ff合并develop并推送阶段分支/develop，以及自主下一阶段会话，后续在检查完毕后执行。原生未监听、不自行启停，真实百炼Key/索引重建、人工标注/Recall指标与目标服务器按原延后安排。历史故障记录完整保留。
+
 ## 2026-11-27 S2.3-T8标注格式与Recall@K脚本（标注/指标延后）
 
 新增人工相关性格式与说明、真实运行输入格式、macro/micro Recall@K计算及recall:evaluate命令。拒绝未完整标注的冻结语料、重复/未知岗位、query/corpus hash不一致、非人工声明/非百炼实测声明、降级运行；无相关岗位单列null与排除数，不算100%。文件上限10MiB，错误安全输出。provenance只是声明，不能由文件自动证明人工/实测，文档要求维护者保留可审查来源。

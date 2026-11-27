@@ -1,6 +1,6 @@
 # 岗位语料与召回
 
-S2.3按任务逐步实现；当前T1语料、技能归一化与快照，以及T2关键词查询实现，检查结果见[进度](progress.md)。真实向量索引与召回质量尚未验证。
+S2.3按任务逐步实现语料、关键词/向量召回、RRF和候选冻结，检查结果见[进度](progress.md)。真实向量索引与召回质量尚未验证。
 
 ## 合成语料
 
@@ -31,11 +31,11 @@ pnpm run corpus:import <ownerUuid>
 
 `KeywordRecallRepository`先校验owner限定的语料清单及哈希，按快照字典归一化查询技能；PostgreSQL在manifest技能数组上精确求交集，并JOIN owner一致、仍存在、已发布、内容hash一致的JobVersion。新增/修改的版本不会自动加入旧语料。参数SQL不拼接用户值；仅显式非null的city作等值过滤。空技能或无交集返回空候选，未知语料/跨owner返回CORPUS_NOT_FOUND。
 
-`keyword-overlap-v1`按去重匹配技能数降序、jobId及jobVersionId升序排列；默认limit=50，范围1–100。返回每个候选的source=keyword、连续rank与matchedSkills，以及语料hash、字典和参数版本。匹配数仅用于召回排序，不是综合评分。本实现尚未接入分析图或HTTP，候选冻结/RRF由后续任务完成。
+`keyword-overlap-v1`按去重匹配技能数降序、jobId及jobVersionId升序排列；默认limit=50，范围1–100。返回每个候选的source=keyword、连续rank与matchedSkills，以及语料hash、字典和参数版本。匹配数仅用于召回排序，不是综合评分。本实现尚未接入分析图或HTTP，候选冻结/RRF分别由T6/T5内部服务提供。
 
 ## 验证
 
-T5向量/RRF草稿已接入内部RecallService，正在验证：先用显式owner和冻结corpus进行关键词查询，检查当前索引产物/目标READY后对脱敏摘要求embedding，只查该corpus内jobVersionId，按每岗位最高chunk分形成向量rank。相似度仅用于这一路排序，结果只返回RRF分与各路rank，不作为综合分。关键词与向量默认各50，RRF最多20；同分按jobId/jobVersionId代码单元升序。
+T5向量/RRF已接入内部RecallService，工程测试使用合成embedding：先用显式owner和冻结corpus进行关键词查询，检查当前索引产物/目标READY后对脱敏摘要求embedding，只查该corpus内jobVersionId，按每岗位最高chunk分形成向量rank。相似度仅用于这一路排序，结果只返回RRF分与各路rank，不作为综合分。关键词与向量默认各50，RRF最多20；同分按jobId/jobVersionId代码单元升序。
 
 Qdrant使用exact检索、有限chunkLimit（默认500），额外读取一个点检测截断边界；若边界两点同分，拒绝不确定截断并按显式策略报错/降级。大语料仍受候选窗口约束，不声称无限扫描或全库召回质量。索引未READY为INDEX_NOT_READY；向量调用失败为VECTOR_UNAVAILABLE；空摘要为EMPTY_VECTOR_QUERY。仅vectorFailure=keyword允许降级，结果必须标degraded与原因且只带keyword来源。数据库、持久预算预留、取消和总期限错误不能被降级掩盖。
 
