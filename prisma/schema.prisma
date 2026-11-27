@@ -65,6 +65,9 @@ model Owner {
   analysisConfigurations AnalysisConfiguration[]
   scoringPolicies ScoringPolicy[]
   account Account?
+  deletionRequests DeletionRequest[]
+  resourceOperations ResourceOperation[]
+  traces ResourceTrace[]
 
   @@map("owner")
 }
@@ -76,6 +79,7 @@ model Account {
   username String @unique @db.VarChar(64)
   passwordHash String @map("password_hash") @db.VarChar(256)
   enabled Boolean @default(true)
+  lifecycleHistoryComplete Boolean @default(true) @map("lifecycle_history_complete")
   failedAttempts Int @default(0) @map("failed_attempts")
   lockedUntil DateTime? @map("locked_until") @db.Timestamptz(3)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -91,6 +95,66 @@ model AuthSession {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   @@index([expiresAt])
   @@map("auth_session")
+}
+
+model DeletionRequest {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields:[ownerId],references:[id],onDelete:Restrict)
+  scope String @db.VarChar(16)
+  resumeVersionId String? @map("resume_version_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(80)
+  status String @default("WAITING") @db.VarChar(16)
+  reason String? @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  checkedAt DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+  stepCount Int @default(0) @map("step_count")
+  steps DeletionStep[]
+  @@unique([ownerId,idempotencyKey])
+  @@index([status,createdAt])
+  @@map("deletion_request")
+}
+model DeletionStep {
+  id String @id @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  request DeletionRequest @relation(fields:[requestId],references:[id],onDelete:Cascade)
+  resourceKey String @map("resource_key") @db.VarChar(128)
+  resource Json @db.JsonB
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  attempts Int @default(0)
+  retryAt DateTime? @map("retry_at") @db.Timestamptz(3)
+  @@unique([requestId,resourceKey])
+  @@map("deletion_step")
+}
+model ResourceOperation {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+  kind String @db.VarChar(32)
+  stoppedAt DateTime? @map("stopped_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([ownerId,stoppedAt])
+  @@map("resource_operation")
+}
+model ResourceTrace {
+  traceId String @id @map("trace_id") @db.Char(32)
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+  taskId String? @map("task_id") @db.Uuid
+  observedAt DateTime? @map("observed_at") @db.Timestamptz(3)
+  deleteRequestedAt DateTime? @map("delete_requested_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([ownerId,taskId])
+  @@map("resource_trace")
+}
+model TaskCheckpointThread {
+  threadId String @id @map("thread_id") @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields:[ownerId,taskId],references:[ownerId,id],onDelete:Cascade,onUpdate:NoAction)
+  @@index([ownerId,taskId])
+  @@map("task_checkpoint_thread")
 }
 
 model ScoringPolicy {
@@ -239,6 +303,8 @@ model AnalysisTask {
   scoringPolicy ScoringPolicy? @relation(fields: [ownerId, scoringPolicyVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
   activeGraphThreadId String @map("active_graph_thread_id") @db.Uuid
   graphGeneration Int @default(1) @map("graph_generation")
+  lifecycleHistoryComplete Boolean @default(true) @map("lifecycle_history_complete")
+  checkpointThreads TaskCheckpointThread[]
   reportId String? @map("report_id") @db.Uuid
   inputSnapshot Json @map("input_snapshot") @db.JsonB
   status AnalysisTaskStatus @default(QUEUED)

@@ -14,17 +14,18 @@ import { analysisConfiguration } from './analysis-inputs.js';
 import { jobDraft } from './job-inputs.js';
 import { ScoringPolicyRepository } from '../../src/infrastructure/tasks/scoring-policy.repository.js';
 import { defaultScoringPolicy } from '../../src/modules/scoring/default-policy.js';
+import type {StagedFile} from '../../src/modules/storage/storage.port.js';
 
 export async function seedRealAnalysis(database: DatabaseService, ownerId: string,
-  options: { settings?: ReturnType<typeof analysisConfiguration>; jobCount?: number; requirementCount?: number; allowSynthetic?: boolean } = {}) {
+  options: { settings?: ReturnType<typeof analysisConfiguration>; jobCount?: number; requirementCount?: number; allowSynthetic?: boolean;file?:StagedFile;uploadedAt?:Date } = {}) {
   const db = database.client, settings = options.settings ?? analysisConfiguration();
   settings.budget.maxTokens = Math.max(settings.budget.maxTokens, 500_000);
   await db.owner.create({ data: { id: ownerId } });
-  const versionId = randomUUID(), fileHash = 'a'.repeat(64);
+  const versionId = randomUUID(), fileHash = options.file?.sha256??'a'.repeat(64);
   const document = extractedDocument(versionId, fileHash, { parserVersion: 'test-parser-v1', warnings: [],
     blocks: [{ text: '合成简历：TypeScript工程实践。', location: { kind: 'PDF', page: 1, bounds: null } }] });
   await new ResumeRepository(database).register({ ownerId, idempotencyKey: randomUUID(), resumeId: randomUUID(), resumeVersionId: versionId,
-    file: { id: randomUUID(), ownerId, storageKey: randomUUID(), sha256: fileHash, mime: 'application/pdf', size: 10, createdAt: new Date().toISOString() },
+    file: { id: randomUUID(), ownerId, storageKey: options.file?.storageKey??randomUUID(), sha256: fileHash, mime: 'application/pdf', size: options.file?.size??10, createdAt: (options.uploadedAt??new Date()).toISOString() },
     blocks: document.blocks, document });
   const jobs = new JobRepository(database), publication = new JobPublicationRepository(database), drafts = [];
   for (let index = 0; index < (options.jobCount ?? 1); index++) {

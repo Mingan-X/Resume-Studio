@@ -8,6 +8,46 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.2-T4/T5/T7收尾通过，待统一验收
+
+最终完整test:integration151/151、811.990秒（data/s32-lifecycle-integration-final.log），0失败/跳过；基础138/138、68.775秒，最终文件/观测/契约专项15/15、37.774秒，真实trace专项1/1、17.670秒，扩大数据库/图/删除/对账专项15/15、131.688秒。类型、零警告Lint、OpenAPI生成/一致性及32条迁移generate/validate/重复deploy/status通过。首轮147/151、观测冷启动失败及旧SocketTimeout完整保留，本轮通过不代表根因修复或目标环境L1/L2解除。
+
+T4实现账号范围的简历上传30天到期扫描、持久请求/步骤、fair checkedAt轮转、DB写入屏障及历史停止/清单保护；T5实现全部业务删除保留账号、取消后等待安全停止、精确文件/全部图线程/owner向量/可确认trace删除、故障重入和真实会话API；T7闭合Schema/OpenAPI/部署/测试/所有权与新会话交接。无新增依赖，不重复冻结安装。真实模型/人工质量/原生Qdrant手动未启用/目标服务器验证按原安排延后。
+
+32条迁移未修改原规则，清理只对本轮合成owner/线程/文件/集合/trace执行。完成后资源核验见data/s32-lifecycle-resources.json：账号/会话、删除请求/步骤、资源操作/trace/图线程与全部业务测试实体0；四正式队列ready/unacked=0、Qdrant集合空，原开发及基础设施主体保留，scoring-v1/rubric-v1 hash保持。阶段标待验收，接下来按任务提交及--no-ff合并推送，再创建S3.3新会话；master和前端未修改。
+
+## 2026-11-28 S3.2扩大定向复核15/15
+
+补充对账Worker诊断与旧账号历史保护后，typecheck、Lint、build通过；analysis-runtime、reconciliation、lifecycle三个文件15/15、131.688秒通过（data/s32-lifecycle-diagnostic-final.log）。上轮无法启动事务与worker failed本次未复现，未修改3秒连接/5秒SQL与事务上限或重试，不声称已定位根因。第32条迁移已部署；最后部署重复性/OpenAPI一致性和最终完整集成继续验证。所有旧失败保留，不以定向结果代替完整结果。
+
+## 2026-11-28 S3.2首次完整生命周期回归147/151
+
+test:integration完成147通过/4失败/0跳过、836.323秒（data/s32-lifecycle-integration-full.log）。失败为analysis-runtime小候选子用例在真实索引任务claim启动事务时报“Unable to start a transaction in the given time”，reconciliation活进程锁子用例收到worker failed，以及各自父测试；新生命周期、真实trace删除、会话API与原Checkpoint恢复均通过。不能将未诊断的failed直接认作SocketTimeout，已给对账fixture加入同样白名单socket诊断，类型/Lint/build后定向核验。旧完整结果保留。
+
+复核发现迁移前账号即使无analysis attempt也可能留下旧JD建议trace，新增第32条迁移将已有账号标历史不完整，新账号默认完整；清理时明确等待，真实开发/系统主体仍不自动清理。当前测试账号已精确清理，迁移不会重置正式业务数据；增加对应历史账号拒绝测试。没有新增模型调用、服务重试或放宽断言。
+
+## 2026-11-28 S3.2真实trace删除通过，进入完整集成回归
+
+原等待失败之后九项服务均达到healthy；真实Langfuse登记→可读→DELETE→observations为空的专项1/1、17.670秒通过（data/s32-lifecycle-trace-real.log）。失败时保留登记和删除意图的设计未放宽，异步首次空结果不算删除成功。最终文件/观测/契约专项15/15、37.774秒通过（data/s32-lifecycle-unit-verified.log），typecheck、Lint通过；完整test:integration已启动（data/s32-lifecycle-integration-full.log），结果另记。
+
+## 2026-11-28 S3.2基础回归与观测Worker等待
+
+基础138/138、68.775秒通过（data/s32-lifecycle-unit-full.log），文件删除崩溃恢复8/8、3.896秒通过；31条迁移重复deploy/status通过。观测第二次启动时Web已healthy，但Worker未在原4分钟窗口就绪，命令返回失败；只读检查显示Worker running、OOMKilled=false、CPU仍有活动，近期日志没有新error。保留进程继续初始化，不修改4分钟窗口或直接宣称就绪。后续真实trace与全量检查待健康确认；用户仅豁免原SocketTimeout，不以此覆盖其他行为错误。
+
+## 2026-11-28 S3.2观测依赖冷启动记录
+
+显式observability:up首轮因langfuse-clickhouse健康等待耗尽返回失败，web/worker未启动；随后只读核验该容器running/healthy、OOMKilled=false，原持久卷未重建。按已就绪依赖再次启动web/worker继续真实trace检查；不修改健康阈值、原请求超时或吞掉首轮失败。此时主机可用内存约3346MiB，与上次极低内存场景不同，不能混同SocketTimeout根因。
+
+## 2026-11-28 S3.2-T4/T5实现与扩大专项通过
+
+实现删除请求/步骤与checkedAt轮转、30天到期扫描、DB owner写入屏障、逐任务停止证据核验、历史线程登记、账号保留和跨存储删除；外部调用与事务分开，失败保留持久步骤，累计尝试/总期限不因重启重置。首轮真实数据库/文件/Checkpoint/Qdrant专项1/1、72.225秒通过（data/s32-lifecycle-targeted.log）；扩大报告revision/评分/排名删除和真实登录接口后5/5、143.252秒通过（data/s32-lifecycle-expanded.log）。上传补偿失败与Qdrant写入丢失回复保留未停止记录；保留期限等待活动任务完成，不中断既有分析。
+
+31条迁移generate/validate/deploy通过，类型/Lint通过；观测登记失败不影响业务但不导出无归属span，Langfuse删除先持久确认曾可读与提交，再验证observations为空，尚未可见不会误判删除。观测/契约专项7/7、1.754秒通过，真实Langfuse专项与完整阶段回归仍待完成。无新增依赖，未改变全局WSL/内存/代理配置；所有清理仅作用本轮测试owner及精确资源。
+
+## 2026-11-28 S3.2继续收尾授权
+
+维护者明确将未确认SocketTimeout作为已知问题记录，不再阻塞后续开发，授权完成S3.2并在阶段结束后新开会话按路线图继续后端；全部后端开发完成后恢复指定前端会话01a218e5-774c-71e3-b816-3d737a491283。所有会话禁止goal模式；内置工具缺失可自主修复。已发现所需原生会话工具，当前无需修复。开始T4/T5：持久删除请求/步骤、到期调度、阻止新任务、确认安全停止、全部存储清理与可恢复验证，保留账号。其他故障不借此豁免。
+
 ## 2026-11-28 S3.2-T7根因排查收尾：诊断增强通过，未宣称根治
 
 最终typecheck、零警告Lint通过，基础136/136、103.086秒（data/s32-socket-diagnostics-unit.log）；checkpoint-fence、checkpoint、tasks三个真实数据库集成文件22/22、31.567秒通过（data/s32-socket-diagnostics-integration.log），0跳过。新增套接字诊断单元核对成功/拒绝、字节与隐私边界，原产品配置/服务期限/重试和恢复断言未改。文档文件/锚点与diff检查通过后保存本地诊断提交，不合并/推送阶段。
