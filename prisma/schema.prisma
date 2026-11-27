@@ -222,6 +222,7 @@ model AnalysisTask {
   artifacts NodeArtifact[]
   candidateSet CandidateSet?
   profile ProfileAssessment?
+  matchPlan MatchPlan?
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -229,6 +230,35 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model MatchPlan {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  executions RequirementExecution[]
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("match_plan")
+}
+
+model RequirementExecution {
+  ownerId String @map("owner_id") @db.Uuid
+  planId String @map("plan_id") @db.Uuid
+  plan MatchPlan @relation(fields: [ownerId, planId], references: [ownerId, id], onDelete: Cascade, onUpdate: NoAction)
+  jobVersionId String @map("job_version_id") @db.Uuid
+  requirementId String @map("requirement_id") @db.VarChar(128)
+  ordinal Int
+  status String @db.VarChar(16)
+  judgment Json? @db.JsonB
+  errorCode String? @map("error_code") @db.VarChar(64)
+  @@id([planId, jobVersionId, requirementId])
+  @@unique([planId, ordinal])
+  @@map("requirement_execution")
 }
 
 model ProfileAssessment {

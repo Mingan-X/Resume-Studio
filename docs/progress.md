@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T7逐项匹配与400条持久预算保存
+
+T6保存3a3db3e。T7保存MatchPlan/RequirementExecution、完整计划快照与不可变终态行、LangGraph Send岗位分支并发3/批次10、语义ID完整性及逐字证据校验、任职年月指标纯函数。按候选顺序/priority/stableId一次分配最多400条唯一要求，超额保留BUDGET，失败保留FAILED，未知语义仍unknown且不冒充失败；所有行保留，不静默删除。每次模型尝试另走累计预算账本。仅明确employment_months/years指标由代码算，含糊单位/无日期返回unknown；月份值不是精确到日的保证。
+
+共用基础118/118、类型/Lint与专项通过；真实数据库/Qdrant＋假模型完整链路实测420计划=400完成+20预算行，重投不增加模型调用，画像/匹配失败得到对应PARTIAL/FAILED。未知/重复/缺失ID、额外分数、跨版本/伪造引用单元拒绝；跨节点故障测试随T8提交。新增matching迁移已部署并二次确认无pending。真实模型T9仍延后，共用Langfuse5秒projects门禁失败未解除，阶段不合并。
+
 ## 2026-11-27 S2.4-T6召回接线与真实输入冻结保存
 
 T5保存1d0f4fd。T6保存由ParsedResume生成脱敏RecallQuery、读取冻结corpus/index/recall配置、复用S2.3召回与CandidateSet的服务；已有集合只校验执行权并复用，恢复不重新召回。CandidateRepository新增真实analysis快照的corpus版本/hash、embedding/index spec及召回配置绑定，旧synthetic验证保持。
