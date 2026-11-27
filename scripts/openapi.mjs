@@ -17,6 +17,7 @@ const { createAnalysisRequestSchema, createAnalysisResponseSchema } = await impo
 const { reportPathSchema, pageQuerySchema, reportResponseSchema, reportListSchema, recomputeRequestSchema } = await import('../dist/src/contracts/reports.js');
 const { analysisPathSchema, analysisListSchema, analysisDetailSchema, analysisOptionsQuerySchema, analysisOptionsSchema, taskEventResponseSchema } = await import('../dist/src/contracts/analysis-api.js');
 const { loginRequestSchema, authSessionResponseSchema, authMeResponseSchema, logoutResponseSchema } = await import('../dist/src/contracts/auth.js');
+const {deletionPathSchema,deletionResponseSchema}=await import('../dist/src/contracts/lifecycle.js');
 const registry = new OpenAPIRegistry();
 registry.registerComponent('securitySchemes','sessionCookie',{type:'apiKey',in:'cookie',name:'__Host-resume_session',description:'AUTH_ENABLED=true时必需；写请求同时要求X-CSRF-Token及精确HTTPS Origin。'});
 const health = registry.register('HealthResponse', healthResponseSchema);
@@ -50,6 +51,8 @@ const jobErrors = { ...errors, 409: response(error, '幂等冲突或未确认/�
 const jsonBody = schema => ({ required: true, content: { 'application/json': { schema } } });
 const authErrors = { ...errors, 401: response(error,'会话无效或未登录'), 403: response(error,'CSRF或Origin不匹配'), 503: response(error,'认证暂不可用') };
 const csrfHeaders = z.object({ 'x-csrf-token': z.string().regex(/^[a-f0-9]{64}$/), origin: z.url() });
+registry.registerPath({method:'post',path:'/api/v1/data-deletions',operationId:'deleteAllBusinessData',summary:'登记删除全部业务数据并保留账号',request:{query:taskQuerySchema,headers:z.object({'idempotency-key':z.uuid()}),body:jsonBody(taskQuerySchema)},responses:{202:response(deletionResponseSchema,'请求已持久保存，尚未表示清理完成'),...errors,409:response(error,'删除状态冲突')}});
+registry.registerPath({method:'get',path:'/api/v1/data-deletions/{requestId}',operationId:'getDataDeletion',summary:'查询本人数据删除进度',request:{params:deletionPathSchema,query:taskQuerySchema},responses:{200:response(deletionResponseSchema,'安全状态与进度，不含内部存储身份'),...errors}});
 registry.registerPath({ method:'get', path:'/api/v1/auth/session', operationId:'getAuthSession', summary:'获取会话与登录前CSRF令牌', description:'仅AuthModule启用时提供。匿名会话无业务权限，所有响应no-store。', request:{query:taskQuerySchema}, responses:{200:response(authSessionResponseSchema,'匿名或当前登录状态'),...errors} });
 registry.registerPath({ method:'get', path:'/api/v1/auth/me', operationId:'getCurrentUser', summary:'读取当前登录账号', request:{query:taskQuerySchema}, responses:{200:response(authMeResponseSchema,'账号概要与CSRF令牌，不返回owner'),...authErrors} });
 registry.registerPath({ method:'post', path:'/api/v1/auth/login', operationId:'login', summary:'验证本地账号并轮换会话', request:{query:taskQuerySchema,headers:csrfHeaders,body:jsonBody(loginRequestSchema)}, responses:{200:response(authMeResponseSchema,'登录成功，Set-Cookie替换旧会话'),...authErrors} });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query, Req, Res,Inject } from '@nestjs/common';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { z } from 'zod';
 import { jobPathSchema, jobVersionPathSchema, jobListQuerySchema } from '../../contracts/job-api.js';
@@ -8,10 +8,13 @@ import { taskQuerySchema } from '../../contracts/task-api.js';
 import { idempotencyKeySchema } from '../../contracts/tasks.js';
 import { ZodValidationPipe, RequestValidationError } from '../../infrastructure/http/zod-validation.pipe.js';
 import { JobApiService } from './job-api.service.js';
+import {LifecycleRepository} from '../../infrastructure/tasks/lifecycle.repository.js';
+import {IDENTITY} from '../identity/identity.module.js';
+import type {IdentityPort} from '../identity/identity.module.js';
 function json(type: unknown) { if (typeof type !== 'string' || !/^application\/json(?:\s*;.*)?$/i.test(type)) throw new RequestValidationError(); }
 @Controller('api/v1/jobs')
 export class JobController {
-  constructor(private readonly jobs: JobApiService) {}
+  constructor(private readonly jobs: JobApiService,private readonly lifecycle:LifecycleRepository,@Inject(IDENTITY)private readonly identity:IdentityPort) {}
   @Post() @HttpCode(201)
   create(@Body(new ZodValidationPipe(createJobDraftSchema)) body: z.infer<typeof createJobDraftSchema>,
     @Headers('content-type') type: unknown, @Query(new ZodValidationPipe(taskQuerySchema)) _query: unknown) { json(type); return this.jobs.create(body); }
@@ -42,8 +45,9 @@ export class JobController {
     @Query(new ZodValidationPipe(taskQuerySchema)) _query: unknown, @Req() request: IncomingMessage,
     @Res({ passthrough: true }) response: ServerResponse) {
     json(type); const abort = new AbortController(), stop = () => { if (!response.writableFinished) abort.abort(); };
+    const operation=await this.lifecycle.begin(await this.identity.getOwnerId(),'SUGGEST');
     request.once('aborted', stop); response.once('close', stop);
     try { return await this.jobs.suggest(path.jobId, path.versionId, abort.signal); }
-    finally { request.off('aborted', stop); response.off('close', stop); }
+    finally { request.off('aborted', stop); response.off('close', stop);await this.lifecycle.stopped(operation.id); }
   }
 }

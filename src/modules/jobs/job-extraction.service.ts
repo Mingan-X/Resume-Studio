@@ -16,7 +16,8 @@ export const jdExtractionPrompt = '从下方JD数据提取待人工确认的岗�
 
 export class JobExtractionService {
   constructor(private readonly identity: IdentityPort, private readonly jobs: Pick<JobRepository, 'findVersion'>,
-    private readonly model?: ModelExecutor, private readonly observability?: Pick<ObservabilityService, 'run'>) {}
+    private readonly model?: ModelExecutor, private readonly observability?: Pick<ObservabilityService, 'run'>,
+    private readonly registerTrace?:(owner:string,traceId:string)=>Promise<void>) {}
   async suggest(version: unknown, signal?: AbortSignal) {
     const ownerId = ownerIdSchema.parse(await this.identity.getOwnerId()), id = z.uuid().parse(version);
     const job = await this.jobs.findVersion(ownerId, id);
@@ -47,6 +48,6 @@ export class JobExtractionService {
         promptVersion: 'jd-extract-v1', modelConfigVersion: result.modelConfigVersion,
         suggestions: result.output, attempts: result.attempts, usage: result.usage });
     };
-    return this.observability ? this.observability.run(randomUUID(), 'extract', execute) : execute();
+    return this.observability ? this.observability.run(randomUUID(), 'extract', execute,this.registerTrace?(id)=>this.registerTrace!(ownerId,id):undefined) : execute();
   }
 }

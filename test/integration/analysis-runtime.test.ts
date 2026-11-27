@@ -36,6 +36,9 @@ import { SyntheticEmbedding } from '../support/synthetic-embedding.js';
 import { seedRealAnalysis, cleanRealAnalysis } from '../support/real-analysis.js';
 import { qdrantTestTarget } from '../support/native-qdrant.js';
 import { cleanIndexCollections } from '../support/index-cleanup.js';
+import {LifecycleRepository} from '../../src/infrastructure/tasks/lifecycle.repository.js';
+import {LifecycleExecutor} from '../../src/infrastructure/tasks/lifecycle.executor.js';
+import {hashPassword} from '../../src/modules/auth/password.js';
 
 await test('S2.4 real analysis graph commits success/partial/failure, freezes candidates and preserves unique 400 budget', { timeout: 240_000 }, async t => {
   await ownedPostgres(); const config = loadInfrastructureConfig(process.env), target = await qdrantTestTarget(config); await target.verify();
@@ -177,5 +180,21 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     assert.equal((await db.analysisTask.findUniqueOrThrow({ where: { id: crash.taskId } })).status, 'SUCCEEDED');
     assert.equal(await db.analysisReport.count({where:{taskId:crash.taskId}}),1);
     assert.deepEqual(await db.candidateSet.findFirstOrThrow({ where: { taskId: crash.taskId } }), originalSet);
+    // Reuse the fully populated synthetic graph to verify report/revision/score/rank
+    // deletion ordering. This fixture's FileAsset is metadata only; physical files
+    // are independently exercised by lifecycle.test.
+    const account=await db.account.create({data:{id:randomUUID(),ownerId,username:`report-${randomUUID()}`,passwordHash:await hashPassword('synthetic-report-deletion-password')}});
+    const deletion=await new LifecycleRepository(database).request(ownerId,randomUUID());
+    try{
+      const erase=new LifecycleExecutor(database,{erase:async(resource,signal,deadline)=>{
+        if(resource.kind==='CHECKPOINT')await checkpoints.saver.deleteThread(resource.threadId);
+        else if(resource.kind==='VECTOR')await vector.eraseOwner(resource.ownerId,{signal,deadline});
+        else assert.equal(resource.kind,'FILE');
+      }});
+      assert.equal(await erase.run(deletion),'done');
+      for(const count of [await db.analysisReport.count({where:{ownerId}}),await db.scoreSet.count({where:{ownerId}}),await db.rankingSnapshot.count({where:{ownerId}}),
+        await db.candidateSet.count({where:{ownerId}}),await db.matchPlan.count({where:{ownerId}}),await db.resumeExtraction.count({where:{ownerId}})])assert.equal(count,0);
+      assert.equal(await db.account.count({where:{id:account.id}}),1);
+    }finally{await db.deletionRequest.deleteMany({where:{ownerId}});await db.account.deleteMany({where:{id:account.id}});}
   });
 });

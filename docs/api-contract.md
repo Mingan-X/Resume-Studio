@@ -82,13 +82,14 @@ S2.4-T1新增ANALYSIS_UNAVAILABLE（503）：服务端未配置分析输入配�
 | 404 | NOT_FOUND | 路由或资源不存在；越权访问他人资源也返回404，不暴露资源是否存在 | 已实现（路由及任务） |
 | 500及以上 | INTERNAL_ERROR | 安全的服务端错误 | 已实现 |
 | 其他 | HTTP_ERROR | 其他HTTP异常 | 已实现 |
-| 401 | UNAUTHENTICATED | 未登录或会话过期 | 规划（S3.2） |
-| 403 | FORBIDDEN | 已登录但无权执行该操作 | 规划（S3.2） |
+| 401 | UNAUTHENTICATED | 未登录或会话过期 | S3.2已实现 |
+| 403 | FORBIDDEN | CSRF/Origin校验拒绝 | S3.2已实现 |
+| 409 | DATA_DELETION_PENDING | 删除屏障生效，暂不能创建或修改业务数据 | S3.2已实现 |
 | 409 | IDEMPOTENCY_CONFLICT | 同一所有者及任务类型下，同幂等键对应不同请求 | 已实现应用服务、简历上传及岗位发布HTTP错误映射 |
 | 409 | INVALID_STATE | 已结束任务不允许再请求取消 | 已实现（S1.4-T8） |
 | 413 | PAYLOAD_TOO_LARGE | 上传超出大小限制；reason=FILE_TOO_LARGE | S2.1已接线 |
 | 422 | UNSUPPORTED_FILE | 文件类型、签名或内容不受支持（含扫描PDF、加密文件）；reason说明原因 | S2.1已接线 |
-| 429 | RATE_LIMITED | 请求过于频繁 | 规划 |
+| 429 | RATE_LIMITED | 请求过于频繁 | S3.2已实现 |
 
 规划中的错误码在实现时可以调整名称，但必须先更新本表和 `src/contracts/`，前端再据此对接。
 

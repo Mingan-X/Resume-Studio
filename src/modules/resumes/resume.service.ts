@@ -37,7 +37,7 @@ export class ResumeService {
       return await this.detail(ownerId, saved.resumeId, saved.id);
     } finally {
       // Unknown DB result/query failure retains the manifest; never delete a referenced committed file.
-      await this.storage.compensate(file, this.repository).catch(() => undefined);
+      await this.storage.compensate(file, this.repository).catch(() => {throw new Error('UPLOAD_CLEANUP_UNCONFIRMED');});
     }
   }
 

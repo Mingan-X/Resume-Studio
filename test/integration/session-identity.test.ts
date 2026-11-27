@@ -18,6 +18,7 @@ import {syntheticPdf} from '../support/document-fixtures.js';
 import {resumeVersionResponseSchema} from '../../src/contracts/resumes.js';
 import {TaskRepository} from '../../src/infrastructure/tasks/task.repository.js';
 import {analysisInput} from '../support/task-inputs.js';
+import {deletionResponseSchema} from '../../src/contracts/lifecycle.js';
 
 await test('S3.2 session identity isolates concurrent owners and protects every business controller in production assembly', {timeout:90000}, async t=>{
   await ownedPostgres(); const connection=loadInfrastructureConfig(process.env), origin='https://resume.example';
@@ -28,6 +29,7 @@ await test('S3.2 session identity isolates concurrent owners and protects every 
   t.after(async()=>{try{await ownedPostgres();await db.$transaction(async tx=>{
     await tx.authSession.deleteMany({where:{tokenHash:{in:[...tokens]}}});
     const where={ownerId:{in:owners}};
+    await tx.deletionRequest.deleteMany({where});
     await tx.outboxEvent.deleteMany({where});await tx.taskEvent.deleteMany({where});await tx.analysisTask.deleteMany({where});
     await tx.resumeUpload.deleteMany({where});await tx.extractedDocument.deleteMany({where});await tx.evidenceBlock.deleteMany({where});
     await tx.resumeVersion.deleteMany({where});await tx.resume.deleteMany({where});await tx.fileAsset.deleteMany({where});
@@ -74,6 +76,13 @@ await test('S3.2 session identity isolates concurrent owners and protects every 
   assert.equal(await consume(await fetch(`${base}/api/v1/tasks/${task.taskId}/cancel`,{method:'POST',headers:headers(b),body:'{}'})),404);
   assert.equal((await db.analysisTask.findUniqueOrThrow({where:{id:task.taskId}})).cancelRequested,false);
   assert.equal(await consume(await fetch(`${base}/api/v1/jobs`,{method:'POST',headers:headers(a),body:JSON.stringify({...body,ownerId:b.owner})})),400);
+  const deleteKey=randomUUID(),deleteHeaders={...headers(a),'idempotency-key':deleteKey};
+  const deletion=await fetch(`${base}/api/v1/data-deletions`,{method:'POST',headers:deleteHeaders,body:'{}'});assert.equal(deletion.status,202);
+  const pending=deletionResponseSchema.parse(await deletion.json());assert.equal(pending.status,'WAITING');
+  const duplicate=await fetch(`${base}/api/v1/data-deletions`,{method:'POST',headers:deleteHeaders,body:'{}'});assert.equal(duplicate.status,202);assert.equal(deletionResponseSchema.parse(await duplicate.json()).id,pending.id);
+  assert.equal(await consume(await fetch(`${base}/api/v1/data-deletions/${pending.id}`,{headers:headers(b)})),404);
+  assert.equal(await consume(await fetch(`${base}/api/v1/data-deletions/${pending.id}`,{headers:headers(a)})),200);
+  assert.equal(await consume(await fetch(`${base}/api/v1/jobs`,{method:'POST',headers:headers(a),body:JSON.stringify(body)})),409);
   await db.authSession.update({where:{tokenHash:tokenHash(readSessionCookie(a.cookie)!)},data:{expiresAt:new Date(0)}});
   assert.equal(await consume(await fetch(`${base}/api/v1/jobs`,{headers:headers(a)})),401);
 });

@@ -13,6 +13,7 @@ import { jobIndexTargetSchema } from '../../contracts/job-publication.js';
 import { indexCollectionSchema } from '../../contracts/job-index.js';
 import { versionNameSchema } from '../../contracts/jobs.js';
 import { indexBackfillKey } from '../../modules/recall/job-chunks.js';
+import {LifecycleRepository} from '../tasks/lifecycle.repository.js';
 
 async function readJson(path: string) {
   const file = await open(path, 'r');
@@ -52,8 +53,10 @@ try {
     if (spec.provenance !== 'bailian') throw new Error('OFFICIAL_EMBEDDING_REQUIRED');
     const ready = await new JobIndexRepository(database).assertCorpusReady(ownerId, corpusVersion, spec);
     const deadline = Date.now() + 60_000;
+    const lifecycle=new LifecycleRepository(database),operation=await lifecycle.begin(ownerId,'VECTOR');
     await new JobIndexVector({ url: config.qdrantUrl, apiKey: config.qdrantApiKey }, ownedQdrant)
       .switchAlias(spec, { deadline, signal: AbortSignal.timeout(60_000) });
+    await lifecycle.stopped(operation.id);
     console.log(JSON.stringify({ code: 'INDEX_ALIAS_SWITCHED', corpusVersion, collection: ready.collection }));
   }
 } catch { console.error(JSON.stringify({ code: 'INDEX_COMMAND_FAILED' })); process.exitCode = 1; }

@@ -1,4 +1,4 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException,ConflictException } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { AuthRepository } from '../../infrastructure/tasks/auth.repository.js';
 import { AuthController } from './auth.controller.js';
@@ -9,6 +9,7 @@ import { readSessionCookie, requireCsrf } from './session-token.js';
 import { authenticatedOwner } from '../identity/session-identity.js';
 import type { AuthenticatedRequest } from '../identity/session-identity.js';
 import {RequestLimits} from '../../infrastructure/http/api-security.js';
+import {LifecycleController} from './lifecycle.controller.js';
 
 @Injectable()
 export class SessionGuard implements CanActivate {
@@ -23,6 +24,7 @@ export class SessionGuard implements CanActivate {
     this.limits.require(session.account.ownerId,this.config.ownerRequestsPerMinute);
     if (!['GET', 'HEAD'].includes(request.method ?? '')) {
       requireCsrf(session.token, request.headers['x-csrf-token'], request.headers.origin, this.config.origin);
+      if(context.getClass()!==LifecycleController&&await this.sessions.deletionPending(session.account.ownerId))throw new ConflictException('DATA_DELETION_PENDING');
     }
     request[authenticatedOwner] = session.account.ownerId;
     return true;

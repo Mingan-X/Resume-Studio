@@ -8,6 +8,7 @@ import {createSessionToken,tokenHash} from '../../modules/auth/session-token.js'
 @Injectable()
 export class AuthRepository{
  constructor(private readonly database:DatabaseService){}
+ async deletionPending(ownerId:string){return await this.database.client.deletionRequest.count({where:{ownerId,scope:'ALL',status:{not:'DONE'}}})>0;}
  async createAccount(username:unknown,password:unknown){const name=usernameSchema.parse(username),passwordHash=await hashPassword(password),id=randomUUID(),ownerId=randomUUID();
   await this.database.client.$transaction(async tx=>{await tx.owner.create({data:{id:ownerId}});await tx.account.create({data:{id,ownerId,username:name,passwordHash}});});return {id,ownerId,username:name};}
  async createAnonymous(seconds:number){const token=createSessionToken();return this.database.client.$transaction(async tx=>{

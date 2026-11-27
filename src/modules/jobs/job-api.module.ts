@@ -19,6 +19,7 @@ import { ModelExecutor, modelExecutionPolicySchema } from '../models/model-execu
 import { ObservabilityModule, ObservabilityService } from '../../infrastructure/observability/observability.module.js';
 import { loadObservabilityConfig } from '../../infrastructure/observability/config.js';
 import { ConfigValidationError } from '../config/app-config.js';
+import {LifecycleRepository} from '../../infrastructure/tasks/lifecycle.repository.js';
 
 async function localJson(path: string): Promise<unknown> {
   const info = await stat(path); if (!info.isFile() || info.size > 65536) throw new Error();
@@ -36,10 +37,10 @@ export class JobApiModule {
     catch { throw new ConfigValidationError(['JOB_INDEX_TARGET_FILE']); }
     return { module: JobApiModule, imports: [sessionIdentity?IdentityModule.session():IdentityModule, ObservabilityModule.register(loadObservabilityConfig(process.env))],
       controllers: [JobController], providers: [
-        { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService, JobRepository, JobPublicationRepository,
+        { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService, JobRepository, JobPublicationRepository,LifecycleRepository,
         JobDraftService, JobPublicationService, JobApiService, { provide: JOB_INDEX_TARGET, useValue: target ?? null },
-        { provide: JobExtractionService, inject: [IDENTITY, JobRepository, ObservabilityService],
-          useFactory: (identity: IdentityPort, jobs: JobRepository, observation: ObservabilityService) => new JobExtractionService(identity, jobs, model, observation) },
+        { provide: JobExtractionService, inject: [IDENTITY, JobRepository, ObservabilityService,LifecycleRepository],
+          useFactory: (identity: IdentityPort, jobs: JobRepository, observation: ObservabilityService,lifecycle:LifecycleRepository) => new JobExtractionService(identity, jobs, model, observation,(owner,id)=>lifecycle.trace(owner,id)) },
       ] };
   }
 }

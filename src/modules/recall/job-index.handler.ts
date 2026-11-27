@@ -15,7 +15,8 @@ export class JobIndexHandler implements TaskHandler {
   readonly capability = 'job-index';
   get embeddingVersion() { return this.embedding.embeddingVersion; }
   constructor(private readonly jobs: JobRepository, private readonly embedding: EmbeddingExecutor,
-    private readonly vector: JobIndexVector, options: { allowSynthetic?: boolean } = {}) {
+    private readonly vector: JobIndexVector, options: { allowSynthetic?: boolean } = {},
+    private readonly writes?:{begin(owner:string):Promise<string>;confirmed(id:string):Promise<void>}) {
     if (embedding.provenance === 'synthetic' && options.allowSynthetic !== true) throw new Error('OFFICIAL_EMBEDDING_REQUIRED');
   }
 
@@ -34,7 +35,12 @@ export class JobIndexHandler implements TaskHandler {
       provenance: this.embedding.provenance, chunkerVersion: snapshot.chunkerVersion, componentVersion: snapshot.componentVersion });
     const call = { signal, deadline: claim.deadline.getTime() }, points: string[] = [];
     const guard = () => { signal.throwIfAborted(); if (Date.now() >= call.deadline) throw new TaskFailure('DEADLINE_EXCEEDED'); };
-    guard(); await this.vector.ensure(spec, call);
+    const mutate=async(action:()=>Promise<unknown>)=>{
+      const operation=await this.writes?.begin(claim.ownerId);
+      await action(); // Lost/aborted reply leaves durable uncertainty; deletion must wait.
+      if(operation)await this.writes!.confirmed(operation);
+    };
+    guard(); await mutate(()=>this.vector.ensure(spec, call));
     for (let offset = 0; offset < chunks.length; offset += 8) {
       guard();
       const batch = chunks.slice(offset, offset + 8);
@@ -53,7 +59,7 @@ export class JobIndexHandler implements TaskHandler {
           ownerId: claim.ownerId, visibility: snapshot.visibility, jobVersionId: version.id, chunkId: chunk.chunkId,
           embeddingVersion: snapshot.embeddingVersion, indexVersion: snapshot.indexVersion, contentHash: snapshot.contentHash,
           requirementsHash: snapshot.requirementsHash, chunkHash: chunk.contentHash }) }));
-      await this.vector.upsert(spec, records, call); guard();
+      await mutate(()=>this.vector.upsert(spec, records, call)); guard();
       points.push(...records.map(record => record.id));
     }
     return jobIndexCompletionSchema.parse({ schemaVersion: 1, kind: 'job-index', inputHash: requestHash(snapshot),

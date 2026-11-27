@@ -1,5 +1,9 @@
 # HTTP API
 
+## 数据删除与保留（S3.2-T4/T5）
+
+AUTH_ENABLED=true时提供POST `/api/v1/data-deletions`（JSON空对象、UUID Idempotency-Key、会话/CSRF/Origin，202）与GET `/api/v1/data-deletions/:requestId`（本人状态，越权404）。请求删除全部业务数据并保留账号，只有DONE表示已清理；活动任务/历史清单/外部存储仍待核实时返回明确状态。删除期间业务写入409 DATA_DELETION_PENDING。30天简历清理通过显式调度命令执行，岗位语料保留。完整响应、重入及安全边界见[数据生命周期](data-lifecycle.md)。
+
 ## 本地账号与会话（S3.2-T1）
 
 认证模块提供下表路由，AUTH_ENABLED=true启用并保护业务接口。production业务路由必须启用；development/test未启用认证时仍限loopback开发身份。具体Cookie、安全边界、Worker及发布顺序见[账号说明](auth.md)。本节覆盖下文历史“仅本地/production拒绝”的身份条件，业务校验与实例归属约束不变。
@@ -68,7 +72,7 @@ S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence
 
 详情不返回owner/storageKey/路径或语义结构化占位字段；EXTRACT属于S2.4。解析/提交前断连会中止并补偿；数据库已提交但响应丢失属于幂等重试窗口，同key可取回原版本，不能误删已引用文件。提交结果不明且无法查询数据库时保留精确manifest供对账，不宣称文件系统与数据库原子提交。
 
-本文列出已实现的健康检查、分析任务创建、任务查询/取消、简历上传/查询及岗位HTTP接口；业务路由须显式本地启用，使用固定开发身份。报告HTTP仍为[架构设计](architecture.md#9-api调用链进度与错误)。所有接口共同遵守[接口契约规范](api-contract.md)。
+本文列出已实现的健康检查、账号、数据删除、分析任务、简历/岗位、报告及SSE接口；业务路由须显式启用，production要求会话身份，本地development/test保留开发模式。所有接口共同遵守[接口契约规范](api-contract.md)。
 
 新接口实现后在本文补充：路径、参数、请求与响应示例、错误码、调用链和所属阶段。
 

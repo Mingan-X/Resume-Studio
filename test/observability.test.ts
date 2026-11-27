@@ -126,3 +126,15 @@ await test('active and queued spans share a finite capacity and shutdown release
     assert.equal(service.stats()?.outstanding, 0);
   } finally { await server.close(); }
 });
+
+await test('business trace export requires durable registration and registration failure cannot fail the work',async()=>{
+ let received=0,registered=false;
+ const server=await capture((request,response)=>{assert.equal(registered,true);received++;request.resume();request.on('end',()=>response.end('{}'));});
+ const service=new ObservabilityService(config(server.url));
+ try{
+  assert.equal(await service.run(randomUUID(),'observation',async()=>42,async()=>{throw new Error('private registry failure');}),42);
+  await service.flush();assert.equal(received,0);assert.equal(service.stats()?.lost.processing,1);
+  assert.equal(await service.run(randomUUID(),'observation',async()=>7,async id=>{assert.match(id,/^[a-f0-9]{32}$/);registered=true;}),7);
+  assert.equal(received,1);assert.equal(service.stats()?.outstanding,0);
+ }finally{await service.onModuleDestroy();await server.close();}
+});

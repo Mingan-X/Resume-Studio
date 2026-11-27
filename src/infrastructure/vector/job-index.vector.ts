@@ -168,4 +168,21 @@ export class JobIndexVector {
     if (aliases.aliases.some(item => item.collection_name === name)) throw new TaskFailure('INPUT_INVALID');
     if (await this.request(`/collections/${encodeURIComponent(name)}`, 'DELETE', undefined, call) !== true) throw new TaskFailure('OUTPUT_INVALID');
   }
+
+  async eraseOwner(owner:string,call:IndexCall){
+    const ownerId=z.uuid().parse(owner);await this.verifyOwnership(call);
+    const ownerAlias=(await this.listAliases(call)).find(item=>item.alias_name===indexAlias(ownerId));
+    const collections=z.object({collections:z.array(z.object({name:z.string()})).max(10000)}).parse(await this.request('/collections','GET',undefined,call));
+    for(const collection of collections.collections){
+      const raw=await this.request(`/collections/${encodeURIComponent(collection.name)}`,'GET',undefined,call,true);if(!raw)continue;
+      const parsed=collectionInfoSchema.safeParse(raw),identity=z.object({config:z.object({metadata:z.object({ownerId:z.string()})})}).safeParse(raw);
+      if(!parsed.success){if(identity.success&&identity.data.config.metadata.ownerId===ownerId||ownerAlias?.collection_name===collection.name)throw new TaskFailure('INPUT_INVALID');continue;}
+      if(parsed.data.config.metadata.ownerId!==ownerId){if(ownerAlias?.collection_name===collection.name)throw new TaskFailure('INPUT_INVALID');continue;}
+      const spec=parsed.data.config.metadata;if(indexCollectionName(spec)!==collection.name)throw new TaskFailure('INPUT_INVALID');
+      const aliases=await this.listAliases(call),alias=indexAlias(ownerId);
+      if(aliases.some(item=>item.collection_name===collection.name&&item.alias_name!==alias))throw new TaskFailure('INPUT_INVALID');
+      if(aliases.some(item=>item.collection_name===collection.name&&item.alias_name===alias))await this.removeAlias(spec,call);
+      await this.remove(spec,call);
+    }
+  }
 }

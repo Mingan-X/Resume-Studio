@@ -26,13 +26,14 @@ export class HttpErrorFilter implements ExceptionFilter {
     const schemaError = exception instanceof z.ZodError;
     const evidenceError = exception instanceof Error && exception.message === 'INVALID_EVIDENCE';
     const analysisConfigMissing = exception instanceof Error && exception.message === 'ANALYSIS_CONFIG_UNAVAILABLE';
-    const status = analysisConfigMissing ? 503 : exception instanceof ModelFailure ? exception.code === 'OUTPUT_INVALID' ? 422 : exception.code === 'BUDGET_EXHAUSTED' ? 422 : 503
+    const deleting=exception instanceof Error&&(exception.message==='DATA_DELETION_PENDING'||exception.name.startsWith('Prisma')&&exception.message.includes('DATA_DELETION_PENDING'));
+    const status = deleting?409:analysisConfigMissing ? 503 : exception instanceof ModelFailure ? exception.code === 'OUTPUT_INVALID' ? 422 : exception.code === 'BUDGET_EXHAUSTED' ? 422 : 503
       : schemaError || evidenceError ? 400 : jobCode === 'JOB_INDEX_TARGET_UNAVAILABLE' ? 503 : jobCode?.endsWith('NOT_FOUND') ? 404 : jobCode ? 409
       : fileReason ? fileReason === 'FILE_TOO_LARGE' ? 413 : 422
       : exception instanceof IdempotencyConflictError ? exception.statusCode
       : exception instanceof TaskNotFoundError ? 404 : exception instanceof TaskInvalidStateError ? 409
       : exception instanceof HttpException ? exception.getStatus() : 500;
-    const code = analysisConfigMissing ? 'ANALYSIS_UNAVAILABLE' : exception instanceof ModelFailure ? exception.code === 'OUTPUT_INVALID' ? 'MODEL_OUTPUT_INVALID' : exception.code === 'BUDGET_EXHAUSTED' ? 'MODEL_BUDGET_EXHAUSTED' : 'MODEL_UNAVAILABLE'
+    const code = deleting?'DATA_DELETION_PENDING':analysisConfigMissing ? 'ANALYSIS_UNAVAILABLE' : exception instanceof ModelFailure ? exception.code === 'OUTPUT_INVALID' ? 'MODEL_OUTPUT_INVALID' : exception.code === 'BUDGET_EXHAUSTED' ? 'MODEL_BUDGET_EXHAUSTED' : 'MODEL_UNAVAILABLE'
       : schemaError || evidenceError ? 'VALIDATION_ERROR' : jobCode === 'JOB_INDEX_TARGET_UNAVAILABLE' ? 'INDEX_TARGET_UNAVAILABLE' : jobCode ? status === 404 ? 'NOT_FOUND' : 'INVALID_STATE'
       : fileReason ? status === 413 ? 'PAYLOAD_TOO_LARGE' : 'UNSUPPORTED_FILE'
       : exception instanceof IdempotencyConflictError ? exception.code
@@ -42,7 +43,7 @@ export class HttpErrorFilter implements ExceptionFilter {
       : status === 401 ? 'UNAUTHENTICATED' : status === 403 ? 'FORBIDDEN' : status === 429 ? 'RATE_LIMITED' : status === 413 ? 'PAYLOAD_TOO_LARGE'
       : status === 404 ? 'NOT_FOUND'
       : status >= 500 ? 'INTERNAL_ERROR' : 'HTTP_ERROR';
-    const message = code === 'IDEMPOTENCY_CONFLICT' ? '该幂等键已用于不同的请求'
+    const message = code==='DATA_DELETION_PENDING'?'数据正在清理，暂不能创建或修改业务数据':code === 'IDEMPOTENCY_CONFLICT' ? '该幂等键已用于不同的请求'
       : code === 'INVALID_STATE' ? exception instanceof AnalysisInputStateError ? '分析输入或配置版本状态不允许此操作' : jobCode ? '岗位状态或引用不允许此操作' : '任务已结束，无法取消'
       : code === 'VALIDATION_ERROR' ? '请求参数无效'
       : code === 'BAD_REQUEST' ? '请求格式无效'
