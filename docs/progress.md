@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T2模型调用预算封装完成
+
+T1已提交f30b8ab。T2新增AnalysisModelCaller，复用既有ModelExecutor与Worker的reserve接口：逐次网络尝试/一次修复先预留累计次数/token/费用，恢复或并行分支不重置账本；核对真实snapshot owner/modelConfigVersion/币种、总deadline、取消；数据库/fence错误原样交回，慢预留排空后才结束调用服务。保持既有重试层、未settle并发槽及安全错误码。输入末次脱敏和ObservabilityService白名单span不传原文LangChain回调；usage未知为null，不以预留冒充实测费用。
+
+最终typecheck、零警告Lint、基础110/110通过（data/s24-t1-t2-unit-final.log），其中T2四项行为专项覆盖修复/重试、恢复不重置、并发预算拒绝、配置拒绝、DB错误、取消/总期限与迟到预留排空。共用完整集成137/137验证既有累计SQL账本/恢复/取消窗口；本任务新增的是调用封装，尚未把真实任务接入图，不将内存账本测试当作真实分析Worker恢复证明，T3继续接线验证。详见[分析模型预算](analysis-model.md)。
+
+无新增依赖、迁移或HTTP，无需重复部署/OpenAPI生成；文档链接与diff检查通过。真实模型、真实token/费用与T9按路线图延后，不调用Key或付费服务。按任务提交T2后继续T3。
+
 ## 2026-11-27 S2.4-T1完成验证，真实分析创建已交付
 
 完成真实TaskInputSnapshot与synthetic区分、POST /api/v1/analyses、202 taskId/statusUrl、所有权/解析产物检查、corpus/Rubric/configuration冻结及真实外键、同事务Outbox、同key同请求复用和不同请求409；查询支持真实任务，synthetic入口不领取。新增配置版本不可变表，不持久化模型连接/Key。API、契约、OpenAPI、架构、部署/测试及分析输入文档同步。Qdrant15秒请求修正、CLI早校验与串行基础入口属于本次回归阻塞修复，依据和历次失败完整保留于下文。
