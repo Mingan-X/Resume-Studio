@@ -14,6 +14,8 @@ const { createJobDraftSchema, editJobDraftSchema } = await import('../dist/src/c
 const { jobConfirmationSchema, jobPublicationResultSchema } = await import('../dist/src/contracts/job-publication.js');
 const { jdExtractionResultSchema } = await import('../dist/src/contracts/job-extraction.js');
 const { createAnalysisRequestSchema, createAnalysisResponseSchema } = await import('../dist/src/contracts/analyses.js');
+const { reportPathSchema, pageQuerySchema, reportResponseSchema, reportListSchema, recomputeRequestSchema } = await import('../dist/src/contracts/reports.js');
+const { analysisPathSchema, analysisListSchema, analysisDetailSchema, analysisOptionsQuerySchema, analysisOptionsSchema, taskEventResponseSchema } = await import('../dist/src/contracts/analysis-api.js');
 const registry = new OpenAPIRegistry();
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
@@ -44,6 +46,15 @@ registry.registerPath({ method: 'get', path: '/api/v1/resumes/{resumeId}/version
   request: { params: resumeVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(resumeVersionResponseSchema, '不可变文本与警告，不返回结构化占位'), ...errors } });
 const jobErrors = { ...errors, 409: response(error, '幂等冲突或未确认/引用失效'), 422: response(error, '模型输出或预算不满足'), 503: response(error, '模型或索引目标未配置/暂不可用') };
 const jsonBody = schema => ({ required: true, content: { 'application/json': { schema } } });
+registry.register('TaskEvent',taskEventResponseSchema);
+registry.registerPath({method:'get',path:'/api/v1/reports',operationId:'listReports',summary:'报告历史游标分页',request:{query:pageQuerySchema},responses:{200:response(reportListSchema,'不可变报告概要'),...errors}});
+registry.registerPath({method:'get',path:'/api/v1/reports/{reportId}',operationId:'getReport',summary:'读取完整不可变报告',request:{params:reportPathSchema,query:taskQuerySchema},responses:{200:response(reportResponseSchema,'含评分、覆盖率、判断、证据和版本'),...errors}});
+registry.registerPath({method:'get',path:'/api/v1/reports/{reportId}/revisions',operationId:'listReportRevisions',summary:'同一分析的报告revision',request:{params:reportPathSchema,query:pageQuerySchema},responses:{200:response(reportListSchema,'同一分析的所有revision'),...errors}});
+registry.registerPath({method:'post',path:'/api/v1/reports/{reportId}/recompute',operationId:'recomputeReport',summary:'复用冻结判断调权并生成新revision',request:{params:reportPathSchema,query:taskQuerySchema,headers:z.object({'idempotency-key':z.uuid()}),body:jsonBody(recomputeRequestSchema)},responses:{201:response(reportResponseSchema,'新报告或幂等重放，无模型调用'),...errors,409:response(error,'幂等冲突或报告没有可重算评分')}});
+registry.registerPath({method:'get',path:'/api/v1/analyses',operationId:'listAnalyses',summary:'分析任务列表',request:{query:pageQuerySchema},responses:{200:response(analysisListSchema,'当前owner真实分析列表'),...errors}});
+registry.registerPath({method:'get',path:'/api/v1/analyses/options',operationId:'getAnalysisOptions',summary:'选择解析成功的简历版本与冻结岗位范围',request:{query:analysisOptionsQuerySchema},responses:{200:response(analysisOptionsSchema,'分别分页的简历版本和语料'),...errors}});
+registry.registerPath({method:'get',path:'/api/v1/analyses/{taskId}',operationId:'getAnalysis',summary:'分析输入版本概要与任务状态',request:{params:analysisPathSchema,query:taskQuerySchema},responses:{200:response(analysisDetailSchema,'当前owner分析详情'),...errors}});
+registry.registerPath({method:'get',path:'/api/v1/tasks/{taskId}/events',operationId:'getTaskEvents',summary:'持久化任务事件SSE',description:'事件id为TaskEvent.seq，Last-Event-ID补读；event=task，data遵循TaskEvent。15秒心跳，每owner每进程最多5连接，全进程100；300秒连接到期后可重连。断线不取消任务。',request:{params:taskPathSchema,query:taskQuerySchema,headers:z.object({'last-event-id':z.string().regex(/^(0|[1-9]\d{0,9})$/).optional()})},responses:{200:{description:'按seq递增的SSE流',headers,content:{'text/event-stream':{schema:z.string()}}},204:{description:'终态且无待补读事件'},...errors,429:response(error,'连接数达到上限')}});
 registry.registerPath({ method: 'post', path: '/api/v1/analyses', operationId: 'createAnalysis', summary: '冻结授权输入并事务创建分析任务',
   request: { query: taskQuerySchema, headers: z.object({ 'idempotency-key': z.uuid() }), body: jsonBody(createAnalysisRequestSchema) },
   responses: { 202: response(createAnalysisResponseSchema, '任务和Outbox已提交；同key同请求返回原任务'), ...errors,

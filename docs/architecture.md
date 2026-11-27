@@ -94,6 +94,8 @@ API入口组合 Controller、应用服务和领域模块；Worker入口组合消
 
 ### 4.1 简历分析图
 
+S3.1补充：新输入reportVersion=1使用SAVE替代临时FINALIZE，图持久化汇总意图后，消费完成适配器在同一事务内提交AnalysisReport/任务reportId与终态/事件/attempt/DONE收据。任一晚期写失败整体回滚，恢复复用产物和SAVE意图；旧无reportVersion任务保留原图及组件版本。报告及revision/SSE边界见[报告说明](reports.md)。
+
 S2.5补充：新任务创建冻结ScoringPolicy的版本/hash，MATCH后执行SCORE/RANK，JOIN核对评分与排名后仍使用临时finalize；S3.1再接最终报告。旧S2.4快照缺scoringPolicyHash时保留原图和节点组件身份，不原地改写快照。评分/重算持久化与边界见[评分说明](scoring.md)。
 
 S2.4已增加真实分析输入、创建HTTP及同事务Outbox，并接入下图EXTRACT/PROFILE/召回/MATCH/JOIN工程链路，验证范围见[分析流程](analysis-workflow.md)与[进度](progress.md)。SCORE/RANK与报告SAVE分别待S2.5/S3.1；当前JOIN后由临时FINALIZE准备AnalysisSummary，再由消费处理器同事务提交任务终态/收据，reportId=null。输入和配置冻结见[分析输入](analysis-input.md)。真实corpus身份沿用owner/versionName；真实外键与旧synthetic快照分开约束。
@@ -371,6 +373,8 @@ erDiagram
 - SyntheticIndexTarget只表示合成目标的jobVersionId/embeddingVersion/indexVersion及PENDING/READY；发布必须同时匹配当前执行权和全部目标版本。它用于T7真实进程故障断言，不代替S2.2的Job/JobVersion模型，也不产生Qdrant索引。
 
 ### 6.2 分工与状态机
+
+S3.1新任务SUCCEEDED/PARTIAL已要求报告与终态同事务提交；旧无reportVersion任务仍允许历史reportId=null。ReportQuery只读不可变快照；调权重算新建ScoreSet/RankingSnapshot/AnalysisReport revision与幂等绑定，原报告/判断和基础task.reportId不改。FAILED无成功报告，诊断产物保留。下文S2.4临时终态说明仅适用于历史输入。
 
 S2.1-T3新增FileAsset、Resume、ResumeVersion、EvidenceBlock与ResumeUpload映射及迁移。ResumeVersion通过(ownerId,resumeId)和(ownerId,fileAssetId,fileHash)复合外键保护关联；EvidenceBlock/ResumeUpload绑定同owner版本；内容表由触发器禁止UPDATE。ResumeRepository按owner/key事务advisory lock串行化首次上传，同事务创建记录与幂等绑定。S1.4合成任务UUID没有追加真实简历外键。迁移/运行验证以progress为准，ExtractedDocument持久化与引用内容校验仍待T7，HTTP待T8。
 

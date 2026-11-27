@@ -14,6 +14,7 @@ import { matchPlanSchema, requirementExecutionSchema } from '../../contracts/mat
 import { candidateSetContentSchema } from '../../contracts/candidates.js';
 import { requestHash } from '../../modules/tasks/request-hash.js';
 import { analysisNodeArtifactSchema } from '../../contracts/analysis-graph.js';
+import { insertFinalReport } from './report-snapshot.js';
 
 async function summarize(tx: Prisma.TransactionClient, claim: ExecutionClaim, errors: { profileError: unknown; matchingError: unknown }) {
   const where = { ownerId_taskId: { ownerId: claim.ownerId, taskId: claim.message.taskId } };
@@ -68,7 +69,7 @@ export class AnalysisSummaryRepository {
     });
   }
   async progress(claim: ExecutionClaim, rawStage: unknown, rawCounts: unknown) {
-    const stage = z.enum(['LOAD','PARSE','EXTRACT','VALIDATE','PROFILE','RECALL','SNAP','MATCH','SCORE','RANK','JOIN','FINALIZE']).parse(rawStage), counts = taskCountsSchema.parse(rawCounts);
+    const stage = z.enum(['LOAD','PARSE','EXTRACT','VALIDATE','PROFILE','RECALL','SNAP','MATCH','SCORE','RANK','JOIN','SAVE','FINALIZE']).parse(rawStage), counts = taskCountsSchema.parse(rawCounts);
     await this.database.client.$transaction(async tx => {
       await requireAnalysisAuthority(tx, claim);
       const previous = await tx.taskEvent.findFirst({ where: { ownerId: claim.ownerId, taskType: 'ANALYSIS', taskId: claim.message.taskId }, orderBy: { seq: 'desc' } });
@@ -86,16 +87,19 @@ export class AnalysisSummaryRepository {
       if (!row) throw new Error('SUMMARY_MISSING');
       const content = analysisSummarySchema.parse(row.content), current = await summarize(tx, claim, content);
       if (requestHash(content) !== row.contentHash || requestHash(current) !== row.contentHash) throw new Error('SUMMARY_INVALID');
-      const final = await tx.nodeArtifact.findMany({ where: { ownerId: claim.ownerId, taskId: claim.message.taskId, taskType: 'ANALYSIS', node: 'FINALIZE', branchKey: 'root' } });
+      const reportEnabled=!!realAnalysisInputSchema.parse(claim.snapshot).reportVersion;
+      const final = await tx.nodeArtifact.findMany({ where: { ownerId: claim.ownerId, taskId: claim.message.taskId, taskType: 'ANALYSIS', node: reportEnabled?'SAVE':'FINALIZE', branchKey: 'root' } });
       if (final.length !== 1) throw new Error('FINALIZE_ARTIFACT_MISSING');
       const artifact = analysisNodeArtifactSchema.parse(final[0]!.validatedOutput);
       if (artifact.result.status !== 'ok' || artifact.result.artifactId !== row.id) throw new Error('FINALIZE_ARTIFACT_INVALID');
       const now = z.array(z.object({ now: z.date() })).length(1).parse(await tx.$queryRaw`SELECT clock_timestamp() AS now`)[0]!.now;
       // Recheck after all reads: waiting on SQL must not authorize output beyond the lease/deadline.
       await requireAnalysisAuthority(tx, claim);
+      const reportId=reportEnabled?await insertFinalReport(tx,claim,content):null;
+      await requireAnalysisAuthority(tx, claim);
       await tx.analysisTask.update({ where: { id: claim.message.taskId, ownerId: claim.ownerId }, data: {
         status: content.status, stage: content.status, errorCode: content.status === 'FAILED' ? 'EXECUTION_FAILED' : null,
-        leaseOwner: null, leaseUntil: null, reportId: null,
+        leaseOwner: null, leaseUntil: null, reportId,
       } });
       await tx.$executeRaw`UPDATE analysis_task SET budget_usage=jsonb_set(budget_usage,'{elapsedMs}',to_jsonb((budget_usage->>'elapsedMs')::bigint + ${Math.max(0, now.getTime() - claim.startedAt.getTime())}::bigint)) WHERE id=${claim.message.taskId}::uuid`;
       const previous = await tx.taskEvent.findFirst({ where: { ownerId: claim.ownerId, taskType: 'ANALYSIS', taskId: claim.message.taskId }, orderBy: { seq: 'desc' } });

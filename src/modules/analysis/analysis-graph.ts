@@ -15,7 +15,7 @@ export type AnalysisGraphNodes = Record<AnalysisNode, (state: AnalysisGraphState
 }) => Promise<AnalysisNodeResult>>;
 const dependencies: Record<AnalysisNode, AnalysisNode[]> = {
   LOAD: [], PARSE: ['LOAD'], EXTRACT: ['PARSE'], VALIDATE: ['EXTRACT'], PROFILE: ['VALIDATE'],
-  RECALL: ['VALIDATE'], SNAP: ['RECALL'], MATCH: ['SNAP'], SCORE: ['MATCH'], RANK: ['SCORE'], JOIN: ['PROFILE', 'RANK'], FINALIZE: ['JOIN'],
+  RECALL: ['VALIDATE'], SNAP: ['RECALL'], MATCH: ['SNAP'], SCORE: ['MATCH'], RANK: ['SCORE'], JOIN: ['PROFILE', 'RANK'], SAVE:['JOIN'], FINALIZE: ['JOIN'],
 };
 
 export function mergeAnalysisOutputs(left: AnalysisGraphState['outputs'], right: AnalysisGraphState['outputs']) {
@@ -39,9 +39,10 @@ export class AnalysisGraph {
     if (claim.message.taskType !== 'analysis' || !claim.graph) throw new TaskFailure('UNSUPPORTED_INPUT');
     const snapshot = realAnalysisInputSchema.parse(claim.snapshot), inputHash = requestHash(snapshot);
     const scored = !!snapshot.scoringPolicyHash;
-    const activeNodes = analysisNodeSchema.options.filter(node => scored || !['SCORE','RANK'].includes(node));
+    const reports=!!snapshot.reportVersion,finalNode=reports?'SAVE':'FINALIZE';
+    const activeNodes = analysisNodeSchema.options.filter(node => (scored || !['SCORE','RANK'].includes(node)) && node!==(reports?'FINALIZE':'SAVE'));
     const priorNodes = (name: AnalysisNode) => !scored && name === 'JOIN' ? ['PROFILE','MATCH'] as const : dependencies[name];
-    const componentVersion = scored ? 'analysis-scoring-v1' : 'analysis-graph-v1';
+    const componentVersion = reports?'analysis-reports-v1':scored ? 'analysis-scoring-v1' : 'analysis-graph-v1';
     if (snapshot.ownerId !== claim.ownerId) throw new TaskFailure('UNSUPPORTED_INPUT');
     const guard = () => { signal.throwIfAborted(); if (Date.now() >= claim.deadline.getTime()) throw new TaskFailure('DEADLINE_EXCEEDED'); };
     guard();
@@ -77,12 +78,12 @@ export class AnalysisGraph {
       const builder = new StateGraph(state)
         .addNode('LOAD', node('LOAD')).addNode('PARSE', node('PARSE')).addNode('EXTRACT', node('EXTRACT'))
         .addNode('VALIDATE', node('VALIDATE')).addNode('PROFILE', node('PROFILE')).addNode('RECALL', node('RECALL'))
-        .addNode('SNAP', node('SNAP')).addNode('MATCH', node('MATCH')).addNode('JOIN', node('JOIN')).addNode('FINALIZE', node('FINALIZE'))
+        .addNode('SNAP', node('SNAP')).addNode('MATCH', node('MATCH')).addNode('JOIN', node('JOIN')).addNode(finalNode, node(finalNode))
         .addEdge(START, 'LOAD').addEdge('LOAD', 'PARSE').addEdge('PARSE', 'EXTRACT').addEdge('EXTRACT', 'VALIDATE')
         .addEdge('VALIDATE', 'PROFILE').addEdge('VALIDATE', 'RECALL').addEdge('RECALL', 'SNAP').addEdge('SNAP', 'MATCH');
       const graph = (scored ? builder.addNode('SCORE', node('SCORE')).addNode('RANK', node('RANK'))
         .addEdge('MATCH','SCORE').addEdge('SCORE','RANK').addEdge(['PROFILE','RANK'],'JOIN') : builder.addEdge(['PROFILE','MATCH'],'JOIN'))
-        .addEdge('JOIN', 'FINALIZE').addEdge('FINALIZE', END).compile({ checkpointer: session.saver });
+        .addEdge('JOIN', finalNode).addEdge(finalNode, END).compile({ checkpointer: session.saver });
       const invocation = { configurable: { thread_id: claim.graph.threadId }, durability: 'sync' as const, recursionLimit: 32,
         maxConcurrency: 3, signal };
       const prior = await track(() => session.saver.getTuple(invocation)); guard();

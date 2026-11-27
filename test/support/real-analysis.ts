@@ -52,6 +52,10 @@ export async function cleanRealAnalysis(database: DatabaseService, ownerId: stri
     await tx.nodeArtifact.deleteMany({ where: { ownerId } }); await tx.consumerReceipt.deleteMany({ where: { ownerId } });
     await tx.taskEvent.deleteMany({ where: { ownerId } }); await tx.taskAttempt.deleteMany({ where: { ownerId } });
     await tx.outboxEvent.deleteMany({ where: { ownerId } });
+    await tx.reportRecomputeRequest.deleteMany({where:{ownerId}});
+    let reports=await tx.analysisReport.count({where:{ownerId}});
+    while(reports){const leaves=await tx.analysisReport.findMany({where:{ownerId,revisions:{none:{}}},select:{id:true}});
+      if(!leaves.length)throw new Error('REPORT_REVISION_CYCLE');await tx.analysisReport.deleteMany({where:{ownerId,id:{in:leaves.map(item=>item.id)}}});reports-=leaves.length;}
     await tx.analysisSummary.deleteMany({ where: { ownerId } });
     await tx.rankingSnapshot.deleteMany({ where: { ownerId } });
     // Derived scores reference their source; remove the finite per-owner DAG from leaves to roots.

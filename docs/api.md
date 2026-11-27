@@ -1,5 +1,9 @@
 # HTTP API
 
+## 报告、分析列表与SSE（S3.1）
+
+TASK_API_ENABLED同时启用报告GET/list/revisions、POST recompute（201）、analyses列表/detail/options及tasks/:taskId/events SSE。完整请求/返回、分页、错误、幂等与连接边界见[报告与进度接口](reports.md)，机器契约为同源OpenAPI。新reportVersion任务SUCCEEDED/PARTIAL必须返回已提交reportId，旧历史任务仍可null；前端直接展示保存的分数/贡献/coverage/upperBound及执行状态，不自行算分。
+
 ## 分析任务创建（S2.4-T1）
 
 `POST /api/v1/analyses` 随 `TASK_API_ENABLED=true` 启用，仅本地development/test；要求application/json、UUID `Idempotency-Key`，无查询字段。正文只接受：
