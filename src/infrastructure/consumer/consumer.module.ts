@@ -9,7 +9,7 @@ import { taskTopology } from '../messaging/task-topology.js';
 import { consumerConfigSchema } from './config.js';
 import { TaskExecutionStore } from './task-execution.store.js';
 import { SyntheticCompletionHandler, TaskDeliveryHandler } from './task-delivery.handler.js';
-import type { SyntheticTaskHandler } from './task-delivery.handler.js';
+import type { TaskHandler } from './task-delivery.handler.js';
 import { TaskConsumer } from './task.consumer.js';
 import { QuarantineStore } from './quarantine.store.js';
 import { PostgresExecutionLock } from './task-execution.lock.js';
@@ -17,7 +17,7 @@ import { PostgresExecutionLock } from './task-execution.lock.js';
 @Module({})
 export class ConsumerModule {
   static register(config: Pick<InfrastructureConfig, 'databaseUrl' | 'rabbitmqUrl'>,
-    createHandler: (store: TaskExecutionStore) => SyntheticTaskHandler = () => new SyntheticCompletionHandler()): DynamicModule {
+    createHandler: (store: TaskExecutionStore) => TaskHandler = () => new SyntheticCompletionHandler()): DynamicModule {
     const execution = consumerConfigSchema.parse({});
     return { module: ConsumerModule, imports: [IdentityModule], providers: [
       { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService,

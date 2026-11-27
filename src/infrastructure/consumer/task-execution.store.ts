@@ -17,6 +17,8 @@ import type { ClaimResult, ExecutionClaim } from './contracts.js';
 import type { ConsumerConfig } from './config.js';
 import { executionLockKey } from './task-execution.lock.js';
 import type { ReconciliationConfig } from '../reconciliation/config.js';
+import { jobIndexCompletionSchema } from '../../contracts/job-index.js';
+import { indexCollectionName } from '../../modules/recall/job-chunks.js';
 
 const table = (type: TaskType) => type === 'analysis' ? Prisma.sql`analysis_task` : Prisma.sql`job_index_task`;
 const dbType = (type: TaskType): 'ANALYSIS' | 'JOB_INDEX' => type === 'analysis' ? 'ANALYSIS' : 'JOB_INDEX';
@@ -109,7 +111,7 @@ async function finishCancellation(tx: Prisma.TransactionClient, ownerId: string,
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
 
-  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig) {
+  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string) {
     const ownerId = ownerIdSchema.parse(owner), taskId = z.uuid().parse(id).toLowerCase();
     return this.database.client.$transaction(async tx => {
       const lock = z.array(z.object({ acquired: z.boolean() })).length(1).parse(await tx.$queryRaw`
@@ -123,8 +125,8 @@ export class TaskExecutionStore {
       if (!expired && (task.updatedAt.getTime() + config.staleMs > now.getTime() || (task.retryAt && task.retryAt > now))) return 'skipped';
       const snapshot = taskType === 'analysis' ? analysisInputSnapshotSchema.parse(task.inputSnapshot) : jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
       if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
-      // No real index executor is registered until S2.3. Do not spend recovery budget while waiting.
-      if (snapshot.kind !== 'synthetic') return 'handler-unavailable';
+      // Recovery opts in only when a matching executor is configured; no budget spent while unavailable.
+      if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return 'handler-unavailable';
       const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
       const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
@@ -185,7 +187,7 @@ export class TaskExecutionStore {
     });
   }
 
-  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic'): Promise<ClaimResult> {
+  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string): Promise<ClaimResult> {
     const ownerId = ownerIdSchema.parse(owner), message = taskDispatchSchema.parse(input);
     const name = consumerName(message.taskType), type = dbType(message.taskType);
     return this.database.client.$transaction(async tx => {
@@ -218,7 +220,7 @@ export class TaskExecutionStore {
       }
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
       // Leave the task and delivery pending, without an attempt, receipt or ACK.
-      if (snapshot.kind !== capability) return { kind: 'deferred' };
+      if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return { kind: 'deferred' };
       if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });
@@ -392,6 +394,53 @@ export class TaskExecutionStore {
         taskId: claim.message.taskId, taskType: dbType(claim.message.taskType), fenceToken: claim.fenceToken, endedAt: null },
       data: { tokens: { increment: delta.tokens }, costMicros: { increment: delta.costMicros } } });
       if (updated.count !== 1) throw new ExecutionLeaseLostError();
+    });
+  }
+
+  async completeJobIndex(claim: ExecutionClaim, output: unknown): Promise<void> {
+    const snapshot = jobIndexInputSnapshotSchema.parse(claim.snapshot), result = jobIndexCompletionSchema.parse(output);
+    if (claim.message.taskType !== 'job-index' || snapshot.kind !== 'job-index') throw new TaskFailure('UNSUPPORTED_INPUT');
+    if (result.inputHash !== requestHash(snapshot) || result.spec.ownerId !== claim.ownerId
+      || result.spec.embeddingVersion !== snapshot.embeddingVersion || result.spec.indexVersion !== snapshot.indexVersion
+      || result.spec.chunkerVersion !== snapshot.chunkerVersion || result.spec.componentVersion !== snapshot.componentVersion
+      || result.collection !== indexCollectionName(result.spec)) throw new TaskFailure('OUTPUT_INVALID');
+    await this.database.client.$transaction(async tx => {
+      await this.requireAuthority(tx, claim);
+      await tx.$queryRaw`SELECT id FROM job_version WHERE owner_id=${claim.ownerId}::uuid AND id=${snapshot.jobVersionId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT job_version_id FROM job_index_target WHERE owner_id=${claim.ownerId}::uuid AND job_version_id=${snapshot.jobVersionId}::uuid FOR UPDATE`;
+      await this.requireAuthority(tx, claim);
+      const ready = await tx.$executeRaw`UPDATE job_version AS version SET index_status='READY' FROM job_index_target AS target
+        WHERE version.owner_id=${claim.ownerId}::uuid AND version.id=${snapshot.jobVersionId}::uuid AND version.status='PUBLISHED'
+          AND version.document->>'textHash'=${snapshot.contentHash}
+          AND target.owner_id=version.owner_id AND target.job_version_id=version.id
+          AND target.task_id=${claim.message.taskId}::uuid AND target.embedding_version=${snapshot.embeddingVersion}
+          AND target.index_version=${snapshot.indexVersion} AND ${claim.deadline} > clock_timestamp()`;
+      if (ready !== 1) throw new ExecutionLeaseLostError();
+      const operationKey = requestHash({ ownerId: claim.ownerId, taskType: 'job-index', taskId: claim.message.taskId,
+        node: 'job-index', inputHash: result.inputHash, componentVersion: snapshot.componentVersion, schemaVersion: 1 });
+      await tx.nodeArtifact.create({ data: { id: randomUUID(), operationKey, ownerId: claim.ownerId, taskType: 'JOB_INDEX',
+        taskId: claim.message.taskId, jobIndexTaskId: claim.message.taskId, node: 'job-index', inputHash: result.inputHash,
+        componentVersion: snapshot.componentVersion, schemaVersion: 1, fenceToken: claim.fenceToken, validatedOutput: result } });
+      const completed = await tx.$executeRaw`UPDATE job_index_task SET status='SUCCEEDED', stage='INDEX_COMPLETED',
+        lease_owner=NULL, lease_until=NULL, updated_at=clock_timestamp(), error_code=NULL,
+        budget_usage=jsonb_set(budget_usage,'{elapsedMs}',to_jsonb((budget_usage->>'elapsedMs')::bigint
+          + GREATEST(0,floor(extract(epoch FROM (clock_timestamp()-${claim.startedAt}::timestamp))*1000)::bigint)))
+        WHERE owner_id=${claim.ownerId}::uuid AND id=${claim.message.taskId}::uuid
+          AND generation=${claim.message.dispatchGeneration} AND fence_token=${claim.fenceToken}
+          AND lease_owner=${claim.attemptId}::uuid AND lease_until>clock_timestamp()
+          AND status='RUNNING' AND cancel_requested=false AND ${claim.deadline}>clock_timestamp()`;
+      if (completed !== 1) throw new ExecutionLeaseLostError();
+      const now = await databaseNow(tx);
+      const previous = await tx.taskEvent.findFirst({ where: { ownerId: claim.ownerId, taskType: 'JOB_INDEX', taskId: claim.message.taskId }, orderBy: { seq: 'desc' } });
+      await tx.taskEvent.create({ data: { id: randomUUID(), ownerId: claim.ownerId, taskType: 'JOB_INDEX', taskId: claim.message.taskId,
+        jobIndexTaskId: claim.message.taskId, seq: (previous?.seq ?? 0) + 1, stage: 'INDEX_COMPLETED', safeMessage: 'Job index completed',
+        counts: taskCountsSchema.parse({ schemaVersion: 1, planned: result.completedUnits, completed: result.completedUnits, failed: 0 }) } });
+      const attempt = await tx.taskAttempt.updateMany({ where: { ownerId: claim.ownerId, attemptId: claim.attemptId,
+        taskType: 'JOB_INDEX', taskId: claim.message.taskId, fenceToken: claim.fenceToken, endedAt: null }, data: { endedAt: now } });
+      const receipt = await tx.consumerReceipt.updateMany({ where: { ownerId: claim.ownerId, consumerName: claim.consumerName,
+        messageId: claim.message.messageId, taskId: claim.message.taskId, taskType: 'JOB_INDEX', generation: claim.message.dispatchGeneration,
+        leaseOwner: claim.attemptId, status: 'RUNNING' }, data: { status: 'DONE', processedAt: now, leaseOwner: null, leaseUntil: null } });
+      if (attempt.count !== 1 || receipt.count !== 1) throw new ExecutionLeaseLostError();
     });
   }
 

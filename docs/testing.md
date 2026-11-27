@@ -1,8 +1,16 @@
 # 测试与验证
 
+2026-11-27经维护者明确授权，Qdrant SDK/索引适配器单请求上限从5秒改为10秒（依据服务端6.459秒/5.673秒创建记录）。默认Docker与原生对照使用相同新上限，操作/任务总期限、父测试期限及CRUD/维数/归属/fence断言不变。下述历史“原5秒”记录保留为旧验证条件；独立清理HTTP仍为5秒、清理总期限15秒。API、数据库、RabbitMQ和Langfuse超时未放宽；L2原性能目标不因此自动解除。
+
+同轮修复增加安全诊断：Checkpoint Worker测试fixture在失败时输出lock/claim/execute阶段、耗时及有界cause白名单分类；观测metrics记录最后一次传输失败的stage/reason/status/elapsedMs，不保留错误正文、URL或凭证。诊断不新增重试、不改变导出丢失语义；`safe-failure.test`与原观测故障测试验证分类和隐私边界。`index-vector.test`以5.5秒HTTP响应验证授权后的上限，并保留更早总deadline及取消拒绝测试。
+
+S2.3语料的确定性生成、技能字典与真实数据库专项见[岗位语料说明](job-recall.md#验证)；运行结果以[进度](progress.md)为准。
+
 当前测试使用 TypeScript 编译产物和 Node 内置 test runner，Nest testing用于创建应用上下文；没有额外的测试转换器。真实集成测试默认连接独立的本项目容器；维护者明确授权的原生Qdrant仅用于下述显式对照入口，不使用其他项目实例。
 
 ## 当前验收状态
+
+S2.3测试入口及边界见[岗位召回](job-recall.md#验证)、[索引](job-index.md)、[候选冻结](candidate-sets.md)、[百炼HTTP桩](embedding.md)、[评测脚本](recall-evaluation.md)。默认Docker真实索引/召回/冻结测试仅使用独立owner合成数据，精确清理按manifest和实例/集合metadata核验；清理遇可恢复传输失败只在原15秒窗口重试，不覆盖业务失败。真实百炼Key、人工标签与原生对照未执行项按progress逐次记录，不能从单元或HTTP桩报告召回质量。
 
 S2.2使用job-contracts、job-extraction、model-executor单元测试核对权重、来源与有界模型重试/修复/预算；openai-model.test通过本地真实HTTP桩验证JSON Schema请求、脱敏、无SDK内层重试、429/5xx/超时/非法输出/响应上限。没有真实中转或百炼质量数据。integration/jobs、job-drafts、job-publication、rubrics、job-api分别覆盖数据库不可变/并发/owner、发布Outbox和真实RabbitMQ待执行、完整等级与HTTP。模型建议成功/失败不修改JD；测试模型只显式注入，不作生产兜底。
 

@@ -6,6 +6,10 @@
 
 ## 1. 当前工程依赖
 
+### S2.3 文本向量适配器
+
+百炼适配器使用Node24原生fetch、AbortSignal、Buffer及既有Zod，未新增包或改变锁文件。相比再引入SDK，直接实现官方有限HTTP接口能保留单层重试、总期限与响应上限，成本是自行校验float/base64和供应商错误映射；协议依据与模型/维数限制见[官方核对记录](research/bailian-embedding-2026-11-27.md)。Qdrant沿用已安装1.20.0客户端和1.20.2服务；索引适配器原生fetch用于传播任务取消，见[索引说明](job-index.md)。真实百炼调用未验证，不能从HTTP桩推导模型效果或服务可用性。
+
 ### S2.2-T8 OpenAI兼容适配器
 
 2026-11-27按D2接入@langchain/openai1.8.5（MIT、Node>=22、peer core^1.5.0，与当前1.5.1兼容），核对registry精确元数据及官方发布包README/类型/实现。使用ChatOpenAI、baseURL和显式JSON Schema，不改变提供商方向；替代方案是直接调用HTTP/OpenAI SDK，但D2任务要求LangChain适配器，未另建协议运行时。锁文件新增OpenAI SDK7.64.0并使既有LangSmith可选peer解析到该SDK，未升级既有直接core/graph/Zod版本。

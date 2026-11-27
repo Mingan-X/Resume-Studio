@@ -15,6 +15,7 @@ import { taskDispatchSchema } from '../../src/contracts/tasks.js';
 import { syntheticCompletionSchema } from '../../src/infrastructure/consumer/contracts.js';
 import type { ExecutionClaim } from '../../src/infrastructure/consumer/contracts.js';
 import { requestHash } from '../../src/modules/tasks/request-hash.js';
+import { safeFailure as classifyFailure, safeFailureSchema } from '../support/safe-failure.js';
 
 export const claimIdentitySchema = z.object({ ownerId: z.uuid(), attemptId: z.uuid(), fenceToken: z.string().regex(/^\d+$/),
   startedAt: z.iso.datetime(), deadline: z.iso.datetime(), graph: z.object({ threadId: z.uuid(), generation: z.int().positive() }).optional() });
@@ -24,19 +25,13 @@ export const fenceWorkerMessageSchema = z.discriminatedUnion('event', [
   z.object({ event: z.literal('late-checkpoint'), threadId: z.uuid() }),
   z.object({ event: z.literal('stale-writes'), artifactRejected: z.boolean(), terminalRejected: z.boolean(), indexRejected: z.boolean() }),
   z.object({ event: z.literal('finished'), result: z.enum(['ack','deferred','interrupted']) }),
-  z.object({ event: z.literal('failed'), phase: z.enum(['startup', 'delivery']),
-    category: z.enum(['database', 'lease', 'schema', 'other']), code: z.string().regex(/^(P\d{4}|[0-9A-Z]{5}|UNKNOWN)$/) }),
+  safeFailureSchema.extend({ event: z.literal('failed'), phase: z.enum(['startup', 'delivery']),
+    stage: z.enum(['startup', 'lock', 'claim', 'execute']), elapsedMs: z.int().nonnegative() }),
 ]);
 const send = (message: z.infer<typeof fenceWorkerMessageSchema>) => process.send?.(fenceWorkerMessageSchema.parse(message));
+let stage: 'startup' | 'lock' | 'claim' | 'execute' = 'startup', stageStart = performance.now();
 function safeFailure(error: unknown, phase: 'startup' | 'delivery') {
-  const metadata = z.object({ code: z.string().optional(), name: z.string().optional() }).passthrough().safeParse(error);
-  const name = metadata.success ? metadata.data.name ?? '' : '';
-  const rawCode = metadata.success ? metadata.data.code : undefined;
-  const code = rawCode && /^(P\d{4}|[0-9A-Z]{5})$/.test(rawCode) ? rawCode : 'UNKNOWN';
-  const category = name.includes('Prisma') || name === 'DatabaseError' ? 'database'
-    : error instanceof Error && error.message === 'TASK_EXECUTION_LEASE_LOST' ? 'lease'
-    : name === 'ZodError' ? 'schema' : 'other';
-  send({ event: 'failed', phase, category, code });
+  send({ event: 'failed', phase, ...classifyFailure(error), stage, elapsedMs: Math.round(performance.now() - stageStart) });
 }
 
 async function run() {
@@ -45,7 +40,13 @@ async function run() {
   const database = new DatabaseService(loadInfrastructureConfig(process.env));
   const label = z.string().regex(/^s17-[a-f0-9-]+$/).parse(process.env.S17_LABEL);
   database.pool.options.application_name = label;
-  const tasks = new TaskExecutionStore(database, consumerConfigSchema.parse({}));
+  class DiagnosedStore extends TaskExecutionStore {
+    override async claim(...args: Parameters<TaskExecutionStore['claim']>) {
+      stage = 'claim'; stageStart = performance.now();
+      return super.claim(...args);
+    }
+  }
+  const tasks = new DiagnosedStore(database, consumerConfigSchema.parse({}));
   const checkpoint = loadCheckpointConfig(process.env), abort = new AbortController();
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   const commands = (input: unknown) => { if (input === 'release') release(); if (input === 'abort') abort.abort(); };
@@ -73,6 +74,7 @@ async function run() {
     return { pool, saver, close: () => pool.end() };
   });
   const handler = new TaskDeliveryHandler(tasks, { getOwnerId: () => Promise.resolve(ownerId) }, { execute: async (claim, signal) => {
+    stage = 'execute'; stageStart = performance.now();
     current = claim; send({ event: 'claimed', identity: identity(claim) });
     if (mode === 'before-invoke') { send({ event: 'paused', location: 'before-invoke', threadId: claim.graph!.threadId }); await gate; }
     if (mode === 'late-index' || mode === 'normal-index') {
@@ -86,7 +88,7 @@ async function run() {
   } }, consumerConfigSchema.parse({}), new PostgresExecutionLock(database.pool));
   try {
     let result: 'ack' | 'deferred' | 'interrupted';
-    try { result = await handler.handle(message, abort.signal); }
+    try { stage = 'lock'; stageStart = performance.now(); result = await handler.handle(message, abort.signal); }
     catch (error) { if (!current) safeFailure(error, 'delivery'); result = 'interrupted'; }
     // Independently try both stale business writes; do not mistake AbortSignal compliance for fencing.
     if (current && ['late-checkpoint','late-index'].includes(mode)) {
