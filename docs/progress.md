@@ -8,6 +8,14 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T7百炼适配器及显式运行入口（真实调用延后）
+
+依据本轮官方同步embedding文档（来源/文件hash见research/bailian-embedding-2026-11-27.md），新增text-embedding-v4 HTTP适配器与显式64–2048支持维数、最多10条/保守8192 UTF-8字节每条、输入脱敏、模型/条数/index/维数/有限值校验、float/base64解码、2MiB响应上限、禁止重定向和适配器内重试。使用Node既有fetch/Zod，无新增依赖，不选择实际地域/Key；真实本地文件配置要求绝对路径、64KiB上限与币种一致，默认CLI拒绝loopback测试endpoint。
+
+新增tasks:consume:index、index:reconcile显式入口（本地开发身份，production拒绝），接入真实处理器、隔离区与现有发布/对账；不匹配的embeddingVersion在领取/对账前保留待执行，不花attempt/恢复预算。API/默认synthetic消费不改为真实兜底。配置与CLI缺项只输出安全码。
+
+typecheck/lint通过；基础103/103含HTTP桩/本地配置/CLI拒绝边界通过；131/131全量覆盖真实索引链路及未配置embedding版本拒绝，原生未运行未对照。真实Key/付费调用、百炼实际向量索引重建与质量指标按路线图延后，未注册正式合成embedding目标。文档/链接/diff核对后按T7提交，不能把桩测试当真实服务可用。
+
 ## 2026-11-27 S2.3-T6冻结候选实现与验证完成
 
 T6增加CandidateSet/Candidate及不可变冻结触发器：同task唯一、成员版本/排序唯一、owner复合外键，live fence/租约/graph/cancel/deadline下同事务校验corpus/成员内容并冻结；重放内容相同复用setId，冲突拒绝。load验证内容hash与逐行快照，查询文本脱敏，空候选如实保存；新增显式城市条件在冻结时再次检查。真实分析输入绑定/图恢复消费在S2.4接入，本阶段只验证已有合成任务上的数据库执行权。

@@ -96,6 +96,8 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
   const published = await publisherService.publish(draft.id, draft.id);
   const outbox = await db.outboxEvent.findFirstOrThrow({ where: { ownerId, aggregateId: published.taskId } });
   const message = taskDispatchSchema.parse(outbox.payload);
+  assert.equal((await runtime.store.claim(ownerId, message, 'job-index', 'unconfigured-embedding-v1')).kind, 'deferred');
+  assert.equal(await db.taskAttempt.count({ where: { ownerId } }), 0);
   const corpora = new JobCorpusRepository(database); await corpora.freeze(ownerId, 'one', [draft.id], skillDictionaryV1);
   await assert.rejects(new JobIndexRepository(database).assertCorpusReady(ownerId, 'one', spec), /INDEX_NOT_READY/);
   const publisher = new ConfirmedTaskPublisher(baseline.rabbitmqUrl, topology, 5000), outboxConfig = outboxConfigSchema.parse({});
@@ -156,6 +158,7 @@ await test('S2.3 real index delivery upserts idempotently, commits READY atomica
   await runtime.store.markExecutionStopped(claimed.claim);
   await db.jobIndexTask.update({ where: { ownerId, id: rebuilt.taskId }, data: { leaseUntil: new Date(0) } });
   assert.equal(await runtime.store.reconcile(ownerId, 'job-index', rebuilt.taskId, reconciliationConfigSchema.parse({})), 'handler-unavailable');
+  assert.equal(await runtime.store.reconcile(ownerId, 'job-index', rebuilt.taskId, reconciliationConfigSchema.parse({}), 'job-index', 'unconfigured-embedding-v1'), 'handler-unavailable');
   assert.equal(await runtime.store.reconcile(ownerId, 'job-index', rebuilt.taskId, reconciliationConfigSchema.parse({}), 'job-index'), 'recovered');
   await assert.rejects(runtime.store.completeJobIndex(claimed.claim, output), /LEASE_LOST/);
   assert.equal(jobIndexInputSnapshotSchema.parse(task.inputSnapshot).kind, 'job-index');

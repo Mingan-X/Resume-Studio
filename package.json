@@ -31,6 +31,8 @@
     "corpus:import": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/corpus.cli.js import",
     "index:backfill": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/index.cli.js backfill",
     "index:alias": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/index.cli.js alias",
+    "tasks:consume:index": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/index-worker.cli.js consume",
+    "index:reconcile": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/index-worker.cli.js",
     "storage:reclaim": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js",
     "storage:reconcile": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js reconcile",
     "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",

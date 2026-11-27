@@ -16,6 +16,7 @@ export interface SyntheticTaskHandler {
 
 export interface TaskHandler {
   readonly capability?: 'job-index';
+  readonly embeddingVersion?: string;
   execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }): Promise<TaskCompletion>;
 }
 
@@ -41,7 +42,7 @@ export class TaskDeliveryHandler {
 
   private async handleLocked(ownerId: string, message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
     signal.throwIfAborted();
-    const result = await this.store.claim(ownerId, message, this.handler.capability ?? 'synthetic');
+    const result = await this.store.claim(ownerId, message, this.handler.capability ?? 'synthetic', this.handler.embeddingVersion);
     signal.throwIfAborted();
     if (result.kind !== 'acquired') return result.kind;
     const { claim } = result;

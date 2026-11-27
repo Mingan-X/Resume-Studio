@@ -111,7 +111,7 @@ async function finishCancellation(tx: Prisma.TransactionClient, ownerId: string,
 export class TaskExecutionStore {
   constructor(private readonly database: TransactionDatabase, private readonly config: ConsumerConfig) {}
 
-  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' = 'synthetic') {
+  async reconcile(owner: string, taskType: TaskType, id: string, config: ReconciliationConfig, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string) {
     const ownerId = ownerIdSchema.parse(owner), taskId = z.uuid().parse(id).toLowerCase();
     return this.database.client.$transaction(async tx => {
       const lock = z.array(z.object({ acquired: z.boolean() })).length(1).parse(await tx.$queryRaw`
@@ -126,7 +126,7 @@ export class TaskExecutionStore {
       const snapshot = taskType === 'analysis' ? analysisInputSnapshotSchema.parse(task.inputSnapshot) : jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
       if (snapshot.ownerId !== ownerId) throw new Error('TASK_OWNER_MISMATCH');
       // Recovery opts in only when a matching executor is configured; no budget spent while unavailable.
-      if (snapshot.kind !== capability) return 'handler-unavailable';
+      if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return 'handler-unavailable';
       const usage = budgetUsageSchema.parse(task.budgetUsage), type = dbType(taskType);
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskId, taskType: type }, orderBy: { startedAt: 'asc' } });
       const exhausted = usage.attempts >= snapshot.budget.maxAttempts || task.recoveryCount >= config.maxRecoveries;
@@ -187,7 +187,7 @@ export class TaskExecutionStore {
     });
   }
 
-  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic'): Promise<ClaimResult> {
+  async claim(owner: string, input: unknown, capability: 'synthetic' | 'job-index' = 'synthetic', embeddingVersion?: string): Promise<ClaimResult> {
     const ownerId = ownerIdSchema.parse(owner), message = taskDispatchSchema.parse(input);
     const name = consumerName(message.taskType), type = dbType(message.taskType);
     return this.database.client.$transaction(async tx => {
@@ -220,7 +220,7 @@ export class TaskExecutionStore {
       }
       if (receipt?.status === 'DONE') throw new Error('RECEIPT_TASK_STATE_MISMATCH');
       // Leave the task and delivery pending, without an attempt, receipt or ACK.
-      if (snapshot.kind !== capability) return { kind: 'deferred' };
+      if (snapshot.kind !== capability || (embeddingVersion !== undefined && snapshot.embeddingVersion !== embeddingVersion)) return { kind: 'deferred' };
       if (task.status === 'RUNNING' && task.leaseUntil && task.leaseUntil > now) return { kind: 'deferred' };
       if (!['QUEUED', 'RETRY_WAIT', 'RUNNING'].includes(task.status)) throw new Error('INVALID_TASK_STATE');
       const first = await tx.taskAttempt.findFirst({ where: { ownerId, taskType: type, taskId: task.id }, orderBy: { startedAt: 'asc' } });

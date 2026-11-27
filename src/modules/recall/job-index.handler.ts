@@ -13,6 +13,7 @@ import { chunkJob, indexCollectionName, indexPointId } from './job-chunks.js';
 
 export class JobIndexHandler implements TaskHandler {
   readonly capability = 'job-index';
+  get embeddingVersion() { return this.embedding.embeddingVersion; }
   constructor(private readonly jobs: JobRepository, private readonly embedding: EmbeddingExecutor,
     private readonly vector: JobIndexVector, options: { allowSynthetic?: boolean } = {}) {
     if (embedding.provenance === 'synthetic' && options.allowSynthetic !== true) throw new Error('OFFICIAL_EMBEDDING_REQUIRED');

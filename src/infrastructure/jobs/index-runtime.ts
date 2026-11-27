@@ -17,5 +17,5 @@ export function createJobIndexDelivery(database: DatabaseService, identity: Iden
   const config = consumerConfigSchema.parse({}), store = new TaskExecutionStore(database, config);
   const executor = new JobIndexHandler(new JobRepository(database), embedding, vector, options);
   return { store, executor, delivery: new TaskDeliveryHandler(store, identity, executor, config, new PostgresExecutionLock(database.pool)),
-    reconcile: async (taskId: string, policy: ReconciliationConfig) => store.reconcile(await identity.getOwnerId(), 'job-index', taskId, policy, 'job-index') };
+    reconcile: async (taskId: string, policy: ReconciliationConfig) => store.reconcile(await identity.getOwnerId(), 'job-index', taskId, policy, 'job-index', embedding.embeddingVersion) };
 }
