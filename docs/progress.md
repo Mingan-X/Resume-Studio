@@ -8,6 +8,30 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3-T1检查完成，按任务提交
+
+`pnpm run test:integration`完整126/126通过、0失败/跳过，587.864秒（data/s23-t1-integration.log），包含新语料用例和既有Checkpoint/fence、RabbitMQ、Langfuse、Outbox/DLX（原窗口180.812秒）、任务、岗位与文件回归。Docker Qdrant创建3865.7ms；既有L1/L2未因此解除。此前基础81/82的L1失败、首次Lint失败仍保留，不以完整集成通过覆盖。
+
+T1已执行db:generate、db:validate、db:deploy两次、db:status、typecheck、lint、pnpm test、数据库专项与完整集成；文档链接/diff检查通过。未改依赖，不重装；无HTTP变更，不新增OpenAPI产物。原生对照本任务未执行（本任务新增行为只涉及PostgreSQL，T4/阶段回归再按路线图对照）；正式目标/真实embedding与质量验证仍延后。只提交T1的15个文件；T2查询与测试草稿未构建、未运行、单独保留供下一任务验证。阶段仍进行中，未合并/推送。
+
+## 2026-11-27 S2.3-T1数据库专项通过，完整回归进行中
+
+`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/job-corpus.test.js`1/1通过，35.659秒（data/s23-t1-corpus.log）。独立owner下100条合成JD经确认/发布入库；重入复用任务/Outbox；跨owner与草稿拒绝；快照冲突/不可变及字典升级保持旧结果通过。结束时重新核验归属并精确清理本轮owner、语料、岗位、索引目标/任务与Outbox，data/s23-corpus-runs对应manifest标cleaned=true；正式rubric未动。
+
+`pnpm run test:integration`串行回归进行中，期间只编写未构建的T2关键词查询/测试草稿，不并行安装、构建或运行其他测试。Docker Qdrant本轮createCollection=3865.7ms且CRUD通过；这不是解除L2的连续目标环境回归。只读核验发现6333由D:\qdrant-x86_64-pc-windows-msvc\qdrant.exe监听；未启停原生进程，T1未调用向量库新能力，原生对照留在涉及Qdrant的T4及阶段回归执行。
+
+## 2026-11-27 S2.3-T1基础测试记录
+
+`pnpm run lint`修正类型导入后通过；`pnpm test`82项81通过/1失败、0跳过，49.789秒（data/s23-t1-unit.log）。唯一失败是原process.test的API启动8秒用例（Child api did not start），按已有L1记录，不称全绿；本轮新增两项字典/100条JD确定性与引用验证均通过。未改原超时/断言。文档本地文件链接4份54项及git diff --check通过。随后执行`node --env-file=infra/.env --test --test-concurrency=1 dist/test/integration/job-corpus.test.js`，结果待追加。
+
+## 2026-11-27 S2.3-T1语料与字典实现，验证进行中
+
+执行交接后核对工作区干净，feature/s2.3-job-recall起点4f08917，与交接一致。已阅读AGENTS、CONTRIBUTING、路线图§5/§6、需求、架构§7、接口及既有岗位发布实现。新增100条合成中文JD生成/重入导入、skills-zh-v1精确技能归一化与JobCorpusVersion不可变私有快照；发布仍走S2.2确认/发布服务，保留真实任务/Outbox。语料快照保存字典、发布清单哈希与原归一化技能，升级字典不修改旧结果。说明见[job-recall](job-recall.md)。
+
+已执行：PostgreSQL项目/服务/卷归属核验通过；db:generate、db:validate、typecheck通过；db:deploy首次应用202611270005_s23_job_corpus、第二次无pending，db:status共12条且up to date。首次lint失败4处consistent-type-imports，已修为import type后零警告通过。基础测试正在运行，数据库专项/完整集成尚未执行，结果后续追加，不提前称通过。
+
+边界：未改依赖声明/锁文件，无新增HTTP接口；正式语料尚未导入，因为正式embedding/index目标仍待后续任务，本轮测试只使用独立临时owner的fixture目标，不注册为正式目标。真实embedding、质量标注与目标服务器验证按路线图延后。原生Qdrant未启停，master及前端未操作，未发送第三方消息。
+
 ## 2026-11-27 S2.2已合并推送，S2.3开始
 
 S2.2-T10提交8fe857f已用--no-ff合并develop，合并c50faf91fd662562ce1d4f7fc589911e1a84ee86；origin/develop同值，origin/feature/s2.2-jd-rubric=8fe857f65ed14b5a8eba0b9a28630c53da5cd46b，推送成功。S2.2待统一验收，L1/L2和真实中转/人工审核延后仍保留；master未切换/修改/推送。合并后工作区干净，从develop创建feature/s2.3-job-recall；已合并本地S2.2分支按-d清理，远端保留。

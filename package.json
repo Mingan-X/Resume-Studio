@@ -27,6 +27,8 @@
     "db:validate": "node --env-file=infra/.env scripts/prisma.mjs validate",
     "rubric:import": "node --env-file=infra/.env dist/src/infrastructure/rubrics/cli.js import",
     "rubric:load": "node --env-file=infra/.env dist/src/infrastructure/rubrics/cli.js load",
+    "corpus:generate": "node dist/src/infrastructure/jobs/corpus.cli.js generate",
+    "corpus:import": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/corpus.cli.js import",
     "storage:reclaim": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js",
     "storage:reconcile": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js reconcile",
     "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",

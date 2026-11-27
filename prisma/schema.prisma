@@ -61,8 +61,23 @@ model Owner {
   resumes Resume[]
   jobs Job[]
   rubrics RubricVersion[]
+  jobCorpora JobCorpusVersion[]
 
   @@map("owner")
+}
+
+// Immutable published-version manifest; skills retain their original dictionary snapshot.
+model JobCorpusVersion {
+  ownerId String @map("owner_id") @db.Uuid
+  version String @db.VarChar(64)
+  visibility String @db.VarChar(16)
+  contentHash String @map("content_hash") @db.Char(64)
+  manifest Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@id([ownerId, version])
+  @@map("job_corpus_version")
 }
 
 model FileAsset {
