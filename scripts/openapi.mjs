@@ -18,6 +18,7 @@ const { reportPathSchema, pageQuerySchema, reportResponseSchema, reportListSchem
 const { analysisPathSchema, analysisListSchema, analysisDetailSchema, analysisOptionsQuerySchema, analysisOptionsSchema, taskEventResponseSchema } = await import('../dist/src/contracts/analysis-api.js');
 const { loginRequestSchema, authSessionResponseSchema, authMeResponseSchema, logoutResponseSchema } = await import('../dist/src/contracts/auth.js');
 const registry = new OpenAPIRegistry();
+registry.registerComponent('securitySchemes','sessionCookie',{type:'apiKey',in:'cookie',name:'__Host-resume_session',description:'AUTH_ENABLED=true时必需；写请求同时要求X-CSRF-Token及精确HTTPS Origin。'});
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
 const task = registry.register('TaskResponse', taskResponseSchema);
@@ -30,7 +31,7 @@ registry.registerPath({ method: 'get', path: '/health', operationId: 'getHealth'
   summary: '进程存活检查', description: '无查询参数；未知查询字段返回400。成功不表示外部依赖就绪。',
   request: { query: healthQuerySchema }, responses: { 200: response(health,'进程可响应'), 400: errors[400], 500: errors[500] } });
 registry.registerPath({ method: 'get', path: '/api/v1/tasks/{taskId}', operationId: 'getTask',
-  summary: '查询当前开发主体的任务', description: '需显式启用本地任务API。未知查询字段返回400；不存在或其他owner的资源统一404。progress来自已保存计数，总量未知为null；不暴露执行令牌或输入。',
+  summary: '查询当前主体的任务', description: '需显式启用任务API。未知查询字段返回400；不存在或其他owner的资源统一404。progress来自已保存计数，总量未知为null；不暴露执行令牌或输入。',
   request: { params: taskPathSchema, query: taskQuerySchema }, responses: { 200: response(task,'当前任务快照'), ...errors } });
 registry.registerPath({ method: 'post', path: '/api/v1/tasks/{taskId}/cancel', operationId: 'cancelTask',
   summary: '持久化取消请求', description: '请求必须为application/json空对象。202只表示请求已保存，最终状态通过GET查询。非终态重复请求返回202；终态返回409。由消费者或对账器在安全边界提交CANCELLED。',
@@ -76,9 +77,24 @@ registry.registerPath({ method: 'post', path: '/api/v1/jobs/{jobId}/versions/{ve
 registry.registerPath({ method: 'post', path: '/api/v1/jobs/{jobId}/versions/{versionId}/suggestions', operationId: 'suggestJobRequirements', summary: '受限模型生成待人工确认建议，不写回草稿', request: { params: jobVersionPathSchema, query: taskQuerySchema, body: jsonBody(taskQuerySchema) }, responses: { 200: response(jdExtractionResultSchema, '校验过的建议及输入版本'), ...jobErrors } });
 const document = new OpenApiGeneratorV31(registry.definitions, { sortComponents: 'alphabetically' }).generateDocument({
   openapi: '3.1.0', info: { title: 'Resume Studio Backend', version: '0.1.0',
-    description: '任务与简历路由分别通过TASK_API_ENABLED/RESUME_API_ENABLED启用；固定开发身份仅用于本地开发，不提供生产认证。' },
+    description: '业务路由分别显式启用；AUTH_ENABLED=true启用会话及写请求CSRF/Origin校验，生产业务路由必须开启；本地development/test可显式保留开发身份。' },
   servers: [{ url: '/', description: '与前端同源；本地通过代理连接API' }],
 });
+const generatedError=(description)=>({description,headers:{'x-request-id':{schema:{type:'string',format:'uuid'}}},
+  content:{'application/json':{schema:{$ref:'#/components/schemas/ErrorResponse'}}}});
+for(const [path,item] of Object.entries(document.paths)) {
+  if(!path.startsWith('/api/v1/'))continue;
+  for(const [method,operation] of Object.entries(item)) {
+    if(!['get','post','patch','delete','put'].includes(method))continue;
+    if(path.startsWith('/api/v1/auth/'))continue;
+    operation.security=[{sessionCookie:[]}];
+    operation.responses['401']=generatedError('会话模式下未登录或会话失效');
+    if(method!=='get'){
+      operation.responses['403']=generatedError('CSRF或Origin校验失败');
+      operation.parameters=[...(operation.parameters??[]),{in:'header',name:'X-CSRF-Token',required:true,schema:{type:'string',pattern:'^[a-f0-9]{64}$'}},{in:'header',name:'Origin',required:true,schema:{type:'string',format:'uri'}}];
+    }
+  }
+}
 const generated = JSON.stringify(document, null, 2) + '\n';
 const check = process.argv[2] === '--check';
 if (process.argv[2] && !check) throw new Error('Expected --check or no arguments');

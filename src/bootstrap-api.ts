@@ -11,9 +11,10 @@ import { registerShutdown } from './lifecycle.js';
 
 export async function createApi(config: ApiConfig): Promise<INestApplication> {
   const extra = config.tasks ? [(await import('./modules/tasks/task-api.module.js')).TaskApiModule.register(config.tasks,
-    await (await import('./infrastructure/tasks/analysis-config.js')).loadAnalysisConfiguration(config.analysisConfigFile))] : [];
-  if (config.resumes) extra.push((await import('./modules/resumes/resume-api.module.js')).ResumeApiModule.register(config.resumes));
-  if (config.jobs) extra.push(await (await import('./modules/jobs/job-api.module.js')).JobApiModule.register(config.jobs));
+    await (await import('./infrastructure/tasks/analysis-config.js')).loadAnalysisConfiguration(config.analysisConfigFile),Boolean(config.auth))] : [];
+  if (config.resumes) extra.push((await import('./modules/resumes/resume-api.module.js')).ResumeApiModule.register(config.resumes,Boolean(config.auth)));
+  if (config.jobs) extra.push(await (await import('./modules/jobs/job-api.module.js')).JobApiModule.register(config.jobs,Boolean(config.auth)));
+  if (config.auth) extra.push((await import('./modules/auth/auth.module.js')).AuthModule.register(config.auth,true));
   const app = await NestFactory.create(ApiModule.register(config, extra), {
     logger: false, abortOnError: false,
   });

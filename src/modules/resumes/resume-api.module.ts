@@ -11,8 +11,8 @@ import { ResumeController } from './resume.controller.js';
 
 @Module({})
 export class ResumeApiModule {
-  static register(config: { databaseUrl: string; storageRoot: string }): DynamicModule {
-    return { module: ResumeApiModule, imports: [IdentityModule], controllers: [ResumeController], providers: [
+  static register(config: { databaseUrl: string; storageRoot: string }, sessionIdentity=false): DynamicModule {
+    return { module: ResumeApiModule, imports: [sessionIdentity?IdentityModule.session():IdentityModule], controllers: [ResumeController], providers: [
       { provide: INFRA_CONFIG, useValue: { databaseUrl: config.databaseUrl } }, DatabaseService, ResumeRepository, ResumeService,
       { provide: RESUME_STORAGE, useFactory: () => LocalStorage.create(config.storageRoot) },
       { provide: RESUME_PARSER, useFactory: () => new IsolatedParser() },

@@ -8,6 +8,8 @@ import { grantTaskPermissions, installTaskPolicy, verifyTaskTopology } from '../
 import { withRabbitConnection } from '../messaging/confirmed-publisher.js';
 import { OutboxModule } from './outbox.module.js';
 import { OutboxPublisher } from './outbox.publisher.js';
+import { DatabaseService } from '../database/database.service.js';
+import { configuredServiceOwner } from '../consumer/service-identity.js';
 
 async function main() {
   const config = loadInfrastructureConfig(process.env);
@@ -28,7 +30,9 @@ async function main() {
     return;
   }
   await ownedPostgres();
-  const app = await NestFactory.createApplicationContext(OutboxModule.register(config), { logger: false, abortOnError: false });
+  const database=new DatabaseService(config);let owner:string;
+  try{owner=await configuredServiceOwner(database,process.env);}finally{await database.onModuleDestroy();}
+  const app = await NestFactory.createApplicationContext(OutboxModule.register(config,{getOwnerId:()=>Promise.resolve(owner)}), { logger: false, abortOnError: false });
   const abort = new AbortController();
   const stop = () => abort.abort();
   process.once('SIGINT', stop); process.once('SIGTERM', stop);

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 const execute = promisify(execFile);
-await test('analysis CLI rejects missing config/production before loading Nest, Prisma, model adapters or runtime', async t => {
+await test('analysis CLI rejects missing config in development and production before loading Nest, Prisma, model adapters or runtime', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'resume-analysis-import-'));
   t.after(() => rm(directory, { recursive: true }));
   for (const environment of ['development', 'production']) {

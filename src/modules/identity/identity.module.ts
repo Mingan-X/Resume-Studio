@@ -1,12 +1,14 @@
 import { Injectable, Module } from '@nestjs/common';
 import { z } from 'zod';
+import type { DynamicModule } from '@nestjs/common';
+import { SessionIdentity } from './session-identity.js';
 
 export const ownerIdSchema = z.uuid().transform(value => value.toLowerCase());
 export const DEVELOPMENT_OWNER_ID = '00000000-0000-4000-8000-000000000001';
 export const IDENTITY = Symbol('IDENTITY');
 
 // Trusted application context, never derived from a request body's ownerId.
-// A future authentication adapter can replace this provider without changing task creation.
+// HTTP session mode resolves a trusted request context; local mode stays explicit.
 export interface IdentityPort {
   getOwnerId(): Promise<string>;
 }
@@ -20,4 +22,8 @@ export class DevelopmentIdentity implements IdentityPort {
   providers: [{ provide: IDENTITY, useClass: DevelopmentIdentity }],
   exports: [IDENTITY],
 })
-export class IdentityModule {}
+export class IdentityModule {
+  static session(): DynamicModule {
+    return { module: IdentityModule, providers: [{ provide: IDENTITY, useClass: SessionIdentity }], exports: [IDENTITY] };
+  }
+}

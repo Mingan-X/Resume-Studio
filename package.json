@@ -41,7 +41,7 @@
     "storage:reclaim": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js",
     "storage:reconcile": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/storage/cli.js reconcile",
     "outbox:setup": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js setup",
-    "outbox:publish": "node --env-file=infra/.env dist/src/infrastructure/outbox/cli.js publish",
+    "outbox:publish": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/outbox/cli.js publish",
     "tasks:consume": "node --env-file=infra/.env dist/src/infrastructure/consumer/cli.js",
     "tasks:consume:graph": "node --env-file=infra/.env --env-file=infra/.env.checkpoint dist/src/infrastructure/consumer/cli.js analysis checkpoint",
     "tasks:reconcile": "node --env-file=infra/.env dist/src/infrastructure/reconciliation/cli.js",

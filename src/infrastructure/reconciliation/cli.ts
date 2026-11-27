@@ -7,6 +7,7 @@ import { ReconciliationModule } from './reconciliation.module.js';
 import { ReconciliationService } from './reconciliation.service.js';
 
 async function main() {
+  if(process.env.APP_ENV==='production')throw new Error('SYNTHETIC_RECONCILER_DEVELOPMENT_ONLY');
   const mode = process.argv[2];
   if (process.argv.length !== 3 || !['once','watch'].includes(mode ?? '')) throw new Error('Expected once or watch.');
   const config = loadInfrastructureConfig(process.env);

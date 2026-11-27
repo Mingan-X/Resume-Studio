@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 try {
   const [mode] = z.tuple([z.enum(['consume', 'reconcile-once', 'reconcile-watch'])]).parse(process.argv.slice(2));
-  z.enum(['development', 'test']).parse(process.env.APP_ENV);
+  z.enum(['development', 'test', 'production']).parse(process.env.APP_ENV);
   const modelPath = z.string().min(1).refine(isAbsolute).parse(process.env.ANALYSIS_MODEL_CONFIG_FILE);
   const embeddingPath = z.string().min(1).refine(isAbsolute).parse(process.env.JOB_EMBEDDING_CONFIG_FILE);
   const model = await (await import('../models/analysis-model-config.js')).loadAnalysisModel(modelPath);

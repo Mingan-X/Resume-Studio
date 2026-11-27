@@ -1,6 +1,6 @@
 # 本地账号与服务端会话
 
-S3.2-T1实现模块与CLI，业务API接入及生产身份替换由T2完成。当前验证范围见[进度](progress.md)，T1不解除既有固定开发身份的production限制，不提供注册或第三方登录。
+S3.2-T1实现模块与CLI，T2接入业务API的会话身份。当前验证范围见[进度](progress.md)，不提供注册或第三方登录。
 
 账号username为规范化小写3–64字符，口令15–256字符且UTF-8不超过1024字节；scrypt随机16字节salt、N=131072/r=8/p=1、输出64字节，比较使用timingSafeEqual。单进程最多2个并发派生，满额拒绝而不无限排队；此参数是明确实现配置，不表示任意服务器可承受该负载。连续5次失败锁15分钟，未知账号同样执行固定成本派生，错误不透露账号是否存在。口令计算不在数据库事务内等待。
 
@@ -13,3 +13,15 @@ S3.2-T1实现模块与CLI，业务API接入及生产身份替换由T2完成。�
 T1数据库/HTTP测试覆盖错误口令、CSRF/Origin、会话轮换、过期、登出、哈希存储和owner关联；单元核对scrypt/随机salt/错误格式及cookie重复拒绝。没有在测试中建立真实用户或打印真实凭证。
 
 S3.2本轮已确认的生命周期政策：简历版本上传满30天清理其关联业务数据，岗位语料单独保留；主动删除全部业务数据含自建JD/语料/向量/自定义规则，保留账号。执行器尚待T4/T5，不把本段政策描述为已启用自动删除。
+
+## API与Worker接线（S3.2-T2）
+
+`AUTH_ENABLED=true`、`AUTH_ORIGIN=https://<实际同源主机>`及同业务库DATABASE_URL启用会话模式；AUTH_SESSION_SECONDS/AUTH_ANONYMOUS_SECONDS为可选秒数。生产业务路由必须启用，缺失/非法Origin启动失败。未启用时仅development/test与loopback允许固定开发身份。数据库仍须符合现有项目实例校验，生产配置测试不表示目标服务器已部署。
+
+全局Guard保护业务Controller（健康检查与认证自身流程除外）；服务端查会话后把owner放入请求内部Symbol，request-scoped IdentityPort读取它。客户端正文、query、owner头均不能替换身份。业务非GET/HEAD要求CSRF与Origin；登录失效401，CSRF拒绝403，其他owner资源404。SSE在建立连接时校验会话，单连接最长300秒，失效会话不能重连；当前不承诺登出即时断开已建立SSE。
+
+真实分析/索引消费者按messageId查持久Outbox，核对消息全文hash及任务/事件对应关系后，从数据库获得owner，以AsyncLocalStorage隔离并发执行。production只处理启用账号的任务，开发owner不进入生产执行。非法信封落入专属基础设施owner `00000000-0000-4000-8000-000000000002` 的最小Quarantine/dead Outbox；该owner无账号，不作为HTTP或业务身份。迁移只新增该系统行及账号约束，不认领开发数据。
+
+发布器/对账命令通过私有进程配置 `SERVICE_OWNER_ID` 明确选择已登记账号；production缺失或选择开发owner即拒绝。每个账号需有对应发布/对账监督配置，基础设施owner需额外发布器处理dead事件；共享消费者可处理各账号消息。development/test不填时保留原开发owner。合成消费者/合成对账命令拒绝production。服务进程部署监督在S3.3验证，不把这些显式命令描述为已常驻运行。
+
+发布顺序：后端S3.2合并到develop、前端F3.1同步同源契约并通过登录/CSRF流程后，部署时再启用AUTH_ENABLED；前端现有F3.1-T1/T4覆盖此兼容切换，不修改旧本地开发模式请求。

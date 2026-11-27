@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isAbsolute } from 'node:path';
 import { taskApiConfigSchema } from './task-api-config.js';
+import { authConfigSchema } from '../auth/auth-config.js';
 
 const environment = z.enum(['development', 'test', 'production']);
 const common = { APP_ENV: environment };
@@ -11,6 +12,7 @@ export const apiConfigSchema = z.object({
   HTTP_HOST: z.enum(['127.0.0.1', '0.0.0.0', '::1']).default('127.0.0.1'), // 默认主机地址
   HTTP_PORT: z.string().regex(/^\d+$/).transform(Number).pipe(z.int().min(1).max(65535)), // 默认端口号
   tasks: taskApiConfigSchema.optional(),
+  auth: authConfigSchema.optional(),
   analysisConfigFile: z.string().min(1).refine(isAbsolute).optional(),
   resumes: z.object({ databaseUrl: taskApiConfigSchema.unwrap().shape.databaseUrl,
     storageRoot: z.string().min(1).refine(isAbsolute) }).strict().optional(),
@@ -20,8 +22,12 @@ export const apiConfigSchema = z.object({
 }).superRefine((config, ctx) => {
   if (config.analysisConfigFile && !config.tasks) ctx.addIssue({ code: 'custom', path: ['analysisConfigFile'], message: 'Task API required' });
   if (!config.tasks && !config.resumes && !config.jobs) return;
-  if (config.APP_ENV === 'production') ctx.addIssue({ code: 'custom', path: ['APP_ENV'], message: 'Development task identity only' });
-  if (!['127.0.0.1','::1'].includes(config.HTTP_HOST)) ctx.addIssue({ code: 'custom', path: ['HTTP_HOST'], message: 'Local task API only' });
+  if (!config.auth) {
+    if (config.APP_ENV === 'production') ctx.addIssue({ code: 'custom', path: ['APP_ENV'], message: 'Session authentication required' });
+    if (!['127.0.0.1','::1'].includes(config.HTTP_HOST)) ctx.addIssue({ code: 'custom', path: ['HTTP_HOST'], message: 'Local development identity only' });
+  } else if ([config.tasks,config.resumes,config.jobs].some(value=>value&&value.databaseUrl!==config.auth?.databaseUrl)) {
+    ctx.addIssue({code:'custom',path:['auth','databaseUrl'],message:'One application database required'});
+  }
 }).readonly();
 
 export const workerConfigSchema = z.object({
@@ -44,6 +50,7 @@ export class ConfigValidationError extends Error {
 export function loadConfig(role: 'api', env: NodeJS.ProcessEnv): ApiConfig;
 export function loadConfig(role: 'worker', env: NodeJS.ProcessEnv): WorkerConfig;
 export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): AppConfig {
+  if (role === 'api' && env.AUTH_ENABLED !== undefined && !['true','false'].includes(env.AUTH_ENABLED)) throw new ConfigValidationError(['AUTH_ENABLED']);
   if (role === 'api' && env.TASK_API_ENABLED !== undefined && !['true','false'].includes(env.TASK_API_ENABLED)) {
     throw new ConfigValidationError(['TASK_API_ENABLED']);
   }
@@ -58,6 +65,9 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
     APP_ENV: env.APP_ENV,
     HTTP_HOST: env.HTTP_HOST,
     HTTP_PORT: env.HTTP_PORT,
+    ...(role === 'api' && env.AUTH_ENABLED === 'true' ? {auth:{databaseUrl:env.DATABASE_URL,origin:env.AUTH_ORIGIN,
+      ...(env.AUTH_SESSION_SECONDS!==undefined?{sessionSeconds:Number(env.AUTH_SESSION_SECONDS)}:{}),
+      ...(env.AUTH_ANONYMOUS_SECONDS!==undefined?{anonymousSeconds:Number(env.AUTH_ANONYMOUS_SECONDS)}:{})}} : {}),
     ...(role === 'api' && env.TASK_API_ENABLED === 'true' ? { tasks: { databaseUrl: env.DATABASE_URL } } : {}),
     ...(role === 'api' && env.ANALYSIS_CONFIG_FILE ? { analysisConfigFile: env.ANALYSIS_CONFIG_FILE } : {}),
     ...(role === 'api' && env.RESUME_API_ENABLED === 'true' ? { resumes: { databaseUrl: env.DATABASE_URL, storageRoot: env.STORAGE_ROOT } } : {}),
@@ -68,6 +78,7 @@ export function loadConfig(role: AppConfig['role'], env: NodeJS.ProcessEnv): App
   if (!parsed.success) {
     throw new ConfigValidationError(
       [...new Set(parsed.error.issues.map((issue) => issue.path[0] === 'tasks' ? 'DATABASE_URL'
+        : issue.path[0] === 'auth' ? issue.path[1] === 'origin' ? 'AUTH_ORIGIN' : issue.path[1] === 'sessionSeconds' ? 'AUTH_SESSION_SECONDS' : issue.path[1] === 'anonymousSeconds' ? 'AUTH_ANONYMOUS_SECONDS' : 'DATABASE_URL'
         : issue.path[0] === 'resumes' ? issue.path[1] === 'storageRoot' ? 'STORAGE_ROOT' : 'DATABASE_URL'
         : issue.path[0] === 'jobs' ? issue.path[1] === 'modelConfigFile' ? 'JOB_MODEL_CONFIG_FILE' : issue.path[1] === 'indexTargetFile' ? 'JOB_INDEX_TARGET_FILE' : 'DATABASE_URL'
         : issue.path[0] === 'analysisConfigFile' ? 'ANALYSIS_CONFIG_FILE' : String(issue.path[0])))].sort(),

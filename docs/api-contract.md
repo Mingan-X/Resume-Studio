@@ -50,7 +50,7 @@
 | `x-request-id` | 响应 | 服务端为每个请求生成UUID；忽略客户端提供的同名值；错误体中的requestId与之相同 | 已实现 |
 | `Idempotency-Key` | 请求 | 创建任务类POST必填。客户端为每一次用户操作生成UUID，网络重试时复用同一值；同key同请求返回原结果，同key不同请求返回409 | 应用服务、简历上传与岗位发布HTTP已实现；分析创建HTTP仍规划 |
 | `Content-Type` | 请求 | 取消/发布/建议接口要求 `application/json` 空对象；上传使用 `multipart/form-data` | 已实现 |
-| `Cookie` / `X-CSRF-Token` | 请求 | __Host-resume_session及会话CSRF令牌，写请求同时校验精确Origin | S3.2-T1认证模块已实现；业务接线待T2 |
+| `Cookie` / `X-CSRF-Token` | 请求 | __Host-resume_session及会话CSRF令牌，写请求同时校验精确Origin | S3.2会话模式已接入；启用/部署顺序见[认证](auth.md) |
 
 ## 6. 错误响应
 

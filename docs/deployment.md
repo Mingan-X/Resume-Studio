@@ -1,5 +1,7 @@
 # 本地部署
 
+S3.2身份接入需先应用账号/会话及基础设施owner迁移（当前25条），generate/build后再启用AUTH_ENABLED与精确HTTPS AUTH_ORIGIN；生产业务入口禁止开发身份。账号仅CLI通过stdin创建，新账号不继承开发数据/规则。真实Worker从持久Outbox识别账号owner；发布/对账显式SERVICE_OWNER_ID。详细步骤、前端F3.1发布顺序、系统owner和会话期限见[认证说明](auth.md)。仍只验证当前本地Compose归属，目标服务器部署待S3.3；回退需先关闭业务公网入口，保留账号/会话及迁移数据，不退回公网开发身份。
+
 S3.1部署前应用报告迁移并generate/build；报告查询、重算、分析选择列表、SSE随现有TASK_API_ENABLED启用，固定开发身份仍禁止production。SSE反向代理需禁用缓冲，服务发送X-Accel-Buffering:no；连接期限/心跳/上限和数据回退说明见[报告说明](reports.md)。不删除旧产物或配置来解决迁移/环境问题。
 
 S2.5评分政策/结果迁移须先部署，再用`pnpm run scoring:import-default <ownerId>`为已存在的本地主体显式导入scoring-v1，最后启用新API/Worker。新任务创建冻结政策版本/hash，缺对应owner政策会拒绝创建；不自动更换版本。评分与重算均不调用模型，旧S2.4无scoringPolicyHash任务仍保留原图路径；具体兼容/回退及命令见[评分说明](scoring.md)。

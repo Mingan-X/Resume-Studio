@@ -2,7 +2,7 @@
 
 ## 本地账号与会话（S3.2-T1）
 
-认证模块提供下表路由，T1仅显式模块/测试装配，标准API接线在T2交付。具体Cookie、安全边界和CLI见[账号说明](auth.md)。
+认证模块提供下表路由，AUTH_ENABLED=true启用并保护业务接口。production业务路由必须启用；development/test未启用认证时仍限loopback开发身份。具体Cookie、安全边界、Worker及发布顺序见[账号说明](auth.md)。本节覆盖下文历史“仅本地/production拒绝”的身份条件，业务校验与实例归属约束不变。
 
 | 方法与路径 | 请求与结果 |
 |---|---|

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 const execute = promisify(execFile);
-await test('S2.3 real index CLI fails closed before services for missing config and production fixed identity', async t => {
+await test('S2.3 real index CLI fails closed before services for missing config in development and production', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'resume-index-import-'));
   t.after(() => rm(directory, { recursive: true }));
   for (const environment of ['development', 'production']) {
