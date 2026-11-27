@@ -16,6 +16,7 @@ const { jdExtractionResultSchema } = await import('../dist/src/contracts/job-ext
 const { createAnalysisRequestSchema, createAnalysisResponseSchema } = await import('../dist/src/contracts/analyses.js');
 const { reportPathSchema, pageQuerySchema, reportResponseSchema, reportListSchema, recomputeRequestSchema } = await import('../dist/src/contracts/reports.js');
 const { analysisPathSchema, analysisListSchema, analysisDetailSchema, analysisOptionsQuerySchema, analysisOptionsSchema, taskEventResponseSchema } = await import('../dist/src/contracts/analysis-api.js');
+const { loginRequestSchema, authSessionResponseSchema, authMeResponseSchema, logoutResponseSchema } = await import('../dist/src/contracts/auth.js');
 const registry = new OpenAPIRegistry();
 const health = registry.register('HealthResponse', healthResponseSchema);
 const error = registry.register('ErrorResponse', errorResponseSchema);
@@ -46,6 +47,12 @@ registry.registerPath({ method: 'get', path: '/api/v1/resumes/{resumeId}/version
   request: { params: resumeVersionPathSchema, query: taskQuerySchema }, responses: { 200: response(resumeVersionResponseSchema, '不可变文本与警告，不返回结构化占位'), ...errors } });
 const jobErrors = { ...errors, 409: response(error, '幂等冲突或未确认/引用失效'), 422: response(error, '模型输出或预算不满足'), 503: response(error, '模型或索引目标未配置/暂不可用') };
 const jsonBody = schema => ({ required: true, content: { 'application/json': { schema } } });
+const authErrors = { ...errors, 401: response(error,'会话无效或未登录'), 403: response(error,'CSRF或Origin不匹配'), 503: response(error,'认证暂不可用') };
+const csrfHeaders = z.object({ 'x-csrf-token': z.string().regex(/^[a-f0-9]{64}$/), origin: z.url() });
+registry.registerPath({ method:'get', path:'/api/v1/auth/session', operationId:'getAuthSession', summary:'获取会话与登录前CSRF令牌', description:'仅AuthModule启用时提供。匿名会话无业务权限，所有响应no-store。', request:{query:taskQuerySchema}, responses:{200:response(authSessionResponseSchema,'匿名或当前登录状态'),...errors} });
+registry.registerPath({ method:'get', path:'/api/v1/auth/me', operationId:'getCurrentUser', summary:'读取当前登录账号', request:{query:taskQuerySchema}, responses:{200:response(authMeResponseSchema,'账号概要与CSRF令牌，不返回owner'),...authErrors} });
+registry.registerPath({ method:'post', path:'/api/v1/auth/login', operationId:'login', summary:'验证本地账号并轮换会话', request:{query:taskQuerySchema,headers:csrfHeaders,body:jsonBody(loginRequestSchema)}, responses:{200:response(authMeResponseSchema,'登录成功，Set-Cookie替换旧会话'),...authErrors} });
+registry.registerPath({ method:'post', path:'/api/v1/auth/logout', operationId:'logout', summary:'撤销当前会话', request:{query:taskQuerySchema,headers:csrfHeaders,body:jsonBody(taskQuerySchema)}, responses:{200:response(logoutResponseSchema,'会话已撤销，Cookie失效'),...authErrors} });
 registry.register('TaskEvent',taskEventResponseSchema);
 registry.registerPath({method:'get',path:'/api/v1/reports',operationId:'listReports',summary:'报告历史游标分页',request:{query:pageQuerySchema},responses:{200:response(reportListSchema,'不可变报告概要'),...errors}});
 registry.registerPath({method:'get',path:'/api/v1/reports/{reportId}',operationId:'getReport',summary:'读取完整不可变报告',request:{params:reportPathSchema,query:taskQuerySchema},responses:{200:response(reportResponseSchema,'含评分、覆盖率、判断、证据和版本'),...errors}});

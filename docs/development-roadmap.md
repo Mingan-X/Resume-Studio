@@ -331,6 +331,8 @@ S2.1使用文件与PostgreSQL，不因本阶段额外调用Qdrant。完整回归
 
 ### S3.2 任务拆分：身份、权限与数据生命周期
 
+2026-11-28当前门禁：T1/T2/T3/T6已有实现与专项，基础134/134通过；最新完整集成146/149，两个Checkpoint恢复用例在数据库lock/claim连接边界失败（另计父测试），定向补充诊断复现SocketTimeout/P1008。未作为L1/L2接受，不合并阶段；T4/T5及依赖S3.2的S3.3按本路线图“检查失败”停止条件暂停推进，待恢复门禁排除后接续。证据见[专项诊断](research/s32-postgres-2026-11-28.md)与progress。
+
 | 任务 | 目标 | 依赖 | 产出 | 验收 | 检查 |
 |---|---|---|---|---|---|
 | S3.2-T1 | 认证方案落地 | S3.1 | 按D9实现：本地账号（命令行创建，不开放自助注册，不接第三方登录）；口令哈希优先使用Node内置crypto.scrypt；PostgreSQL会话存储；登录、登出、当前用户接口；HttpOnly/Secure/SameSite Cookie与CSRF令牌 | 未登录请求返回401 UNAUTHENTICATED；非GET请求缺少或错误CSRF令牌被拒绝；会话过期与登出后不可用；不记录口令或令牌；命令行创建账号不在日志中输出口令 | 基础检查；真实HTTP专项；openapi:check |
@@ -365,7 +367,7 @@ S2.1使用文件与PostgreSQL，不因本阶段额外调用Qdrant。完整回归
 | D4 | Langfuse部署 | **已确定：本地独立自托管**（2026-11-25） | T4接入时核对资源、镜像、SDK/服务端版本；默认脱敏，不启用云端上报 | 部署方向已解除阻塞；T4/T5实施记录见progress |
 | D5 | 前端框架 | **已确定**：Vue 3 + TypeScript + Vite | 见[前端ADR-0001](https://github.com/Mingan-X/Resume-Studio-Frontend/blob/main/docs/decisions/0001-frontend-stack.md) | — |
 | D6 | 文件范围 | **已确定**（2026-11-27）：带文本层的PDF与正文/表格含文本的DOCX，不做OCR；扫描、加密、损坏、空文本明确拒绝 | OCR是否首版必须、费用与隐私；复杂版式质量样本 | 已解除 |
-| D7 | 评分与数据政策 | **已确定**（2026-11-27）：首次评分用评分政策六维权重、默认等权；verdict系数1/0.5/0/0；unknown单列；硬要求partial与unknown为pending；存在未完成要求的候选暂列pending不进Top10（明确硬要求unmet仍ineligible）；仅eligible进Top10；真实数据保留30天 | 目标岗位类型、权重、真实数据授权与保留时间；S2.5实施时由维护者补充确认权重来源/partial/未完成要求边界 | 已解除；见S2.5-T7、S3.2-T4 |
+| D7 | 评分与数据政策 | **已确定**（2026-11-27）：首次评分用评分政策六维权重、默认等权；verdict系数1/0.5/0/0；unknown单列；硬partial/unknown和未完成候选pending（硬unmet优先ineligible）；仅eligible进Top10；简历上传满30天清理关联分析/报告/Checkpoint/可关联trace、岗位语料保留；主动删除全部业务数据含JD/语料/向量/自定义规则，保留账号 | S2.5确认评分边界；S3.2本轮维护者确认保留起算与主动删除范围 | 已解除；见S2.5-T7、S3.2-T4/T5 |
 | D8 | OpenAPI生成方式 | **已确定并在T9接入：`@asteasolutions/zod-to-openapi` 9.1.0**（2026-11-26，与Zod契约同源） | 已核对registry/官方包文档及peer，冻结安装、生成/过期检查通过；结果见progress | 已解除 |
 | D9 | 认证方案 | **已确定**（2026-11-27）：本地账号+服务端会话（HttpOnly、Secure、SameSite Cookie）+CSRF；账号由命令行创建，不开放自助注册，不接第三方登录 | 部署形态、是否需要第三方登录、会话存储 | 已解除；见S3.2-T1 |
 | D10 | 生产部署形态 | **已确定**（2026-11-27）：单机Docker Compose（反向代理、前端静态资源、API、Worker、发布器、对账器同机） | 数据区域、备份、TLS、成本 | 已解除；目标服务器上的验证延后到统一验收 |

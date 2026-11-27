@@ -28,6 +28,7 @@
     "rubric:import": "node --env-file=infra/.env dist/src/infrastructure/rubrics/cli.js import",
     "rubric:load": "node --env-file=infra/.env dist/src/infrastructure/rubrics/cli.js load",
     "scoring:import-default": "node --env-file=infra/.env dist/src/infrastructure/tasks/scoring-policy.cli.js import-default",
+    "account:create": "node --env-file=infra/.env dist/src/infrastructure/tasks/account.cli.js",
     "corpus:generate": "node dist/src/infrastructure/jobs/corpus.cli.js generate",
     "corpus:import": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/corpus.cli.js import",
     "index:backfill": "node --env-file=infra/.env --env-file-if-exists=.env dist/src/infrastructure/jobs/index.cli.js backfill",

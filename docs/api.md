@@ -1,5 +1,18 @@
 # HTTP API
 
+## 本地账号与会话（S3.2-T1）
+
+认证模块提供下表路由，T1仅显式模块/测试装配，标准API接线在T2交付。具体Cookie、安全边界和CLI见[账号说明](auth.md)。
+
+| 方法与路径 | 请求与结果 |
+|---|---|
+| GET /api/v1/auth/session | 无查询字段；200返回user（匿名为null）、csrfToken、expiresAt；必要时Set-Cookie建立匿名会话 |
+| GET /api/v1/auth/me | 有效登录Cookie；200返回相同结构且user非空；未登录401 |
+| POST /api/v1/auth/login | application/json，username/password；需引导Cookie、X-CSRF-Token与精确HTTPS Origin；成功200并轮换Cookie |
+| POST /api/v1/auth/logout | JSON空对象、Cookie、X-CSRF-Token与Origin；200返回loggedOut=true并撤销会话 |
+
+不接受额外查询/正文或请求owner。账号响应只含id和username，所有成功响应no-store；401 UNAUTHENTICATED不区分账号不存在、错误口令、锁定或过期。CSRF/Origin错误403 FORBIDDEN，口令派生并发满503。无自助注册/第三方登录。Secure Cookie需HTTPS；HTTP专项仅人工传Cookie验证服务端。
+
 ## 报告、分析列表与SSE（S3.1）
 
 TASK_API_ENABLED同时启用报告GET/list/revisions、POST recompute（201）、analyses列表/detail/options及tasks/:taskId/events SSE。完整请求/返回、分页、错误、幂等与连接边界见[报告与进度接口](reports.md)，机器契约为同源OpenAPI。新reportVersion任务SUCCEEDED/PARTIAL必须返回已提交reportId，旧历史任务仍可null；前端直接展示保存的分数/贡献/coverage/upperBound及执行状态，不自行算分。

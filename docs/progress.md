@@ -8,6 +8,42 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.2阻塞收尾检查与资源核验
+
+契约修复后typecheck、零警告Lint、openapi:check及OpenAPI专项2/2通过；基础最终134/134与认证/身份3/3保持，最新业务代码未再更改。209处本地文档文件/章节链接与git diff --check通过。准备按T1/T2/T3/T6保存本地实现提交；各提交共用上述完整工作区的验证，不把中间提交描述为独立部署/阶段验收通过。完整集成仍为146/149，恢复诊断仍3/5，不再无改动反复重跑以取得绿色。
+
+data/s32-resources.json核验账号/会话/全部业务产物/Outbox/收据/任务等均0；Owner仅原开发主体及迁移新增基础设施主体。scoring-v1 hash=8aa97248595f0e4f49bf4a04a961f0c512675ecb25bc8f4e77dae3457dd5d35c，rubric-v1 hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d且PENDING_REVIEW保持；四正式队列ready/unacked=0，Qdrant集合空。未删除卷/DB/配置；Checkpoint故障专项按其精确manifest确认线程清理。尚未合并/推送，T4/T5未实现，保留停止条件。
+
+## 2026-11-28 S3.2回归门禁阻塞，保留实现与诊断
+
+T1/T2/T3/T6实现继续留在feature/s3.2-identity-lifecycle，尚未提交/合并/推送，阶段保持进行中。最终基础134/134、100.114秒通过（data/s32-blocked-unit-final.log），认证/真实会话越权/Worker三项3/3、12.551秒通过（data/s32-blocked-auth-final.log），类型检查与零警告Lint通过；25条迁移已应用。真实登录上下文、来源/账号频率限制、JSON上限与安全头均有专项；生产仅是配置/HTTP装配验证，尚未公开部署。
+
+最新完整集成146/149、814.236秒，两个确认旧进程退出后的Checkpoint恢复子测试失败及父测试计数（data/s32-t1236-integration.log）。增加无敏感内容的driverKind诊断后定向3/5，claim阶段796ms复现SocketTimeout/P1008（data/s32-checkpoint-diagnostic.log）。本项目数据库只读检查无连接耗尽/锁等待；12次有界短连接探针均通过，不等于排除间歇连接问题。详见[诊断](research/s32-postgres-2026-11-28.md)。未增加数据库/解析超时、重试或修改恢复断言。
+
+最终契约复核发现生成后补充错误响应误用了Zod对象，产物含def；已改为纯OpenAPI $ref，新增产物不得包含Zod内部字段及401引用断言，独立检查结果另记。该问题只在未提交产物中，未推送或用于前端契约更新。
+
+按路线图“检查失败”规定：非已接受L1/L2且暂无有证据的最小修复，停止依赖恢复边界的T4/T5与后续S3.3，不删除数据、不跳过断言或冒充阶段通过。用户确认的30天起算/清理范围与保留账号政策已记录；生命周期执行器仍未实现或启用。真实模型/embedding、人工标注、原生Qdrant对照、目标服务器/L1/L2解除仍按原延后或本机未启动条件保留。
+
+## 2026-11-27 S3.2-T2/T3身份专项与T6安全检查
+
+业务API的SessionIdentity/全局CSRF Guard已接线，production缺会话配置拒绝启动；真实HTTP账号/身份专项2/2、12.476秒通过（data/s32-t2-auth-targeted.log），补充简历上传与逐路由越权后1/1、12.352秒通过（data/s32-t3-ownership-targeted.log）。共享真实Worker按持久Outbox核验消息及owner，生产不使用开发身份；专用基础设施owner承担无可信owner的Quarantine/dead事件，25条迁移deploy/status通过。Worker真实数据库并发/伪造/禁用账号专项1/1、12.057秒通过（data/s32-t2-worker-targeted.log）。发布与对账使用显式SERVICE_OWNER_ID。
+
+基础回归曾130/131（data/s32-t123-unit.log）：百炼HTTP桩40ms超时早于请求抵达，received=0而期望1。改为收到实际HTTP请求后推进模拟时钟40ms，保留超时与严格一次请求断言，未更改产品时限；专项1/1后基础131/131、56.775秒通过（data/s32-t123-unit-final.log）。随后T6增加ExpressAdapter直接导入导致集成构建TS7016（缺express声明），集成用例尚未运行（data/s32-t123-integration.log）；改用Nest公开HttpServer接口及getType/useBodyParser能力核验，无新依赖/类型断言/skipLibCheck。typecheck、Lint、build及安全HTTP两项通过；后续完整回归另记，不覆盖失败。
+
+T6已编写来源/owner限流、1MiB JSON、响应头和有界匿名会话清理；完整安全专项与全量仍待执行。没有启用到期删除或真实模型请求，没有调整原服务超时。T4/T5尚未实现，S3.2仍进行中。
+
+## 2026-11-27 S3.2-T1全量回归失败与定向诊断
+
+typecheck、零警告Lint、基础130/130通过（data/s32-t1-unit.log）；首次完整集成143通过/4失败/0跳过、788.841秒（data/s32-t1-integration.log）。两处实际失败为旧Worker暂停/新thread恢复中的新Worker领取P1008（安全诊断operation-timeout，claim阶段372ms）和DOCX上传15.267秒后422，其父测试各计一次失败。认证专项本次也通过。没有将这两项自动归入L1/L2，也没有放宽数据库、解析或测试期限。
+
+保持原dist代码和原超时，对上述两个文件作定向诊断11/11、48.042秒通过（data/s32-regression-diagnostic.log）；DOCX本次465.95ms，旧Worker/新thread边界通过。该结果仅证明未稳定复现，不撤销首次失败、不宣称根因已修复。S3.2仍进行中，T1不提前宣称完整回归通过；身份接线源码已开始，下一轮按变更重新执行基础/专项及完整回归。T1补齐同源Auth Schema/OpenAPI与API文档，CLI在失败路径也释放口令Buffer；无新增依赖。前条“参考官方文档”仅指文档目标，本轮web请求没有返回可核对正文，不声称完成在线来源核验。
+
+## 2026-11-27 S3.2-T1认证定向检查与D7删除补充
+
+T1模块/CLI已经实现scrypt口令、哈希会话、Secure/HttpOnly/SameSite Cookie、登录前CSRF引导、轮换/过期/登出、精确Origin校验及账号失败锁定；暂不改既有IdentityModule/production默认拒绝，T2另行装配。24条迁移generate/validate/deploy两次/status通过；初次Lint报测试清理变量prefer-const两项，改为精确created对象后继续检查。真实HTTP专项1/1、4.212秒通过（data/s32-t1-auth-targeted.log），只用合成账号，精确清理后不保留会话。无新增依赖。
+
+用户本轮确认D7补充：30天从简历版本上传起算，清理关联分析/报告/Checkpoint/可关联trace、岗位语料单独保留；主动删除全部业务数据含JD/语料/向量/自定义规则，保留账号供重新登录。已同步路线图与auth说明；此时生命周期执行器尚未实现/启用，不提前执行删除。
+
 ## 2026-11-27 S3.2启动（S3.1已完整收尾）
 
 S3.1文档收尾46c8142已合并推送develop=45442d376dec8aea931273d789561624b99f9360，local/origin一致，旧本地阶段分支按-d清理、远端保留；最终文档122项本地链接通过，工作区干净。随后创建feature/s3.2-identity-lifecycle，先按T1实现认证模块/CLI与明确测试装配，T2再替换应用身份和生产配置，避免跨任务同时修改共享默认行为。

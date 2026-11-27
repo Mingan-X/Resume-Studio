@@ -39,6 +39,7 @@ export class HttpErrorFilter implements ExceptionFilter {
       : exception instanceof TaskInvalidStateError ? 'INVALID_STATE'
       : exception instanceof RequestValidationError ? 'VALIDATION_ERROR'
       : status === 400 ? 'BAD_REQUEST'
+      : status === 401 ? 'UNAUTHENTICATED' : status === 403 ? 'FORBIDDEN' : status === 429 ? 'RATE_LIMITED'
       : status === 404 ? 'NOT_FOUND'
       : status >= 500 ? 'INTERNAL_ERROR' : 'HTTP_ERROR';
     const message = code === 'IDEMPOTENCY_CONFLICT' ? '该幂等键已用于不同的请求'
