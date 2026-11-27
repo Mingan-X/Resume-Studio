@@ -51,7 +51,7 @@ export async function cleanRealAnalysis(database: DatabaseService, ownerId: stri
     await tx.outboxEvent.deleteMany({ where: { ownerId } });
 
     await tx.candidateSet.deleteMany({ where: { ownerId } }); await tx.analysisTask.deleteMany({ where: { ownerId } });
-
+    await tx.resumeExtraction.deleteMany({ where: { ownerId } });
     await tx.analysisConfiguration.deleteMany({ where: { ownerId } }); await tx.rubricVersion.deleteMany({ where: { ownerId } });
     await tx.jobCorpusVersion.deleteMany({ where: { ownerId } }); await tx.jobIndexTarget.deleteMany({ where: { ownerId } });
     await tx.jobIndexTask.deleteMany({ where: { ownerId } }); await tx.jobVersion.deleteMany({ where: { ownerId } }); await tx.job.deleteMany({ where: { ownerId } });

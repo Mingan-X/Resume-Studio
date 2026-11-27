@@ -122,10 +122,28 @@ model ResumeVersion {
   uploads ResumeUpload[]
   extractedDocument ExtractedDocument?
   analysisTasks AnalysisTask[]
+  extractions ResumeExtraction[]
   @@unique([resumeId, version])
   @@unique([ownerId, id])
   @@unique([ownerId, id, fileHash])
   @@map("resume_version")
+}
+
+model ResumeExtraction {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  resumeVersionId String @map("resume_version_id") @db.Uuid
+  resumeVersion ResumeVersion @relation(fields: [ownerId, resumeVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  promptVersion String @map("prompt_version") @db.VarChar(64)
+  modelConfigVersion String @map("model_config_version") @db.VarChar(64)
+  schemaVersion Int @map("schema_version")
+  inputHash String @map("input_hash") @db.Char(64)
+  contentHash String @map("content_hash") @db.Char(64)
+  content Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, resumeVersionId, promptVersion, modelConfigVersion, schemaVersion])
+  @@unique([ownerId, id])
+  @@map("resume_extraction")
 }
 
 model EvidenceBlock {
