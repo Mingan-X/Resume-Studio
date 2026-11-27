@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T6安全修复与许可证审计完成
+
+pnpm audit首轮5 high/4 moderate，全部来自undici7.29.1及effect3.20.0。按官方registry公告修复范围定向覆盖7.30.1/3.22.1，生成锁文件后冻结安装成功（3分57.7秒）；直接依赖和严格peer策略不变。复查audit退出0、全部级别0，未使用忽略列表或接受未修复高危。两次许可证盘点均395条，EPL/BSD/双重与组合许可另核对发布包文本并记录源码来源，详见[依赖审计](dependency-audit.md)。原始本地路径/报告不入库。
+
+最终工作树（含同期T7工程变更）typecheck、零警告Lint、构建通过；基础145/145、78.602秒（data/s33-unit-verified.log），完整集成153/153、838.940秒（data/s33-integration-final.log），0失败/跳过。Prisma7.10.1 generate/validate/status通过，现有32条迁移已应用，无新迁移。OpenAPI一致性通过。未验证目标Linux镜像/OS组件CVE、真实模型/embedding及新机冷安装；pnpm audit0只代表本次registry已知npm公告，不解除SocketTimeout/L1/L2或证明生产安全。
+
 ## 2026-11-28 S3.3-T5隔离备份恢复通过
 
 增加backup:drill与[备份恢复/回滚步骤](backup-recovery.md)。本地最终runId=7db8f66e-abc3-40a1-b041-257b2d6ecb72通过：业务库45张表、Checkpoint库4张表逐表行数/规范行hash一致，官方合成图41→42及本轮关系数据随备份恢复；LocalStorage合成文件恢复SHA-256一致，RabbitMQ definitions导入隔离实例后逐条匹配。两个目标复用来源镜像ID，network=none、仅tmpfs、无共享卷，串行建立并核验移除；源实例未被覆盖。本轮owner/Checkpoint已精确清理，manifest cleaned=true，归档与合成文件副本保留在忽略的data/s33-restore目录。
