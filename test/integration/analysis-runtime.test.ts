@@ -28,6 +28,7 @@ import type { TransactionDatabase } from '../../src/infrastructure/database/tran
 import { reconciliationConfigSchema } from '../../src/infrastructure/reconciliation/config.js';
 import { scoreSetSchema, rankingResultSchema } from '../../src/contracts/scoring.js';
 import { ScoringRepository } from '../../src/infrastructure/tasks/scoring.repository.js';
+import {verifyReportApi} from '../support/report-api-check.js';
 import type { IndexCollection } from '../../src/contracts/job-index.js';
 import { indexCollectionName } from '../../src/modules/recall/job-chunks.js';
 import { analysisConfiguration } from '../support/analysis-inputs.js';
@@ -125,6 +126,7 @@ await test('S2.4 real analysis graph commits success/partial/failure, freezes ca
     assert.equal(profileContent.scores.filter(item => item.score === null).length, 5);
     assert.equal(profileContent.scores.find(item => item.score !== null)?.score, 40);
     if (large) return;
+    await verifyReportApi(database,config.databaseUrl,ownerId,firstTask.reportId,seeded.taskId);
     const newTask = async (configuration = seeded.settings) => {
       const taskId = await new AnalysisRepository(database).create(ownerId, randomUUID(), { resumeVersionId: seeded.snapshot.resumeVersionId, asOfDate: seeded.snapshot.asOfDate,
         jobCorpusVersionId: seeded.snapshot.jobCorpusVersionId }, configuration, true);
