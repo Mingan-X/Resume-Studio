@@ -8,6 +8,12 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-28 S3.3-T4本地创建性能
+
+增加带真实production会话/CSRF/HTTP/数据库的performance:tasks。1份合成简历、1条JD，并发1，预热5次后50次新幂等键请求全部202且Schema通过；p50=38.60ms、p95=49.81ms、最大105.15ms、均值38.76ms。核对56个分析及56条分析Outbox，未调用模型/embedding/消费者，精确owner与账号/会话均清理。环境、分母、nearest-rank算法和局限见[性能记录](performance.md)，本地manifest c8bfbcd1-6dd6-4f40-85ba-42a50e418edb cleaned=true。
+
+脚本通过类型构建/Lint并实际执行（data/s33-t4-performance.log）。基础回归沿用本轮142/142，新增性能fixture不改变业务代码；阶段末另执行包含部署变更的完整回归。真实分析耗时/token/费用与目标环境性能按原授权延后，不能用本轮创建数据解除L1/L2或SocketTimeout。
+
 ## 2026-11-28 S3.3-T3故障注入与broker专项复验
 
 新增test:faults串行矩阵，复用全部架构§6.3窗口现有断言，并增加真实PostgreSQL连接中断后的0 ACK/同输入重投、真实Qdrant断连的显式关键词降级与恢复、模型返回后保存失败的重复调用/持久预算，以及主动RabbitMQ重启后的确认消息重投。仅操作本项目，broker实验补充精确网络标签/成员校验与UUID清单；不改超时/业务重试/断言。
