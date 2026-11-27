@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { jobRequirementSchema, dimensionIds } from '../../contracts/jobs.js';
 import { requirementExecutionSchema } from '../../contracts/matching.js';
-import { scoringPolicySchema, scoreWeightsSchema, scoreMetricsSchema } from '../../contracts/scoring.js';
+import { scoringPolicySchema, scoreWeightsSchema, scoreMetricsSchema, scoreResultSchema } from '../../contracts/scoring.js';
 import { requestHash } from '../tasks/request-hash.js';
 import { add, decimal, divide, display, fraction, multiply, scaledHalfUp, serialize } from './rational.js';
 import type { Fraction } from './rational.js';
@@ -58,3 +58,15 @@ export function calculateScoreMetrics(raw: unknown, rawPolicy: unknown) {
     planned: requirements.length, completed, incomplete, unknown, contributions });
 }
 
+export function calculateScore(raw: unknown, rawPolicy: unknown) {
+  const metrics = calculateScoreMetrics(raw, rawPolicy), hard = metrics.contributions.filter(item => item.kind === 'HARD');
+  const hardUnmet = hard.some(item => item.execution.status === 'DONE' && item.execution.judgment.verdict === 'unmet');
+  const hardUnverified = hard.some(item => item.execution.status !== 'DONE' || ['unknown','partial'].includes(item.execution.judgment.verdict));
+  const eligibilityReasons: ('NO_EFFECTIVE_REQUIREMENTS'|'HARD_UNMET'|'HARD_UNVERIFIED'|'INCOMPLETE_JUDGMENTS')[] = [];
+  if (!metrics.planned) eligibilityReasons.push('NO_EFFECTIVE_REQUIREMENTS');
+  if (hardUnmet) eligibilityReasons.push('HARD_UNMET');
+  if (hardUnverified) eligibilityReasons.push('HARD_UNVERIFIED');
+  if (metrics.incomplete) eligibilityReasons.push('INCOMPLETE_JUDGMENTS');
+  const eligibility = !metrics.planned || hardUnmet ? 'ineligible' : hardUnverified || metrics.incomplete ? 'pending' : 'eligible';
+  return scoreResultSchema.parse({ ...metrics, eligibility, eligibilityReasons });
+}
