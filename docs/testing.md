@@ -14,6 +14,8 @@ S2.3语料的确定性生成、技能字典与真实数据库专项见[岗位语
 
 ## 当前验收状态
 
+S2.4新增单元/真实数据库/官方Checkpoint子进程/真实Qdrant链路的覆盖边界见[分析流程](analysis-workflow.md#本地执行与验证)。默认完整test:integration包含新增专项；真实模型T9仍延后，假模型工程通过不证明准确率或实际token/费用。所有历次失败与未执行项按progress保留。
+
 S2.4-T1的[分析输入专项](analysis-input.md#验证边界)覆盖真实HTTP/数据库及Outbox回滚，默认纳入test:integration；样本全部为本轮临时owner下的合成简历/JD，正式Rubric只复制内容到临时owner。每轮owner清单保存在忽略的data/s24-analysis-runs，清理前重新核验本项目PostgreSQL归属。不证明后续分析图、真实模型或质量评测已交付。
 
 S2.3测试入口及边界见[岗位召回](job-recall.md#验证)、[索引](job-index.md)、[候选冻结](candidate-sets.md)、[百炼HTTP桩](embedding.md)、[评测脚本](recall-evaluation.md)。默认Docker真实索引/召回/冻结测试仅使用独立owner合成数据，精确清理按manifest和实例/集合metadata核验；清理遇可恢复传输失败只在原15秒窗口重试，不覆盖业务失败。真实百炼Key、人工标签与原生对照未执行项按progress逐次记录，不能从单元或HTTP桩报告召回质量。

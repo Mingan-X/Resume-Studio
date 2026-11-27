@@ -94,7 +94,7 @@ API入口组合 Controller、应用服务和领域模块；Worker入口组合消
 
 ### 4.1 简历分析图
 
-S2.4-T1已增加真实分析输入、创建HTTP及同事务Outbox，输入和配置冻结边界见[分析输入](analysis-input.md)。下图语义节点仍由S2.4后续任务接入。真实corpus身份沿用owner/versionName；配置和简历/corpus/Rubric外键与旧synthetic快照分开约束。
+S2.4已增加真实分析输入、创建HTTP及同事务Outbox，并接入下图EXTRACT/PROFILE/召回/MATCH/JOIN工程链路，验证范围见[分析流程](analysis-workflow.md)与[进度](progress.md)。SCORE/RANK与报告SAVE分别待S2.5/S3.1；当前JOIN后由临时FINALIZE准备AnalysisSummary，再由消费处理器同事务提交任务终态/收据，reportId=null。输入和配置冻结见[分析输入](analysis-input.md)。真实corpus身份沿用owner/versionName；真实外键与旧synthetic快照分开约束。
 
 ```mermaid
 flowchart TD
@@ -378,7 +378,7 @@ AnalysisTask状态：`QUEUED → RUNNING → SUCCEEDED / PARTIAL / FAILED / CANC
 
 cancelRequested为独立标志，运行中的取消在安全边界处理；终态不可被迟到Worker改回RUNNING。恢复/重试保持原taskType/taskId及输入快照；仅确认旧执行及其写入停止后复用原thread，无法确认时按§5.3新建恢复thread并使用fence。新的简历分析/重新召回创建新taskId，不覆盖历史任务或报告；索引的新输入/目标版本创建新JobIndexTask，原版本失败重试仍保留原索引任务身份。
 
-`SUCCEEDED`要求所有必需步骤已完成并保存报告：六维都有合法判断状态，召回完成，所有选入精判的要求都有合法结果。unknown是合法业务判断，不等于系统失败；成功召回零岗位可以生成空推荐成功报告。`PARTIAL`表示解析成功且至少一个报告板块可用，但画像/匹配有执行失败、预算截断或显式降级；页面显示已评估/计划候选数量，不能把部分榜单说成全候选Top10。解析失败或两个结果板块都不可用为`FAILED`；部分产物留存供诊断但不伪装最终成功报告。
+S3.1起`SUCCEEDED`要求所有必需步骤已完成并保存报告；S2.4阶段临时终态只要求画像/匹配产物与AnalysisSummary可靠提交、reportId=null。六维都有合法判断状态，召回完成，所有选入精判的要求都有合法结果。unknown是合法业务判断，不等于系统失败；成功召回零岗位允许空结果。`PARTIAL`表示解析成功且至少一个板块可用，但画像/匹配有执行失败、预算截断或显式降级；显示已评估/计划数量，不能把部分结果说成全候选Top10。解析失败或两个结果板块都不可用为`FAILED`；部分产物留存供诊断但不伪装最终成功报告。
 
 数据库保存“用户请求已被接收、执行权、可查询进度、报告、重试计划”。Checkpointer保存“图状态、下一节点、pending writes”。Checkpoint表不由Prisma迁移/修改；S1.3已经使用独立数据库resume_studio_checkpoint和langgraph schema，通过显式命令运行官方setup并分离初始化/运行账号；生产API/Worker尚未接入。首次setup作为受控初始化执行，不让每个请求竞争建表。业务池和saver池分别设置上限，计入PostgreSQL总连接预算。
 

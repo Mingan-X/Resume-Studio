@@ -8,6 +8,20 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T10阶段回归阻塞与交接
+
+最终基础`pnpm test`118/118通过、76.258秒（data/s24-stage-unit.log）；最终typecheck、零警告lint、OpenAPI一致性通过。全仓20条迁移generate/validate/deploy两次/status通过；无依赖声明或锁文件变化，不重复冻结安装。文档更新README、API/契约、架构、部署/测试、需求与分析工作流；最终生产实现未在测试后改动，仅日期注释与文档澄清月份值不代表精确到日。
+
+完整`test:integration`143/144通过、0跳过，747.149秒（data/s24-stage-integration.log）。唯一失败为既有Langfuse projects请求5008ms超过原5秒；该用例在创建trace前失败。本轮S2.4 HTTP创建、抽取共享缓存、真实子进程恢复、真实Qdrant＋假模型完整匹配/400预算、终态回滚/恢复/取消均通过；其余既有回归通过。未放宽Langfuse/API/DB/RabbitMQ期限，也未将此失败归为L1/L2。S2.4仍进行中，T10门禁未完成，S2.5及后续未启动。
+
+只读诊断与随后单次原5秒probe见[Langfuse记录](research/s24-langfuse-2026-11-27.md)：受检服务healthy、无重启/OOM、窗口日志无定位证据；当前I/O压力不足以证明根因。随后projects为200/211ms，仅证明该次可用；没有确定性修复，不重复无变更全量来覆盖失败。按路线图“被后续任务依赖的失败”停止条件，保存代码/证据后等待维护者，不自行新增环境豁免或改验收。
+
+最终资源核验（data/s24-stage-resources.json）：Owner=1；Job/JobVersion/JobIndexTask/JobIndexRequest/JobCorpusVersion/CandidateSet/Candidate/AnalysisTask/AnalysisConfiguration/ResumeExtraction/ProfileAssessment/MatchPlan/RequirementExecution/AnalysisSummary/Resume/FileAsset全0，正式4队列ready/unacked=0，Qdrant集合空。正式rubric-v1原hash与AI_DRAFT/PENDING_REVIEW保持；测试manifest精确清理完成，旧孤立policy未操作，无卷/数据库/配置删除。
+
+任务提交：T1=f30b8ab、T2=3284ab8、T3基础=3f8f054、T4=a3bc285、T5=1d0f4fd、T6=3a3db3e、T7=03842b1、T8及T3装配闭合=3dfa9cd、T9延后=d646dec。按任务保存实现不表示全阶段验收。T10文档/失败记录另提交；未合并develop、未推送、未操作master或前端。原生6333未监听，遵守手动管理约定未启停/native未执行；真实模型/embedding、人工质量指标及目标服务器/L1/L2解除按原延后表保留。
+
+最终13份文档229项本地文件链接检查及git diff --check通过。文档收尾不重复执行已完成的业务检查；阶段阻塞状态如实保留。
+
 ## 2026-11-27 S2.4-T9按原授权延后真实运行
 
 T3–T8实现分别保存为3f8f054、a3bc285、1d0f4fd、3a3db3e、03842b1、3dfa9cd，T1/T2此前保存f30b8ab/3284ab8。T9需要维护者本地提供中转模型/百炼Key、模型配置和预算并完成正式Rubric审核，依2026-11-27已确认延后表留到统一验收；本次未读取或填充真实Key，未发起付费调用。
