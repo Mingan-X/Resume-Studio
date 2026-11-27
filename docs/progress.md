@@ -8,6 +8,57 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.3收尾源码与资源核验
+
+最终当前源码（含T5草稿）`pnpm run typecheck`、`pnpm run lint`均通过；T5没有行为测试，仍未验证，最后基础91/91与完整128项结果属于T4编译产物，不冒称覆盖T5。文档文件链接检查通过，git diff --check通过。T4无依赖/迁移/HTTP契约变化，冻结安装、迁移和OpenAPI独立命令未重复执行，基础测试内原OpenAPI一致性检查通过。
+
+完整失败套件结束后再执行只读资源脚本，PostgreSQL/RabbitMQ/Docker及原生实例归属核验通过：Job/JobVersion/JobIndexTask/JobCorpusVersion/Resume/FileAsset=0，正式rubric-v1 hash仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d；四正式队列ready/unacked=0，两个Qdrant集合列表为空、版本1.20.2。未操作旧孤立policy，无卷/配置删除。本次只读结果不解除任何失败门禁。
+
+收尾将T4实现与T5草稿分开按审查提交保存；停止条件已满足，不再继续实现、运行全量或操作服务。后续接手须先复核本记录的失败、T4 no-op run幂等遗留及T5未测边界，不把审查提交当成任务完成。
+
+## 2026-11-27 S2.3-T4最新完整回归未通过，按停止条件保留审查工作
+
+`pnpm run test:integration`128项122通过/6失败、0跳过，693.785秒（data/s23-t4-integration.log）。失败逐项：
+
+- 原无Checkpoint恢复子项在旧Worker首次claimed之前退出，phase=delivery/category=other/code=UNKNOWN、finished=interrupted，及父项；本轮**不是已证实的P1008**，不能从此前故障推断同根因。
+- 原Docker Qdrant createCollection 5秒超时及父项，保持L2记录。
+- 新索引测试首次集合PUT触发UPSTREAM_TIMEOUT，未执行后续断言；不扩大为L2。
+- Langfuse accepted=6/exported=1/transport lost=5，原lost=0断言失败，不归L1/L2。
+
+Outbox/DLX（182.063秒）、其余Checkpoint/消费者/对账、语料/关键词、岗位/文件和任务检查通过；新索引cleanup hook及其他测试均报告精确清理完成。此前原生24/24通过不覆盖本次失败。T4正式全量原生命令**未执行**：已有原生专项成功及首次失败记录，但最新全量出现非Qdrant的恢复/观测故障，当前不能通过切换向量实例证明完整门禁满足。没有提高超时、跳过断言、修改fsync/卷/数据库/本地配置或启动/停止原生Qdrant。
+
+经过本轮默认全量/专项、原条件复核与资源只读检查，尚无可证实且不改变原验收约束的最小修复。依赖T4的T5/T6/T7及后续分析阶段不能继续；依照路线图§5“检查失败”与停止条件1，保留T4审查工作及T5草稿后停止，等待维护者处理或明确新的诊断范围。不是请求重复确认D1–D11，也不将真实Key延后作为阻塞原因。T1 bb600a4、T3 1c14fab、T2 bfc776f已提交；T4按审查提交保存但未完成，T5仅草稿，S2.3保持进行中，无阶段合并/推送，master及前端未操作。最终源码检查、资源核验和保存提交结果后续补记。
+
+## 2026-11-27 S2.3-T4全量进行中的观测失败及审查遗留
+
+本轮Langfuse记录accepted=6/exported=1/transport lost=5并断言失败（data/s23-t4-integration.log），不归L1/L2。新增Docker索引专项同样失败且hook完成精确清理；完整错误仍待套件汇总。继续暂停实现，不放宽限制、不调整服务配置、不反复覆盖失败。
+
+审查尚待完成的边界（未宣称交付）：T4 backfill当前只在新建任务时绑定run派生幂等键；目标已相同的no-op返回不会单独持久保存该run键，因此历史no-op run后来重入不能依赖这段代码获得完整的旧run隔离保证，后续应补齐设计/测试或收窄文档描述。T4真实adapter消费CLI及常驻对账装配待T7。T5草稿尚无行为测试，候选回查/降级/召回配置与持久预算仍需完整审查；不能以能编译等同可用。当前本地依赖与已应用12条迁移保留，无环境重置。
+
+## 2026-11-27 S2.3-T4全量再次出现恢复失败，暂停新增实现
+
+data/s23-t4-integration.log全量运行期间再次出现既有无Checkpoint恢复子项及父项失败，具体错误待runner汇总。没有用此前24/24专项通过覆盖新失败。暂停新增实现并保留未验证T5草稿（RecallResult/RRF、向量查询、回查发布版本、显式关键词降级服务），T5尚无测试或完成声明。T5对job-index.vector/index.repository/recall契约的新增方法写于T4 build结束后，不属于本轮编译产物；后续检查须重新build。此前T4源码与测试未因新失败放宽限制。
+
+## 2026-11-27 S2.3-T4原生专项复核通过，开始全量门禁
+
+上述原生四文件专项24/24通过、0失败/跳过，200.776秒（data/s23-t4-review-native.log）；新索引用例64.662秒，实际覆盖真实RabbitMQ重复投递仅一次attempt、Qdrant点数不增、READY原子提交/SQL回滚、目标变化时旧有效fence拒绝提交、显式对账恢复与失效fence拒绝；既有Checkpoint、消费者、发布回归均通过。清理报告本轮索引metadata/collection/alias、队列和DB全部完成。此前两次创建超时未复现，不宣称环境已修复，不改原测试期限。开始`pnpm run test:integration`全量Docker门禁（data/s23-t4-integration.log），原生全量随后串行执行，结果后续追加。
+
+## 2026-11-27 S2.3-T4 Docker/原生索引专项失败与只读核验
+
+第二次Docker索引专项0/1，36.286秒（data/s23-t4-index-docker-2.log）：新适配器首次PUT集合请求UPSTREAM_TIMEOUT（单次5秒），未到重复投递/READY断言。原生对照`node --env-file=infra/.env --env-file=infra/.env.qdrant-native --test --test-concurrency=1 dist/test/integration/job-index.test.js`同处失败0/1，50.769秒（data/s23-t4-index-native.log）。两个target均由原归属核验通过，清理hook核对metadata后删除本轮精确集合/alias/队列/owner/任务，data/s23-index-runs清单均cleaned=true；没有启动/停止原生进程。**新索引专项失败不直接归L2**，未改测试断言、原5秒请求/总期限或基础设施配置。
+
+最终`pnpm run typecheck`、`pnpm run lint`通过；`pnpm test`91/91通过，12.185秒（data/s23-t4-unit-final.log），包括新增HTTP桩的429/503分类、无内部重试、期限、元数据/实例归属拒绝。T4仍未完成。
+
+只读脚本data/s23-t4-resource-check.mjs先核验PostgreSQL/RabbitMQ/Docker Qdrant归属及原生路径/进程，随后读取（结果data/s23-t4-resource-check.json）：Job/JobVersion/JobIndexTask/JobCorpusVersion/Resume/FileAsset全0；正式rubric-v1哈希仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d；4正式队列ready/unacked均0；Docker与原生均1.20.2、集合0。只读GET返回正常不能证明集合创建符合5秒限制，也不能证明具体磁盘根因。
+
+再做一次有界原生专项复核并覆盖被T4改动的既有恢复/消费者/发布链路：`node --env-file=infra/.env --env-file=infra/.env.checkpoint --env-file=infra/.env.observability --env-file=infra/.env.qdrant-native --test --test-concurrency=1 dist/test/integration/checkpoint-fence.test.js dist/test/integration/consumer.test.js dist/test/integration/job-publication.test.js dist/test/integration/job-index.test.js`（data/s23-t4-review-native.log），结果待追加。未执行T4全量Docker/native命令，先解决专项门禁；无依赖/迁移/HTTP Schema变化，不重复安装或迁移。T5以后尚未实现。
+
+## 2026-11-27 S2.3-T4实现与首次验证
+
+T2已提交bfc776f。T4新增版本化集合/元数据、UTF-16安全分块与确定性point ID、真实JobIndexHandler、显式能力选择、原子READY+产物+终态+收据、缺目标补建/别名切换命令；消费者默认仍为synthetic，实际真实适配器装配待T7。Qdrant请求单次5秒与调用方总deadline/取消合并，无适配器内重试，失败交持久任务重试；保留默认SDK兼容检查，不修改原VectorService。新适配器使用1.20 REST Schema并检查服务端版本，原因是安装SDK的有限timeout middleware会替换调用方signal，无法传播任务取消。没有新增依赖。
+
+首次typecheck、lint通过；`pnpm test`90/90通过，25.205秒（data/s23-t4-unit.log）。随后增加runtime显式reconcile包装及HTTP故障测试，须在最终检查再次覆盖。`pnpm run build`后Docker索引专项首次失败（data/s23-t4-index-docker.log），新测试namespace不符合既有`^s12\\.t[3456]\\.[a-f0-9]{32}$`约束，在建队列/owner/collection前退出；仅改新测试为既有允许的s12.t4.UUID命名，未放宽拓扑校验。第二次build+专项进行中，结果后续追加。未把本任务或真实索引可用性标完成。
+
 ## 2026-11-27 S2.3-T2完整复核通过，T1/T2/T3本地实现保留
 
 第二次`pnpm run test:integration`127/127通过、0失败/跳过，610.052秒（data/s23-t2-integration-review.log）。Checkpoint/fence、Langfuse、本轮关键词与语料、Outbox和所有原回归通过；Docker Qdrant集合创建4126.5ms。此前122/127中P1008、Langfuse及L2失败完整保留，未改原测试超时/断言或恢复/观测实现，不宣称基础设施根因修复或解除L1/L2。T2基础83/83、专项1/1及后续含T3基础88/88通过，文档链接/结构与diff检查通过；无HTTP/依赖/迁移变更，无需相应生成/安装。

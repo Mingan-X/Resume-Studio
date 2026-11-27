@@ -70,4 +70,44 @@ export class JobPublicationRepository {
       return jobPublicationResultSchema.parse({ jobVersionId: id, taskId });
     });
   }
+
+  // Administrative backfill: callers use a stable per-version key for one explicit run.
+  // A matching current target is already scheduled; changing a target requires a fresh run key.
+  async ensureIndex(owner: string, version: string, key: string, rawTarget: unknown) {
+    const ownerId = z.uuid().parse(owner), id = z.uuid().parse(version), idempotencyKey = idempotencyKeySchema.parse(key);
+    const target = jobIndexTargetSchema.parse(rawTarget), hash = requestHash({ operation: 'ensure-job-index-v1', jobVersionId: id, target });
+    return this.database.client.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([ownerId, idempotencyKey])}, 22))::text`;
+      const prior = await tx.jobIndexTask.findUnique({ where: { ownerId_idempotencyKey: { ownerId, idempotencyKey } } });
+      if (prior && prior.requestHash !== hash) throw new IdempotencyConflictError();
+      await tx.$queryRaw`SELECT id FROM job_version WHERE owner_id=${ownerId}::uuid AND id=${id}::uuid FOR UPDATE`;
+      const published = await readJobVersion(tx, ownerId, id);
+      if (!published || published.status !== 'PUBLISHED') throw new Error('PUBLISHED_JOB_REQUIRED');
+      const snapshot = jobIndexInputSnapshotSchema.parse({ schemaVersion: 1, kind: 'job-index', ownerId, visibility: 'private',
+        jobVersionId: id, contentHash: published.document.textHash, requirementsHash: requestHash(published.requirements), ...target });
+      const current = await tx.jobIndexTarget.findUnique({ where: { ownerId_jobVersionId: { ownerId, jobVersionId: id } } });
+      if (current) {
+        const task = await tx.jobIndexTask.findUniqueOrThrow({ where: { ownerId_id: { ownerId, id: current.taskId } } });
+        const original = jobIndexInputSnapshotSchema.parse(task.inputSnapshot);
+        if (requestHash(original) === requestHash(snapshot)) return { jobVersionId: id, taskId: task.id, created: false };
+      }
+      if (prior) throw new IdempotencyConflictError(); // An old completed run must not silently retarget a newer run.
+      const taskId = randomUUID(), eventId = randomUUID();
+      await tx.jobIndexTask.create({ data: { id: taskId, ownerId, jobVersionId: id, realJobVersionId: id,
+        embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion, inputSnapshot: snapshot,
+        idempotencyKey, requestHash: hash,
+        budgetUsage: budgetUsageSchema.parse({ schemaVersion: 1, attempts: 0, modelCalls: 0, tokens: 0, costMicros: 0, elapsedMs: 0 }),
+      } });
+      await tx.jobIndexTarget.upsert({ where: { ownerId_jobVersionId: { ownerId, jobVersionId: id } },
+        create: { ownerId, jobVersionId: id, taskId, embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion },
+        update: { taskId, embeddingVersion: target.embeddingVersion, indexVersion: target.indexVersion } });
+      await tx.jobVersion.update({ where: { ownerId, id }, data: { indexStatus: 'PENDING' } });
+      await tx.outboxEvent.create({ data: { eventId, ownerId, aggregateType: 'JobIndexTask', aggregateId: taskId,
+        eventType: 'job.index.requested.v1', payloadVersion: 1,
+        payload: taskDispatchSchema.parse({ schemaVersion: 1, messageId: eventId, taskType: 'job-index', taskId,
+          dispatchGeneration: 1, occurredAt: new Date().toISOString() }),
+      } });
+      return { jobVersionId: id, taskId, created: true };
+    });
+  }
 }

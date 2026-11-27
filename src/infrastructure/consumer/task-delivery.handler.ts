@@ -3,15 +3,20 @@ import type { IdentityPort } from '../../modules/identity/identity.module.js';
 import { ownerIdSchema } from '../../modules/identity/identity.module.js';
 import { taskDispatchSchema } from '../../contracts/tasks.js';
 import type { TaskDispatch, UsageReservation } from '../../contracts/tasks.js';
-import { syntheticCompletionSchema, ExecutionLeaseLostError, ExecutionUnsettledError } from './contracts.js';
+import { taskCompletionSchema, ExecutionLeaseLostError, ExecutionUnsettledError } from './contracts.js';
 import { TaskFailure, classifyTaskFailure } from './failure.js';
 import type { ConsumerConfig } from './config.js';
-import type { ExecutionClaim, SyntheticCompletion } from './contracts.js';
+import type { ExecutionClaim, SyntheticCompletion, TaskCompletion } from './contracts.js';
 import type { TaskExecutionStore } from './task-execution.store.js';
 import type { ExecutionLock } from './task-execution.lock.js';
 
 export interface SyntheticTaskHandler {
   execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }): Promise<SyntheticCompletion>;
+}
+
+export interface TaskHandler {
+  readonly capability?: 'job-index';
+  execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }): Promise<TaskCompletion>;
 }
 
 export class SyntheticCompletionHandler implements SyntheticTaskHandler {
@@ -23,8 +28,8 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 }
 
 export class TaskDeliveryHandler {
-  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'>,
-    private readonly identity: IdentityPort, private readonly handler: SyntheticTaskHandler,
+  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'> & Partial<Pick<TaskExecutionStore, 'completeJobIndex'>>,
+    private readonly identity: IdentityPort, private readonly handler: TaskHandler,
     private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
   async handle(message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
@@ -36,7 +41,7 @@ export class TaskDeliveryHandler {
 
   private async handleLocked(ownerId: string, message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
     signal.throwIfAborted();
-    const result = await this.store.claim(ownerId, message);
+    const result = await this.store.claim(ownerId, message, this.handler.capability ?? 'synthetic');
     signal.throwIfAborted();
     if (result.kind !== 'acquired') return result.kind;
     const { claim } = result;
@@ -72,10 +77,10 @@ export class TaskDeliveryHandler {
       removeAbort = () => abort.signal.removeEventListener('abort', fail);
       if (abort.signal.aborted) fail();
     });
-    let execution: Promise<SyntheticCompletion> | undefined;
+    let execution: Promise<TaskCompletion> | undefined;
     let executionError: unknown, executionFailed = false;
     try {
-      let output: SyntheticCompletion | undefined, failure: TaskFailure | undefined, budgetInfrastructureError: unknown;
+      let output: TaskCompletion | undefined, failure: TaskFailure | undefined, budgetInfrastructureError: unknown;
       try {
         execution = Promise.resolve().then(() => this.handler.execute(claim, abort.signal, {
           reserve: async usage => {
@@ -85,8 +90,8 @@ export class TaskDeliveryHandler {
             abort.signal.throwIfAborted();
           },
         }));
-        output = syntheticCompletionSchema.parse(await Promise.race([execution, interrupted]));
-        if (output.inputHash !== requestHash(claim.snapshot)) throw new TaskFailure('OUTPUT_INVALID');
+        output = taskCompletionSchema.parse(await Promise.race([execution, interrupted]));
+        if (output.kind !== claim.snapshot.kind || output.inputHash !== requestHash(claim.snapshot)) throw new TaskFailure('OUTPUT_INVALID');
       } catch (error) {
         if (budgetInfrastructureError) throw budgetInfrastructureError;
         if (signal.aborted || blockingHeartbeatFailure() || (error instanceof ExecutionLeaseLostError && !atDeadline())) throw error;
@@ -97,7 +102,13 @@ export class TaskDeliveryHandler {
       signal.throwIfAborted();
       if (atDeadline()) failure = new TaskFailure('DEADLINE_EXCEEDED');
       if (failure) await this.store.fail(claim, failure);
-      else { abort.signal.throwIfAborted(); await this.store.complete(claim, output); }
+      else {
+        abort.signal.throwIfAborted();
+        if (output?.kind === 'job-index') {
+          if (!this.store.completeJobIndex) throw new TaskFailure('UNSUPPORTED_INPUT');
+          await this.store.completeJobIndex(claim, output);
+        } else await this.store.complete(claim, output);
+      }
       signal.throwIfAborted();
     } catch (error) {
       executionFailed = true; executionError = error;
