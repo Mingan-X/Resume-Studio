@@ -62,6 +62,7 @@ model Owner {
   jobs Job[]
   rubrics RubricVersion[]
   jobCorpora JobCorpusVersion[]
+  analysisConfigurations AnalysisConfiguration[]
 
   @@map("owner")
 }
@@ -76,6 +77,7 @@ model JobCorpusVersion {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   candidateSets CandidateSet[]
+  analysisTasks AnalysisTask[]
 
   @@id([ownerId, version])
   @@map("job_corpus_version")
@@ -119,10 +121,29 @@ model ResumeVersion {
   blocks EvidenceBlock[]
   uploads ResumeUpload[]
   extractedDocument ExtractedDocument?
+  analysisTasks AnalysisTask[]
+  extractions ResumeExtraction[]
   @@unique([resumeId, version])
   @@unique([ownerId, id])
   @@unique([ownerId, id, fileHash])
   @@map("resume_version")
+}
+
+model ResumeExtraction {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  resumeVersionId String @map("resume_version_id") @db.Uuid
+  resumeVersion ResumeVersion @relation(fields: [ownerId, resumeVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  promptVersion String @map("prompt_version") @db.VarChar(64)
+  modelConfigVersion String @map("model_config_version") @db.VarChar(64)
+  schemaVersion Int @map("schema_version")
+  inputHash String @map("input_hash") @db.Char(64)
+  contentHash String @map("content_hash") @db.Char(64)
+  content Json @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, resumeVersionId, promptVersion, modelConfigVersion, schemaVersion])
+  @@unique([ownerId, id])
+  @@map("resume_extraction")
 }
 
 model EvidenceBlock {
@@ -167,6 +188,14 @@ model AnalysisTask {
   ownerId String @map("owner_id") @db.Uuid
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   resumeVersionId String @map("resume_version_id") @db.Uuid
+  realResumeVersionId String? @map("real_resume_version_id") @db.Uuid
+  realResumeVersion ResumeVersion? @relation(fields: [ownerId, realResumeVersionId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  corpusVersion String? @map("corpus_version") @db.VarChar(64)
+  corpus JobCorpusVersion? @relation(fields: [ownerId, corpusVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  rubricVersion String? @map("rubric_version") @db.VarChar(64)
+  rubric RubricVersion? @relation(fields: [ownerId, rubricVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
+  configurationVersion String? @map("configuration_version") @db.VarChar(64)
+  configuration AnalysisConfiguration? @relation(fields: [ownerId, configurationVersion], references: [ownerId, version], onDelete: NoAction, onUpdate: NoAction)
   activeGraphThreadId String @map("active_graph_thread_id") @db.Uuid
   graphGeneration Int @default(1) @map("graph_generation")
   reportId String? @map("report_id") @db.Uuid
@@ -192,6 +221,9 @@ model AnalysisTask {
   receipts ConsumerReceipt[]
   artifacts NodeArtifact[]
   candidateSet CandidateSet?
+  profile ProfileAssessment?
+  matchPlan MatchPlan?
+  summary AnalysisSummary?
 
   @@unique([ownerId, idempotencyKey])
   @@unique([ownerId, id])
@@ -199,6 +231,61 @@ model AnalysisTask {
   @@index([status, leaseUntil])
   @@index([ownerId, status, updatedAt])
   @@map("analysis_task")
+}
+
+model AnalysisSummary {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("analysis_summary")
+}
+
+model MatchPlan {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  executions RequirementExecution[]
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("match_plan")
+}
+
+model RequirementExecution {
+  ownerId String @map("owner_id") @db.Uuid
+  planId String @map("plan_id") @db.Uuid
+  plan MatchPlan @relation(fields: [ownerId, planId], references: [ownerId, id], onDelete: Cascade, onUpdate: NoAction)
+  jobVersionId String @map("job_version_id") @db.Uuid
+  requirementId String @map("requirement_id") @db.VarChar(128)
+  ordinal Int
+  status String @db.VarChar(16)
+  judgment Json? @db.JsonB
+  errorCode String? @map("error_code") @db.VarChar(64)
+  @@id([planId, jobVersionId, requirementId])
+  @@unique([planId, ordinal])
+  @@map("requirement_execution")
+}
+
+model ProfileAssessment {
+  id String @id @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+  taskId String @map("task_id") @db.Uuid
+  task AnalysisTask @relation(fields: [ownerId, taskId], references: [ownerId, id], onDelete: NoAction, onUpdate: NoAction)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([ownerId, taskId])
+  @@unique([ownerId, id])
+  @@map("profile_assessment")
 }
 
 // S1.4 version IDs refer to synthetic inputs; business version FKs arrive with S2.
@@ -302,8 +389,21 @@ model RubricVersion {
   content Json @db.JsonB
   contentHash String @map("content_hash") @db.Char(64)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  analysisTasks AnalysisTask[]
   @@id([ownerId, version])
   @@map("rubric_version")
+}
+
+model AnalysisConfiguration {
+  ownerId String @map("owner_id") @db.Uuid
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  version String @db.VarChar(64)
+  content Json @db.JsonB
+  contentHash String @map("content_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  tasks AnalysisTask[]
+  @@id([ownerId, version])
+  @@map("analysis_configuration")
 }
 
 model JobIndexTarget {
@@ -489,6 +589,9 @@ model NodeArtifact {
   jobIndexTask JobIndexTask? @relation(fields: [ownerId, jobIndexTaskId], references: [ownerId, id], onDelete: Restrict)
   operationKey String @unique @map("operation_key") @db.Char(64)
   node String @db.VarChar(64)
+  branchKey String? @map("branch_key") @db.VarChar(512)
+  promptVersion String? @map("prompt_version") @db.VarChar(64)
+  modelConfigVersion String? @map("model_config_version") @db.VarChar(64)
   inputHash String @map("input_hash") @db.Char(64)
   componentVersion String @map("component_version") @db.VarChar(64)
   schemaVersion Int @map("schema_version")

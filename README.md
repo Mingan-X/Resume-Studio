@@ -12,26 +12,28 @@ Resume-Studio/
 
 ## 当前状态
 
-**已完成 S1.1–S1.4。S2.1/S2.2待统一验收；S2.3岗位语料、索引执行器、关键词/向量/RRF召回、候选冻结和百炼HTTP适配器已实现，待统一验收。真实模型/embedding调用与人工质量指标仍延后；简历画像/匹配、评分和报告尚未实现。**
+**已完成 S1.1–S1.4；S2.1–S2.4待统一验收。S2.4真实分析创建、业务图、抽取、六维画像、逐项匹配及临时汇总已接线；授权调整Langfuse诊断HTTP请求上限后，阶段全量144/144通过。真实模型/embedding调用与人工质量指标仍延后；评分和报告尚未实现。**
 
-S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败。S1.4 附已知环境限制L2：默认Docker Qdrant创建集合曾超过5秒；2026-11-27维护者授权将Qdrant单请求上限改为10秒，总期限不变。新上限下通过不代表旧5秒性能目标已达成，两项限制仍在目标环境复核。逐次失败、修复与检查结果见[开发进度](docs/progress.md)。
+S1.3 附已知环境限制L1：本机项目与Docker数据位于机械硬盘，构建后首次运行 `pnpm test` 时API启动用例可能超过8秒而失败。S1.4 附已知环境限制L2：默认Docker Qdrant创建集合曾超过5秒；2026-11-27维护者授权适当放宽Qdrant请求，先改为10秒，S2.4实测11.93秒后调整为15秒，操作/任务原总期限不变。新上限下通过不代表旧5秒性能目标已达成，两项限制仍在目标环境复核。逐次失败、修复与检查结果见[开发进度](docs/progress.md)。基础/集成测试入口均串行，不放宽原行为断言。
 
-已有能力：
+已有能力（运行范围以进度记录为准）：
 
-- S2.3内部岗位召回链路：[合成语料/技能字典/关键词与RRF](docs/job-recall.md)、[版本化索引及故障恢复](docs/job-index.md)、[冻结候选](docs/candidate-sets.md)。工程测试使用真实PostgreSQL/RabbitMQ/Qdrant及显式合成embedding，不代表真实模型质量；[百炼适配器](docs/embedding.md)只通过本地HTTP桩，真实Key/正式embedding索引与[人工Recall@K](docs/recall-evaluation.md)仍延后。暂无召回HTTP/分析图接线。
+- [S2.4分析链路](docs/analysis-workflow.md)：POST /api/v1/analyses冻结授权输入与Outbox；官方Checkpoint恢复业务图、共享抽取缓存、六维合法状态/Rubric映射、冻结候选、逐项证据校验、400唯一要求预算、显式部分失败、临时AnalysisSummary及真实阶段事件。显式tasks:consume:analysis/analysis:reconcile，正式模型配置不作假模型兜底；当前工程链路只通过确定性假模型和真实基础设施验证，reportId仍null。
+
+- S2.3内部岗位召回链路：[合成语料/技能字典/关键词与RRF](docs/job-recall.md)、[版本化索引及故障恢复](docs/job-index.md)、[冻结候选](docs/candidate-sets.md)。工程测试使用真实PostgreSQL/RabbitMQ/Qdrant及显式合成embedding，不代表真实模型质量；[百炼适配器](docs/embedding.md)只通过本地HTTP桩，真实Key/正式embedding索引与[人工Recall@K](docs/recall-evaluation.md)仍延后。召回经S2.4业务图接入，暂无独立召回HTTP。
 
 - JOB_API_ENABLED显式本地岗位API：草稿与要求编辑、完整权重/硬门槛确认、不可变发布及事务Outbox/真实JobIndexTask，列表和版本详情；缺少匹配embedding配置时真实任务保持待执行，合成消费者不能标READY。
 - 正式rubric-v1（AI_DRAFT/PENDING_REVIEW）导入与六维完整等级加载；JD抽取建议经有界模型端口/证据校验且不写回草稿。OpenAI兼容ChatOpenAI适配器仅本地HTTP桩已验证，真实中转调用延后，缺配置明确不可用。
 - NestJS API 与独立 Worker 入口；Worker 当前为空进程，不消费业务任务。
 - 显式启用RESUME_API_ENABLED后，PDF/DOCX同步上传并隔离解析，按owner/key/文件SHA-256幂等；本地文件、不可变版本/文本块/解析产物分开保存，引用逐字校验。PDF仅可靠页码，DOCX段落/表格定位；扫描/加密/空文本与资源超限明确失败，不做OCR。
-- 简历列表/版本详情及同源OpenAPI；Storage暂存精确补偿与崩溃对账命令。ParsedResume只有契约与固定合成校验样例，语义EXTRACT仍属S2.4，上传响应没有结构化占位字段。
+- 简历列表/版本详情及同源OpenAPI；Storage暂存精确补偿与崩溃对账命令。ParsedResume语义抽取在S2.4分析任务执行，上传响应仍只返回文本证据。
 - Zod 配置校验、健康检查、统一 HTTP 错误、服务端 requestId 和 JSON 日志。
 - PostgreSQL/Prisma 诊断表与迁移、连接池与事务验证。
-- 可替换的开发单用户身份；独立 AnalysisTask/JobIndexTask 及共享任务记录模型；冻结输入与 Outbox 同事务写入、按所有者及任务类型隔离的请求幂等。TasksModule的创建能力仍只在显式上下文使用，查询/取消由独立TaskApiModule提供，尚无任务创建HTTP接口。
+- 可替换的开发单用户身份；独立 AnalysisTask/JobIndexTask 及共享任务记录模型；冻结输入与 Outbox 同事务写入、按所有者及任务类型隔离的请求幂等。TasksModule保留合成创建入口，TaskApiModule提供真实分析创建及查询/取消。
 - Outbox短事务租约领取、confirm/mandatory/return检查、有限次数和总期限内的延迟重发；显式命令配置业务quorum队列/DLX并执行有界发布批次。
 - `tasks:consume analysis` / `tasks:consume job-index`手动ACK消费；持久收据、执行租约/心跳和fence保护合成完成记录，数据库故障不ACK。当前是显式有界会话，未接入常驻Worker或真实业务图。
 - `tasks:consume:graph`显式执行官方合成StateGraph；未知旧执行是否停止时切换恢复thread，确认停止后才复用原thread。NodeArtifact受业务fence保护；真实暂停/恢复子进程验证旧saver迟到写入隔离。JobIndexTask使用合成版本目标验证旧执行不能更新新版本状态。
-- 显式启用本地任务API后可按固定开发owner查询真实任务阶段/计数并请求取消；消费者或对账器在安全边界提交取消终态。任务HTTP创建、生产认证与常驻进程监督仍待后续阶段。
+- 显式启用本地任务API后可创建分析、按固定开发owner查询真实阶段/计数并请求取消；消费者或对账器在安全边界提交取消终态。生产认证与常驻进程监督仍待后续阶段。
 - `openapi:generate` / `openapi:check`从同一组运行时Zod契约生成并检查[OpenAPI产物](docs/openapi.json)，CI能拒绝缺失或过期的文档；不增加API运行时生成依赖。
 - 可恢复失败在事务中安排延迟重试；次数/时间/调用预算跨尝试累计，耗尽或永久失败写FAILED与dead Outbox。非法消息同事务保存脱敏隔离记录和dead事件后才ACK。
 - `tasks:reconcile once|watch`扫描过期租约和长期未完成任务，检查执行锁后事务安排恢复，并调用既有Outbox发布器；保留发布失败预算，不抢占持锁执行，不操作Checkpoint。
@@ -51,9 +53,9 @@ PDF/DOCX 文本解析 → 六维画像 → 结构化技能关键词与 Dense Vec
 
 | 用途 | 当前已接入 | 规划接入 |
 |---|---|---|
-| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 分析/报告HTTP接口、生产认证 |
-| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；合成任务、事务Outbox、发布/消费/重试、隔离区、对账与Checkpoint联合隔离 | 真实业务产物与索引 |
-| AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x（合成图验证）、ChatOpenAI 1.8.5（本地HTTP桩验证） | 业务分析图、真实模型验证 |
+| 服务与校验 | Node.js 24.22.3、TypeScript 6.0.3、NestJS 12.6.0、Zod 4.6.7；开发时由 `@asteasolutions/zod-to-openapi` 9.1.0生成OpenAPI | 报告HTTP接口、生产认证 |
+| 数据与消息 | PostgreSQL 16.15、Prisma 7.10.1、RabbitMQ 4.4.0、Qdrant 1.20.2；事务Outbox、发布/消费/重试、隔离区、对账、业务语义产物与Checkpoint联合隔离 | 最终评分与报告 |
+| AI 工作流与观测 | LangGraph 1.7.5、LangChain core 1.5.1、PostgreSQL Checkpointer 1.1.4、Langfuse SDK 6.1.1/本地服务4.84.0、OTel 2.x、业务分析图（假模型工程验证）、ChatOpenAI 1.8.5（本地HTTP桩验证） | 真实模型验证 |
 | 工程工具 | pnpm 12.x、ESLint、Node test runner、Docker Compose | — |
 
 具体依赖以 package.json 和 pnpm-lock.yaml 为准；候选组合及兼容性边界见[依赖说明](docs/dependency-compatibility.md)。

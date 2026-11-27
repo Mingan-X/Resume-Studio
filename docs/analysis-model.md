@@ -1,0 +1,13 @@
+# 分析模型调用预算
+
+S2.4-T2的AnalysisModelCaller复用S2.2 ModelExecutor，供EXTRACT、PROFILE、MATCH节点调用；图与运行入口由T3及后续节点任务接入。没有真实模型调用记录，端到端T9仍延后。
+
+每次调用验证真实analysis输入、owner、modelConfigVersion及币种与当前ModelExecutor一致。运行总期限取现有ExecutionClaim.deadline，ModelExecutor再与单次操作期限取较早者；保留已有单请求超时、分类重试、jitter、最多一次修复及并发槽，不增加重试层。
+
+每个网络尝试（含一次修复）之前必须调用Worker传入的reserve，将次数/token/费用交给S1.4 TaskExecutionStore.reserveUsage在活租约/fence事务内累计预留。调用服务无本地“剩余任务预算”副本，不退款或重置；调用方恢复后继续使用同一任务账本。并发分支共享账本，SQL行锁决定预留顺序。预留失败不发送模型请求；数据库/执行权错误原样交还消息处理器，不能以模型错误掩盖并ACK。TaskDeliveryHandler与业务产物负责恢复状态，此服务不在数据库事务内等待网络。
+
+操作超时或取消与尚未结束的预留并发时，先停止后续网络调用，再等待已经发起的有界数据库预留结束，才允许Worker标记executionStoppedAt。该排空属于清理，不是放宽模型总期限；数据库连接、语句与事务期限维持原值。ModelExecutor继续保留未settle的模型并发槽，不因Promise超时立刻重试同一个外部调用；不能据此承诺外部模型恰好一次。
+
+节点须先对逐块文本做等长联系方式遮盖，再序列化结构化输入；调用包装及OpenAI适配器还会做保留JSON分隔符的末次遮盖。观测仅复用现有ObservabilityService.run的taskId/阶段span，后台队列前的白名单脱敏继续生效，不向ChatOpenAI附加原文Langfuse回调。实际usage不可得时为null，预留费用不是账单或实测费用。
+
+[模型调用专项](../test/analysis-model.test.ts)使用显式测试模型和共享预留账本验证重试/修复、恢复不重置、并发拒绝、版本/币种拒绝、数据库错误传播、取消及迟到预留排空。真实数据库账本的既有覆盖在consumer专项，业务图真实任务接线由T3补充验证；不将内存账本测试冒充数据库恢复验证。检查结果以[进度](progress.md)为准。

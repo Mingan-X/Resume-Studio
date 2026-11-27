@@ -1,5 +1,17 @@
 # HTTP API
 
+## 分析任务创建（S2.4-T1）
+
+`POST /api/v1/analyses` 随 `TASK_API_ENABLED=true` 启用，仅本地development/test；要求application/json、UUID `Idempotency-Key`，无查询字段。正文只接受：
+
+```json
+{"resumeVersionId":"00000000-0000-4000-8000-000000000002","asOfDate":"2026-11-27","jobCorpusVersionId":"corpus-v1"}
+```
+
+`jobCorpusVersionId` 使用既有语料的版本名（owner＋version复合身份），不是合成任务中的UUID，也不隐式选择latest。可信owner来自IdentityPort。简历必须已有成功保存的ExtractedDocument；语料和Rubric必须属于该owner。配置由服务端绝对路径 `ANALYSIS_CONFIG_FILE` 加载，字段见[分析配置说明](analysis-input.md)，客户端不能提交owner、预算、模型或规则配置。
+
+202返回 `{"taskId":"<UUID>","statusUrl":"/api/v1/tasks/<UUID>"}`。任务、冻结输入与Outbox同事务提交；查询复用任务GET。相同owner/key/正文返回原taskId，即使服务端配置已更换或停用；不同正文409 IDEMPOTENCY_CONFLICT。非法字段400、资源不存在或越权404、同配置版本内容改变409 INVALID_STATE、未配置分析503 ANALYSIS_UNAVAILABLE。响应不携带内部配置或凭证。S2.4业务图通过显式真实分析消费命令执行；合成消费者不会领取或成功完成真实分析。S3.1报告接入前SUCCEEDED/PARTIAL只表示相应语义产物已提交，reportId=null；阶段/计数及失败语义见[分析流程](analysis-workflow.md)。
+
 ## 岗位草稿、发布与建议（S2.2）
 
 需JOB_API_ENABLED=true，可信owner来自本地IdentityPort；仅development/test及loopback允许启用。响应不返回owner、执行令牌、凭证或内部索引快照。
@@ -37,7 +49,7 @@ S2.1文件/证据Schema及解析边界见[文件与证据契约](resume-evidence
 
 详情不返回owner/storageKey/路径或语义结构化占位字段；EXTRACT属于S2.4。解析/提交前断连会中止并补偿；数据库已提交但响应丢失属于幂等重试窗口，同key可取回原版本，不能误删已引用文件。提交结果不明且无法查询数据库时保留精确manifest供对账，不宣称文件系统与数据库原子提交。
 
-本文列出已实现的健康检查、任务查询/取消、简历上传/查询及岗位HTTP接口；业务路由须显式本地启用，使用固定开发身份。分析任务创建、报告HTTP仍为[架构设计](architecture.md#9-api调用链进度与错误)。所有接口共同遵守[接口契约规范](api-contract.md)。
+本文列出已实现的健康检查、分析任务创建、任务查询/取消、简历上传/查询及岗位HTTP接口；业务路由须显式本地启用，使用固定开发身份。报告HTTP仍为[架构设计](architecture.md#9-api调用链进度与错误)。所有接口共同遵守[接口契约规范](api-contract.md)。
 
 新接口实现后在本文补充：路径、参数、请求与响应示例、错误码、调用链和所属阶段。
 

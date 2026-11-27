@@ -14,3 +14,5 @@ export class TaskNotFoundError extends Error {
 export class TaskInvalidStateError extends Error {
   constructor() { super('Task already ended'); }
 }
+
+export class AnalysisInputStateError extends TaskInvalidStateError {}

@@ -12,7 +12,7 @@ export const healthResponseSchema = z.object({
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 export const errorResponseSchema = z.object({
-  code: z.enum(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE', 'HTTP_ERROR', 'INTERNAL_ERROR', 'PAYLOAD_TOO_LARGE', 'UNSUPPORTED_FILE', 'MODEL_UNAVAILABLE', 'MODEL_OUTPUT_INVALID', 'MODEL_BUDGET_EXHAUSTED', 'INDEX_TARGET_UNAVAILABLE']),
+  code: z.enum(['VALIDATION_ERROR', 'BAD_REQUEST', 'NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE', 'HTTP_ERROR', 'INTERNAL_ERROR', 'PAYLOAD_TOO_LARGE', 'UNSUPPORTED_FILE', 'MODEL_UNAVAILABLE', 'MODEL_OUTPUT_INVALID', 'MODEL_BUDGET_EXHAUSTED', 'INDEX_TARGET_UNAVAILABLE', 'ANALYSIS_UNAVAILABLE']),
   message: z.string(),
   retryable: z.boolean(),
   requestId: z.uuid(),

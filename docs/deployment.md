@@ -1,5 +1,9 @@
 # 本地部署
 
+S2.4业务图与Worker配置/命令见[分析流程](analysis-workflow.md#本地执行与验证)。新ResumeExtraction/ProfileAssessment/MatchPlan/RequirementExecution/AnalysisSummary及NodeArtifact版本列保持既有合成任务兼容；先应用迁移，再部署业务执行入口。回退时停用新分析消费与创建，保留新表和产物，不删除数据或配置。
+
+S2.4-T1分析创建随TASK_API_ENABLED启用；ANALYSIS_CONFIG_FILE为可选绝对路径，配置字段、不可变版本及失败边界见[分析输入](analysis-input.md)。新增analysis_configuration与真实输入外键迁移兼容已有合成任务；部署后旧合成Worker仍不领取真实analysis任务，业务执行入口按S2.4-T3接入。不通过删数据/配置回滚；需回退API时先停用新分析创建并保留新表和已提交任务，旧版本不能处理真实快照。
+
 S2.3岗位索引显式命令与版本/alias边界见[索引执行](job-index.md)；百炼本地配置、消费/对账命令及真实验证延后边界见[Embedding调用](embedding.md)。新增CandidateSet与JobIndexRequest迁移使用既有业务数据库，部署前按原流程备份并核验项目归属，不删除原有数据/卷。真实百炼配置只保存在忽略文件，缺配置时命令安全失败；本地HTTP桩不能作为正式索引目标。
 
 ## S2.2 岗位与模型本地装配

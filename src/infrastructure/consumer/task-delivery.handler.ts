@@ -15,8 +15,9 @@ export interface SyntheticTaskHandler {
 }
 
 export interface TaskHandler {
-  readonly capability?: 'job-index';
+  readonly capability?: 'job-index' | 'analysis';
   readonly embeddingVersion?: string;
+  readonly modelConfigVersion?: string;
   execute(claim: ExecutionClaim, signal: AbortSignal, budget: { reserve: (usage: UsageReservation) => Promise<void> }): Promise<TaskCompletion>;
 }
 
@@ -29,7 +30,7 @@ export class SyntheticCompletionHandler implements SyntheticTaskHandler {
 }
 
 export class TaskDeliveryHandler {
-  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'> & Partial<Pick<TaskExecutionStore, 'completeJobIndex'>>,
+  constructor(private readonly store: Pick<TaskExecutionStore, 'claim' | 'heartbeat' | 'complete' | 'fail' | 'reserveUsage' | 'markExecutionStopped' | 'cancelAtBoundary'> & Partial<Pick<TaskExecutionStore, 'completeJobIndex' | 'completeAnalysis'>>,
     private readonly identity: IdentityPort, private readonly handler: TaskHandler,
     private readonly config: ConsumerConfig, private readonly locks: ExecutionLock) {}
 
@@ -42,7 +43,7 @@ export class TaskDeliveryHandler {
 
   private async handleLocked(ownerId: string, message: TaskDispatch, signal: AbortSignal): Promise<'ack' | 'deferred'> {
     signal.throwIfAborted();
-    const result = await this.store.claim(ownerId, message, this.handler.capability ?? 'synthetic', this.handler.embeddingVersion);
+    const result = await this.store.claim(ownerId, message, this.handler.capability ?? 'synthetic', this.handler.embeddingVersion, this.handler.modelConfigVersion);
     signal.throwIfAborted();
     if (result.kind !== 'acquired') return result.kind;
     const { claim } = result;
@@ -108,6 +109,9 @@ export class TaskDeliveryHandler {
         if (output?.kind === 'job-index') {
           if (!this.store.completeJobIndex) throw new TaskFailure('UNSUPPORTED_INPUT');
           await this.store.completeJobIndex(claim, output);
+        } else if (output?.kind === 'analysis') {
+          if (!this.store.completeAnalysis) throw new TaskFailure('UNSUPPORTED_INPUT');
+          await this.store.completeAnalysis(claim, output);
         } else await this.store.complete(claim, output);
       }
       signal.throwIfAborted();

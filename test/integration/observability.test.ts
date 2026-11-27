@@ -23,12 +23,20 @@ await test('local Langfuse persists correlated callback/manual spans with no raw
   await assertObservabilityOwnership(true);
   const headers = { Authorization: `Basic ${Buffer.from(`${config.publicKey}:${config.secretKey}`).toString('base64')}` };
   // Identify the failing HTTP boundary without exposing URLs, credentials, bodies or raw exceptions.
-  async function request(stage: 'projects' | 'observations' | 'delete-trace', url: string | URL, method = 'GET') {
+  async function request(stage: 'projects' | 'observations' | 'delete-trace', url: string | URL, method = 'GET', deadline = Infinity) {
     const start = performance.now();
-    try { return await fetch(url, { method, headers, signal: AbortSignal.timeout(5000) }); }
+    // Maintainer-authorized 2026-11-27: projects and observation reads both exceeded the former 5s ceiling.
+    // Each request stays within the existing polling window and parent test deadline.
+    const timeoutMs = Math.min(10_000, deadline - Date.now());
+    if (timeoutMs <= 0) throw new Error('LANGFUSE_POLL_DEADLINE_EXCEEDED');
+    try {
+      const response = await fetch(url, { method, headers, signal: AbortSignal.any([t.signal, AbortSignal.timeout(timeoutMs)]) });
+      t.diagnostic(JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - start), timeoutMs, status: response.status }));
+      return response;
+    }
     catch (error) {
       const timeout = error instanceof Error && error.name === 'TimeoutError';
-      t.diagnostic(JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - start), timeout }));
+      t.diagnostic(JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - start), timeoutMs, timeout }));
       throw error; // preserve the original failure; the diagnostic identifies its phase
     }
   }
@@ -59,11 +67,12 @@ await test('local Langfuse persists correlated callback/manual spans with no raw
     const deadline = Date.now() + 45_000;
     let observations: z.infer<typeof observationSchema>[] = [];
     while (Date.now() < deadline) {
-      const response = await request('observations', url);
+      const response = await request('observations', url, 'GET', deadline);
       assert.equal(response.status, 200);
       observations = responseSchema.parse(await response.json()).data;
       if (observations.length >= stats.exported) break;
-      await delay(500);
+      const remaining = deadline - Date.now();
+      if (remaining > 0) await delay(Math.min(500, remaining), undefined, { signal: t.signal });
     }
     assert.equal(observations.length, stats.exported, 'Every exported span must be persisted and readable.');
     assert.ok(observations.some(span => span.name === 'score' && span.parentObservationId));

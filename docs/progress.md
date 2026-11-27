@@ -8,6 +8,168 @@
 - 只记录实际运行过的检查。验证结果只代表当时的环境，不能推广为其他平台或生产环境已验证。
 - 已有记录不改写；发现错误时追加更正记录。
 
+## 2026-11-27 S2.4-T10最终回归通过，Langfuse阻塞解除
+
+按本轮授权，观测集成测试三类HTTP单请求为10秒，observations不超过剩余45秒轮询窗口、请求继承父测试90秒取消；生产导出/重试策略及完整持久化、lost=0、关联/脱敏断言保持。最初仅调整projects后observations仍5秒超时的失败继续保留，不归L1/L2；最终定向1/1、14.221秒通过。
+
+最终完整`pnpm run test:integration`144/144通过、0失败/跳过，698.842秒（data/s24-langfuse-timeout-integration.log）。Langfuse全量专项7.315秒，projects=200/70ms，observations=200/347ms和689ms，trace清理=200/944ms；原持久化/零丢失/脱敏断言全部通过。typecheck与零警告Lint通过，基础118/118、79.367秒通过（data/s24-langfuse-timeout-unit.log）；后续仅修改观测专项及文档，专项与全量覆盖最终代码。OpenAPI产物一致性再次通过；本次没有依赖、Schema或迁移变化，不重复安装/迁移。既有20条迁移与业务验证见前文。
+
+核验归属后只读检查（data/s24-langfuse-timeout-resources.json）：仅开发Owner=1，其他本次业务/语义产物实体计数0，4正式队列ready/unacked=0，Qdrant集合空。rubric-v1原hash=6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d及AI_DRAFT/PENDING_REVIEW未改；没有删除卷/数据库/配置或操作其他项目实例。原生6333无监听，依用户约定未启停/native对照未执行；T9真实模型/embedding、人工质量及目标环境/L1/L2解除按原表延后。
+
+当前门禁解除，S2.4改待统一验收；本轮放宽是授权后的有限等待调整，不声明底层性能根因已解决。README/需求/路线图同步状态；按原授权提交修复并以--no-ff合并develop，推送阶段分支及develop。master及前端不操作，最终合并/推送结果另记。
+
+## 2026-11-27 S2.4-T10 Langfuse调整后专项通过，全量复验中
+
+最终typecheck、零警告Lint通过。观测专项1/1、14.221秒通过（data/s24-langfuse-timeout-targeted-2.log）；projects=200/513ms、两次observations=200/2946ms和966ms、trace清理=200/1677ms，使用10秒单请求和原轮询/父测试总期限。持久化全部span、lost=0、关联及PII脱敏原断言均通过，没有关闭或跳过有效测试。基础118/118的记录保留；后续改动只在观测集成测试和文档，无基础测试生产路径变化。
+
+开始完整test:integration（data/s24-langfuse-timeout-integration.log），目前Langfuse专项在全量中也通过，阶段状态仍等待完整结论。已fetch核对local develop与origin/develop均e0ccfa7，属于当前阶段祖先；没有操作master。按原授权在全量通过后再合并/推送阶段分支和develop。
+
+## 2026-11-27 S2.4-T10 Langfuse读取请求进一步按授权调整
+
+typecheck、零警告Lint与基础118/118、79.367秒通过（data/s24-langfuse-timeout-unit.log）。首次真实观测专项0/1，17.260秒（data/s24-langfuse-timeout-targeted.log）：projects为200/114ms，observations读取5014ms达到原5秒而超时，trace清理已完成。未改写此失败，不当L1/L2。
+
+沿用维护者本次Langfuse超时授权，将集成测试projects/observations/trace清理单请求统一为10秒。observations始终取10秒与剩余45秒轮询窗口较小值，等待间隔也受剩余时间限制；请求受父测试90秒取消信号约束，不增加重试，不修改生产导出超时、丢失为0或隐私断言。所有HTTP成功/失败增加仅stage/elapsedMs/timeoutMs/status诊断，继续串行验证后再判定门禁。
+
+## 2026-11-27 S2.4-T10 Langfuse请求期限授权调整（验证中）
+
+维护者明确授权“这个的超时限制也适当放宽”。从feature/s2.4-profile-matching、3330f81干净工作区接续；唯一代码调整是observability集成测试初始projects查询上限5秒→10秒，并输出安全的elapsedMs/timeoutMs/status诊断。依据为上一轮5008ms截断，10秒是有限余量而非实测性能承诺。其余观测读取/trace清理5秒、轮询45秒、父测试90秒、生产导出配置以及完整持久化/丢失为0/隐私断言保持，不增加重试。
+
+路线图、测试文档和诊断记录同步授权范围，旧失败不改写。本次无业务行为、API、依赖或迁移变化，先串行执行类型/Lint/基础及真实观测专项，再执行阶段完整回归；结果未出前保持阶段进行中，不提前解除门禁。原生Qdrant仍由用户手动管理，无监听不启停。
+
+## 2026-11-27 S2.4-T10阶段回归阻塞与交接
+
+最终基础`pnpm test`118/118通过、76.258秒（data/s24-stage-unit.log）；最终typecheck、零警告lint、OpenAPI一致性通过。全仓20条迁移generate/validate/deploy两次/status通过；无依赖声明或锁文件变化，不重复冻结安装。文档更新README、API/契约、架构、部署/测试、需求与分析工作流；最终生产实现未在测试后改动，仅日期注释与文档澄清月份值不代表精确到日。
+
+完整`test:integration`143/144通过、0跳过，747.149秒（data/s24-stage-integration.log）。唯一失败为既有Langfuse projects请求5008ms超过原5秒；该用例在创建trace前失败。本轮S2.4 HTTP创建、抽取共享缓存、真实子进程恢复、真实Qdrant＋假模型完整匹配/400预算、终态回滚/恢复/取消均通过；其余既有回归通过。未放宽Langfuse/API/DB/RabbitMQ期限，也未将此失败归为L1/L2。S2.4仍进行中，T10门禁未完成，S2.5及后续未启动。
+
+只读诊断与随后单次原5秒probe见[Langfuse记录](research/s24-langfuse-2026-11-27.md)：受检服务healthy、无重启/OOM、窗口日志无定位证据；当前I/O压力不足以证明根因。随后projects为200/211ms，仅证明该次可用；没有确定性修复，不重复无变更全量来覆盖失败。按路线图“被后续任务依赖的失败”停止条件，保存代码/证据后等待维护者，不自行新增环境豁免或改验收。
+
+最终资源核验（data/s24-stage-resources.json）：Owner=1；Job/JobVersion/JobIndexTask/JobIndexRequest/JobCorpusVersion/CandidateSet/Candidate/AnalysisTask/AnalysisConfiguration/ResumeExtraction/ProfileAssessment/MatchPlan/RequirementExecution/AnalysisSummary/Resume/FileAsset全0，正式4队列ready/unacked=0，Qdrant集合空。正式rubric-v1原hash与AI_DRAFT/PENDING_REVIEW保持；测试manifest精确清理完成，旧孤立policy未操作，无卷/数据库/配置删除。
+
+任务提交：T1=f30b8ab、T2=3284ab8、T3基础=3f8f054、T4=a3bc285、T5=1d0f4fd、T6=3a3db3e、T7=03842b1、T8及T3装配闭合=3dfa9cd、T9延后=d646dec。按任务保存实现不表示全阶段验收。T10文档/失败记录另提交；未合并develop、未推送、未操作master或前端。原生6333未监听，遵守手动管理约定未启停/native未执行；真实模型/embedding、人工质量指标及目标服务器/L1/L2解除按原延后表保留。
+
+最终13份文档229项本地文件链接检查及git diff --check通过。文档收尾不重复执行已完成的业务检查；阶段阻塞状态如实保留。
+
+## 2026-11-27 S2.4-T9按原授权延后真实运行
+
+T3–T8实现分别保存为3f8f054、a3bc285、1d0f4fd、3a3db3e、03842b1、3dfa9cd，T1/T2此前保存f30b8ab/3284ab8。T9需要维护者本地提供中转模型/百炼Key、模型配置和预算并完成正式Rubric审核，依2026-11-27已确认延后表留到统一验收；本次未读取或填充真实Key，未发起付费调用。
+
+现有完整图仅以显式假模型/合成embedding验证工程一致性，不产生真实延迟/token/费用或准确率记录，不用假运行补齐T9。T9延后本身不阻塞develop合并，但当前T10完整回归的Langfuse projects超时是另外的非延后门禁，未解除前不合并、不推进S2.5。只更新记录，未因此重复业务测试；文档链接/diff在T10收尾一起核验。
+
+## 2026-11-27 S2.4-T8汇总/进度与T3生产装配闭合保存
+
+T7保存03842b1。T8保存AnalysisSummary与SUCCEEDED/PARTIAL/FAILED规则、真实阶段/计数事件、临时finalize、消费终态/attempt/DONE收据同事务及budget elapsed；S3.1之前reportId=null，不伪造报告。任务执行权和完整冻结输入在产物/事件/完成事务中核对，终态提交再次复核已有节点产物及汇总内容。
+
+同时闭合T3实际节点装配和tasks:consume:analysis/analysis:reconcile入口：仅本地development/test，缺配置先安全拒绝，不加载运行模块；model/embedding版本匹配才领取。每会话最多1个分析，岗位分支并发3。已将T4–T7领域服务接到真实图，测试模型仅显式注入；不发起真实Key/付费调用。
+
+共用基础118/118、类型/Lint/OpenAPI通过；新增CLI模块加载拒绝测试通过。完整专项3/3（105.851秒）验证原子终态故障注入：收据写入失败时任务仍RUNNING且DONE=0，恢复复用原CandidateSet、模型次数不增加；同时验证运行中取消和重投，以及正式Rubric副本等级映射。完整test:integration仍在运行，已知Langfuse projects超时仍属未解决门禁；本提交保存实现与测试，不标阶段完成或推送。新增summary迁移已部署，全仓20条；数据库测试只清理当前manifest资源。流程/边界详见[分析工作流](analysis-workflow.md)。
+
+## 2026-11-27 S2.4-T7逐项匹配与400条持久预算保存
+
+T6保存3a3db3e。T7保存MatchPlan/RequirementExecution、完整计划快照与不可变终态行、LangGraph Send岗位分支并发3/批次10、语义ID完整性及逐字证据校验、任职年月指标纯函数。按候选顺序/priority/stableId一次分配最多400条唯一要求，超额保留BUDGET，失败保留FAILED，未知语义仍unknown且不冒充失败；所有行保留，不静默删除。每次模型尝试另走累计预算账本。仅明确employment_months/years指标由代码算，含糊单位/无日期返回unknown；月份值不是精确到日的保证。
+
+共用基础118/118、类型/Lint与专项通过；真实数据库/Qdrant＋假模型完整链路实测420计划=400完成+20预算行，重投不增加模型调用，画像/匹配失败得到对应PARTIAL/FAILED。未知/重复/缺失ID、额外分数、跨版本/伪造引用单元拒绝；跨节点故障测试随T8提交。新增matching迁移已部署并二次确认无pending。真实模型T9仍延后，共用Langfuse5秒projects门禁失败未解除，阶段不合并。
+
+## 2026-11-27 S2.4-T6召回接线与真实输入冻结保存
+
+T5保存1d0f4fd。T6保存由ParsedResume生成脱敏RecallQuery、读取冻结corpus/index/recall配置、复用S2.3召回与CandidateSet的服务；已有集合只校验执行权并复用，恢复不重新召回。CandidateRepository新增真实analysis快照的corpus版本/hash、embedding/index spec及召回配置绑定，旧synthetic验证保持。
+
+共用单元验证查询去联系方式，完整工程专项使用真实Qdrant验证READY正常召回、显式INDEX_NOT_READY降级、恢复后候选逐字不变/模型调用不增；该跨节点专项随T8接线提交。基础118/118、类型/Lint通过，本轮全量相关新旧召回用例尚按整体结果记录；不增加依赖/迁移/HTTP。真实embedding/原生对照仍延后或未执行，共用Langfuse门禁失败保留，不标阶段完成。
+
+## 2026-11-27 S2.4-T5六维画像实现保存
+
+T4保存a3bc285。T5保存PROFILE子图（模型判断→校验/确定性映射）、六维完整状态Schema、Rubric等级/feature/rubricRefs/逐字引用校验及ProfileAssessment不可变产物。unknown的level和score均null；模型score字段被拒绝，合法等级由冻结Rubric映射分值，画像不提供岗位verdict。单元拒绝缺维/伪造/跨版本证据/额外分数；完整工程专项使用正式Rubric的独立测试owner副本验证等级2映射40与其余五维unknown/null。
+
+最近完整业务链路专项3/3、105.851秒通过（data/s24-runtime-targeted-3.log），包含新增画像子图、事务收据故障恢复、运行中取消；修正前新CLI测试env类型TS2339仅阻断build，未进入专项，失败保留。基础118/118、typecheck/Lint通过，本轮全量画像链路也通过。新增profile_assessment迁移已部署且重复deploy无pending；正式开发owner Rubric未修改。真实模型/正式审核延后，共用Langfuse全量失败尚未解决，阶段不合并。
+
+## 2026-11-27 S2.4-T4抽取与跨任务缓存实现保存
+
+T3基础保存3f8f054。T4保存授权文本抽取、一次修复/证据校验、等长PII遮盖、resumeVersion/prompt/model/schema不可变缓存、跨任务会话锁和年月区间归一化。原文指令仅数据，缺失字段null/空数组，未知年月不补月份；asOfDate只参与任务计算，不污染跨任务缓存。数据库缓存专项1/1、抽取/日期单元通过，最终共用基础118/118、类型/Lint及OpenAPI通过；本轮全量中的抽取专项也通过。
+
+迁移已按generate/validate/deploy两次/status核验：全仓迁移总数20（更正上一条“19/20条新增迁移”的不精确说法；该数是总数而非本任务新增数）。本任务新增resume_extraction一条迁移。真实模型与T9延后；Langfuse全量失败仍未解决，不标任务/阶段整体验收完成，不合并/推送。
+
+## 2026-11-27 S2.4-T3图与恢复基础实现保存（阶段回归未通过）
+
+保存固定StateGraph、稳定分支合并、NodeArtifact分支/prompt/model身份及不可变保护、真实analysis模型版本领取过滤、graph代次预算校验与子进程恢复专项。T3生产消费装配与实际节点在T4–T8依次保存后闭合；当前提交只包含图/恢复基础，不把fixture当语义实现。工作区完整代码的类型检查、零警告Lint与基础118/118通过（data/s24-stage-unit.log，76.258秒），OpenAPI一致性通过；19/20条新增迁移均已校验并二次deploy无pending。子进程专项3/3及当前全量中的相同用例通过。
+
+当前完整test:integration仍运行，但已发生Langfuse projects请求5008ms超时，未放宽原5秒门禁、未归L1/L2。先只读核验归属/健康/日志：受检Langfuse容器healthy、restartCount=0、OOMKilled=false；日志无定位原因，当前VM I/O full avg60=26.89仅表明当时有等待，不证明故障根因（data/s24-langfuse-diagnosis.json）。保存已验证实现不等于任务/阶段验收通过；不得合并或推进依赖该门禁的阶段。最终计数和处理结论待本轮结束另记。
+
+## 2026-11-27 S2.4-T3–T8接线与定向验证
+
+T3后续子进程专项3/3、17.668秒通过（data/s24-t3-graph-targeted-3.log）：确认退出复用thread、未确认停止切换thread、已存LOAD/PARSE不重复、旧fence/错误graph/取消写入拒绝、分支/版本冲突及不可变节点验证。第一次新Worker提前退出未复现，诊断修正不宣称定位其底层根因，原失败继续保留。
+
+T4–T8按已确认任务继续编写EXTRACT缓存与日期、PROFILE子图及Rubric映射、冻结RecallQuery/Candidate绑定、Send匹配/持久计划/400预算、汇总/进度及消费入口。代码尚未按完成提交；后续任务用于完成T3业务节点/命令接线，不将测试fixture或部分骨架标成已交付。Prisma generate/validate/deploy两次/status通过，新增17–20条迁移均应用；中断后类型检查发现summary空值TS18047并修正，最新类型/Lint通过。
+
+节点单元定向7/7、7.774秒通过（data/s24-nodes-unit-targeted.log）；抽取真实DB专项1/1、7.046秒（data/s24-t4-extraction-targeted.log），跨任务同简历版本缓存复用，首次模型调用1、后续0，fence与数据库不可变/互斥验证。首次完整业务链路专项3/3、43.543秒（data/s24-runtime-targeted.log），真实PostgreSQL/Qdrant＋显式假模型验证SUCCEEDED/PARTIAL/FAILED、取消、降级、重复投递不重调模型；420计划中400完成/20明确预算行，本轮全部owner/thread/集合清理manifest=true。
+
+收尾补充PROFILE原生子图、等级映射、终态收据失败回滚/恢复不重调模型及运行中取消，尚待新专项结果。首次新命令因CLI测试env类型推断TS2339未进入测试，改为NodeJS.ProcessEnv后重跑。真实模型/embedding、质量结果和原生对照未执行；原生无监听不启动。所有构建/检查按单命令串行，基础入口已显式test-concurrency=1。
+
+## 2026-11-27 S2.4-T3业务图与恢复验证中
+
+T2已提交3284ab8。新增固定业务StateGraph和AnalysisArtifactRepository，图状态只含task/input hash、节点产物ID或显式失败；LOAD→PARSE→EXTRACT→VALIDATE后PROFILE/RECALL并行，SNAP/MATCH后JOIN等待双路，再FINALIZE。节点实现按后续T4–T8注入，当前专项是明确测试节点，不宣称模型/业务终态交付。operationKey包含branchKey/input/component/schema/prompt/model，产物写入/读取核对活fence/租约/取消/deadline/graph身份及完整冻结snapshot，恢复再次核对数据库产物。真实analysis领取要求匹配modelConfigVersion，reserveUsage新增graph代次核对。
+
+Prisma generate/validate/deploy两次/status通过，16条迁移已应用；类型检查、Lint初次通过。第一次真实子进程专项1通过/2失败（含父测试），21.173秒（data/s24-t3-graph-targeted.log）：未确认停止路径切换thread并复用产物通过；确认退出后复用thread路径新Worker在claimed前结束。测试fixture在finally先断IPC导致外层catch安全诊断未送达，先修正诊断顺序和lock-held显式失败，不改业务恢复/超时/断言。第二次命令build遇process.send回调重载TS2345，测试未启动，修正为显式四参数后继续诊断。首次精确owner/thread清理manifest=true，无遗留数据；T3尚未完成/提交。
+
+## 2026-11-27 S2.4-T2模型调用预算封装完成
+
+T1已提交f30b8ab。T2新增AnalysisModelCaller，复用既有ModelExecutor与Worker的reserve接口：逐次网络尝试/一次修复先预留累计次数/token/费用，恢复或并行分支不重置账本；核对真实snapshot owner/modelConfigVersion/币种、总deadline、取消；数据库/fence错误原样交回，慢预留排空后才结束调用服务。保持既有重试层、未settle并发槽及安全错误码。输入末次脱敏和ObservabilityService白名单span不传原文LangChain回调；usage未知为null，不以预留冒充实测费用。
+
+最终typecheck、零警告Lint、基础110/110通过（data/s24-t1-t2-unit-final.log），其中T2四项行为专项覆盖修复/重试、恢复不重置、并发预算拒绝、配置拒绝、DB错误、取消/总期限与迟到预留排空。共用完整集成137/137验证既有累计SQL账本/恢复/取消窗口；本任务新增的是调用封装，尚未把真实任务接入图，不将内存账本测试当作真实分析Worker恢复证明，T3继续接线验证。详见[分析模型预算](analysis-model.md)。
+
+无新增依赖、迁移或HTTP，无需重复部署/OpenAPI生成；文档链接与diff检查通过。真实模型、真实token/费用与T9按路线图延后，不调用Key或付费服务。按任务提交T2后继续T3。
+
+## 2026-11-27 S2.4-T1完成验证，真实分析创建已交付
+
+完成真实TaskInputSnapshot与synthetic区分、POST /api/v1/analyses、202 taskId/statusUrl、所有权/解析产物检查、corpus/Rubric/configuration冻结及真实外键、同事务Outbox、同key同请求复用和不同请求409；查询支持真实任务，synthetic入口不领取。新增配置版本不可变表，不持久化模型连接/Key。API、契约、OpenAPI、架构、部署/测试及分析输入文档同步。Qdrant15秒请求修正、CLI早校验与串行基础入口属于本次回归阻塞修复，依据和历次失败完整保留于下文。
+
+最终typecheck、零警告lint通过；基础110/110、60.465秒（data/s24-t1-t2-unit-final.log，含独立T2四项测试草稿）；此前串行109/109、46.635秒通过。最终完整test:integration137/137、592.790秒（data/s24-t1-integration-2.log），覆盖6项真实分析创建HTTP/DB用例和既有回归；Qdrant基础创建4803.3ms、索引主体34.976秒、Outbox死信181.149秒。OpenAPI生成/一致性通过；迁移generate/validate/deploy两次/status通过、15条。11份文档189项本地文件链接及git diff --check通过。新增配置文件边界测试在完整集成后补充，最终基础已覆盖；生产代码未再变更。
+
+归属核验后的只读资源（data/s24-t1-resources.json）：仅开发owner=1；Job/JobVersion/JobIndexTask/JobIndexRequest/JobCorpusVersion/CandidateSet/Candidate/AnalysisTask/AnalysisConfiguration/Resume/FileAsset全部0；4正式队列ready/unacked=0；Qdrant集合空。正式rubric-v1的hash仍6d958ebc4be30bab8cbe7a68b6ff96d0135cc88104bf901cacda7b3dc176648d，AI_DRAFT/PENDING_REVIEW未改。没有删卷/数据库/配置，旧孤立policy未操作。
+
+未执行：原生6333未监听，按用户手动管理约定不启停；真实Key/embedding/模型T9、人工标注/质量及目标服务器/L1/L2解除仍按路线图延后；没有依赖声明/锁文件变化，不重复冻结安装。T1按任务提交，阶段仍进行中，不合并/推送直到非延后任务和阶段回归完成；接续T2/T3。
+
+## 2026-11-27 S2.4-T1专项通过，基础入口改为遵守串行约束
+
+Qdrant索引专项1/1通过，45.800秒（主体38.553秒，data/s24-t1-qdrant-targeted.log），在原180秒父测试及15秒初始化期限内验证幂等upsert、原子READY、旧目标fence；精确清理成功。随后基础108/109、21.697秒（data/s24-t1-t2-unit-5.log），索引CLI早期拒绝及module-load断言通过，唯一失败为百炼40ms超时用例请求数expected 1/actual 0。单独原样运行百炼专项1/1、0.378秒通过（data/s24-t1-bailian-targeted.log）。
+
+发现pnpm test的Node默认仍并行运行文件，与用户明确“严禁并行构建/安装/测试”的本机约束不符。只为基础test脚本补--test-concurrency=1，与已有集成入口一致；40ms超时、请求数严格等于1和全部其他用例/断言不改，测试内部幂等/竞争并发仍保留。依赖声明和锁文件未变，不新增冻结安装要求。该调整是执行调度，不改业务期限或验收条件；接着执行串行基础及完整回归，历史失败均保留。
+
+## 2026-11-27 S2.4-T1索引CLI早期校验修正
+
+Qdrant15秒调整后基础108/109、33.965秒（data/s24-t1-t2-unit-4.log）；新5.5/11.5秒Qdrant HTTP桩及T2四项调用包装测试通过，唯一失败再次为原索引CLI缺配置路径在10秒时stderr为空。原断言和10秒限制未改，不归L1/L2。源码显示入口在try内校验配置前静态导入数据库、Nest身份和完整运行链路；修正为只依赖Zod/路径校验的入口，模式、开发身份、绝对配置路径及embedding文件校验通过后才动态加载运行模块。执行逻辑、错误码及关闭流程保留，并复用module-load hook增加缺配置/production拒绝时不加载Nest/Prisma/runtime的断言。
+
+此修正属于T1回归阻塞处理，不扩展业务范围或选择新技术。类型检查、Lint通过，正在以原180秒父测试/15秒初始化总期限运行失败索引专项（data/s24-t1-qdrant-targeted.log），通过后再执行完整回归。此前日志均保留；T1/T2尚未提交或标完成。
+
+## 2026-11-27 S2.4-T1回归失败定位与Qdrant调整
+
+新增HTTP/数据库专项5/5通过（data/s24-t1-targeted.log，3.529秒）；随后补充实际API装配缺配置503用例，已进入完整回归。第二次基础104/105、8.139秒，唯一失败为OpenAPI测试路径清单未列新路由，已保留精确路径相等断言并补入/api/v1/analyses；第三次105/105、8.831秒通过（data/s24-t1-unit-2.log、unit-3.log）。此前HTTP桩和索引CLI失败在原限制下通过，不覆盖第一次失败。类型检查、零警告Lint、OpenAPI生成通过；7份文档107项本地文件链接通过。
+
+第一次完整`test:integration`136/137通过，689.444秒（data/s24-t1-integration.log）。唯一失败为既有S2.3 job-index首次ensure的UPSTREAM_TIMEOUT；新建分析及全部其他用例通过，基础Qdrant创建5322.6ms、Outbox死信181.502秒、Langfuse持久化通过。失败的本轮集合/队列/DB已精确清理，manifest cleaned=true；未宣称T1完成。
+
+归属核验后服务端白名单计时确认该集合PUT耗时11.929918秒，超出当前10秒；超时后立即回查404、稍后PUT成功，详细时间序列见[诊断](research/s24-qdrant-2026-11-27.md)，忽略目录保留脚本/JSON。沿用用户已授权“适当放宽Qdrant”，单请求上限进一步为15秒，原15秒初始化/清理及全部操作/任务总期限、取消、重试层数不变；其他服务及父测试时限不变。保留5.5秒HTTP桩，补11.5秒响应覆盖；接着执行验证，不以重复无改动全量碰运气。历史L1/L2及原5秒性能目标保留。
+
+原生6333无监听，未启停/未执行native对照。等待T1全量期间仅另写T2独立ModelCaller/单元草稿，未接入运行图；后续基础检查可能覆盖两任务代码，但T2须单独记录/提交，不能混称T1回归验证了模型业务图。
+
+## 2026-11-27 S2.4-T1实现与验证中
+
+接续feature/s2.4-profile-matching，起点5db9eb0工作区干净。增加真实analysis快照、owner范围创建HTTP、服务端安全配置冻结、AnalysisConfiguration不可变版本及简历/corpus/Rubric/configuration外键；corpus沿用已合并owner/versionName。任务/Outbox同事务；同key同请求先重放原任务，配置轮换不换输入；合成领取入口保持拒绝真实任务。尚未标完成或合并。
+
+已执行：Prisma generate/validate成功，db:deploy两次及status通过，15条迁移已应用；类型检查与Lint曾通过。编写测试期间两次括号语法错误、Lint两处未await test、后加SQL拒绝测试的Prisma JsonValue输入类型错误均逐项修正，不修改有效测试标准。
+
+第一次`pnpm test`为102/105，22.029秒，原日志data/s24-t1-unit.log保留：OpenAPI过期（新增接口尚未generate）；百炼HTTP桩超时路径expected request delta 1实际0；索引CLI原10秒内stderr为空，预期INDEX_RUNTIME_FAILED。后两项不归L1/L2，未修改期限、断言或旧实现。首次openapi:generate被新SQL拒绝测试的TS2322阻断（data/s24-t1-openapi-generate.log），修正为Schema校验后的JSON输入后重跑。后续结果另记，不覆盖旧失败。
+
+真实服务专项与完整回归尚待执行；原生Qdrant仍依用户手动启停、无监听不启动。真实模型/embedding调用、人工指标及目标环境验证继续按路线图延后。没有依赖/锁文件变更，没有操作master、前端或第三方消息。
+
+## 2026-11-27 S2.3合并推送，S2.4接续
+
+S2.3-T9=0ce6ab55625f5ef8529205af4427904c295018d2已--no-ff合并develop，合并e0ccfa7aba565b89cd3f6e5ac22c904a7a9a4e63；origin/develop同值，origin/feature/s2.3-job-recall=0ce6ab5，推送成功。S2.3待维护者统一验收，真实调用/人工标注/原生对照与目标环境限制保留；master及前端未操作。合并后工作区干净，从develop创建feature/s2.4-profile-matching，按-d清理已合并本地S2.3分支，远端保留。
+
+S2.4状态进行中，仅阶段启动，尚无新业务代码。按用户已授权连续开发至S3.3、阶段间自主新会话继续的方式，准备新会话接续T1；本会话在交接后停止写工作区，不与新会话并发修改。新会话先读任务/架构/契约与实际代码，按任务检查/提交，真实模型T9继续按延后表处理，不重复确认D1–D11。
+
+交接要点：14条迁移已应用，9个Docker服务运行；最终基础103/103、全量131/131（782.746秒），OpenAPI/typecheck/Lint通过。Qdrant单请求10秒是用户明确授权的新规则，其余期限/断言保持；原生6333未监听不能启停。正式rubric-v1在开发owner下保持AI_DRAFT/PENDING_REVIEW与既有hash，不能删。最终资源核验只剩开发owner/正式Rubric，队列空、集合空；历史孤立policy仍保留。L1/L2及全部历次失败见前文，不能扩大归因。
+
+实现接口：JobCorpusRepository以owner/versionName存快照（不是自动latest）；RecallService与CandidateRepository已提供内部召回/冻结，SNAP接线时需真实TaskInput版本绑定。现analysisInputSnapshot仍仅synthetic，真实分析输入/创建HTTP、产物、图和临时finalize待S2.4。当前任务预算与fence/graph线程机制可复用，真实索引已显式按embeddingVersion选择能力；百炼仅HTTP桩、无正式Key/实际索引语料。只改启动文档无需重复业务测试，检查diff和链接后提交。
+
 ## 2026-11-27 S2.3-T9阶段回归完成，待统一验收
 
 S2.3非延后任务实现完成并按T1–T8提交；T9同步README、架构、部署/测试、需求与JD实现状态。已交付工程链路：100条合成JD与字典/语料快照、关键词/向量/RRF、版本集合/alias与真实索引任务处理器、补建请求幂等、冻结候选、百炼HTTP适配器及本地显式消费/对账、人工标注格式/Recall@K脚本。没有新增HTTP接口，分析图接线留S2.4。

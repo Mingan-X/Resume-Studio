@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { recallConfigSchema } from './recall.js';
+import { indexCollectionSchema } from './job-index.js';
 
 const uuid = z.uuid().transform(value => value.toLowerCase());
 const version = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/);
@@ -8,7 +10,7 @@ export const idempotencyKeySchema = uuid;
 export const taskTypeSchema = z.enum(['analysis', 'job-index']);
 export type TaskType = z.infer<typeof taskTypeSchema>;
 
-// Synthetic values are explicit test inputs, not production limits or model choices.
+// Limits are explicit frozen inputs; synthetic fixtures are not production defaults.
 export const taskBudgetSchema = z.object({
   maxAttempts: z.int().positive(),
   maxModelCalls: nonnegative,
@@ -50,7 +52,22 @@ export const syntheticJobIndexInputSchema = z.object({
   chunkerVersion: version,
   componentVersion: version,
 }).strict();
-export const analysisInputSnapshotSchema = syntheticAnalysisInputSchema.extend({ ownerId: uuid });
+// Safe server configuration only: connection URLs, credentials and model input are never persisted here.
+export const analysisConfigurationSchema = z.object({
+  schemaVersion: z.literal(1), configurationVersion: version,
+  rubricVersion: version, scoringVersion: version, promptVersion: version, modelConfigVersion: version,
+  embeddingVersion: version, budget: taskBudgetSchema,
+  maxJudgments: z.int().min(1).max(400).default(400),
+  recall: recallConfigSchema, indexTarget: indexCollectionSchema.omit({ ownerId: true }),
+}).strict().refine(value => value.embeddingVersion === value.indexTarget.embeddingVersion, 'Embedding version mismatch');
+export const realAnalysisInputSchema = z.object({
+  ...analysisConfigurationSchema.shape, kind: z.literal('analysis'), ownerId: uuid,
+  resumeVersionId: uuid, asOfDate: z.iso.date(), jobCorpusVersionId: version,
+  configurationHash: hash, resumeFileHash: hash, corpusHash: hash, rubricHash: hash,
+}).strict().refine(value => value.embeddingVersion === value.indexTarget.embeddingVersion, 'Embedding version mismatch');
+export const analysisInputSnapshotSchema = z.discriminatedUnion('kind', [
+  syntheticAnalysisInputSchema.extend({ ownerId: uuid }), realAnalysisInputSchema,
+]);
 export const realJobIndexInputSchema = syntheticJobIndexInputSchema.extend({ kind: z.literal('job-index') });
 export const jobIndexInputSnapshotSchema = z.discriminatedUnion('kind', [
   syntheticJobIndexInputSchema.extend({ ownerId: uuid }), realJobIndexInputSchema.extend({ ownerId: uuid }),
